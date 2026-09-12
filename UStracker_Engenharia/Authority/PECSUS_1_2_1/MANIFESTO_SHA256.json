@@ -1,0 +1,108 @@
+{
+  "format": 2,
+  "product": "UStracker",
+  "plan_revision": "PECSUS-1.2.1",
+  "scope": "Todos os arquivos do pacote, exceto este manifesto; evidência do produto fica fora desta raiz.",
+  "files": [
+    {
+      "path": "00_LEIA_PRIMEIRO.md",
+      "size": 2590,
+      "sha256": "745cfec116a2e53eda7d5c9a651ab4a2cd8e3bf92aa80aca01b557e39b647408"
+    },
+    {
+      "path": "01_ESPECIFICACAO.md",
+      "size": 15196,
+      "sha256": "31f51f8c7256743aa9e9117c6923a0e965625a7993589643903ad41bebbdaefc"
+    },
+    {
+      "path": "02_CONTRATOS.md",
+      "size": 37378,
+      "sha256": "48ec43d549dc35f1daf92e900cb188bdc31966669e3a403b4060778116807266"
+    },
+    {
+      "path": "03_EXECUCAO_LINEAR.md",
+      "size": 52943,
+      "sha256": "07f66fd156915e2849d781618bff1daecff71df8c3abffbc2f92d2eb924bef31"
+    },
+    {
+      "path": "04_VERIFICACAO_E_ENTREGA.md",
+      "size": 5970,
+      "sha256": "ef0540db1accb49e28a1e041e5f21685abcca0891fb0f4ac86211b147132cf04"
+    },
+    {
+      "path": "05_OPERACAO_E_CONTINUIDADE.md",
+      "size": 3882,
+      "sha256": "845050c01bb06662b085295d20a35782e55a9743ef82f77a2e375c35e04d34e1"
+    },
+    {
+      "path": "AJUSTES_FUTUROS.log",
+      "size": 122,
+      "sha256": "f2fc9dd48d4409df0ae7266f8c64682038f5e054f0f179dcb9371df65bb75257"
+    },
+    {
+      "path": "CASOS_ACEITE.json",
+      "size": 53360,
+      "sha256": "ace7566620e2f0d57f974e6ad621a6c52861ec5f497b1229f8e5f9a15d9c0865"
+    },
+    {
+      "path": "FONTES_E_DECISOES.md",
+      "size": 3872,
+      "sha256": "f81fce30f95c1b2957bac5c518730e4a2a435dad5b9f68b3f42aec244ab3859e"
+    },
+    {
+      "path": "MATRIZ_ESCOPO_HISTORICO.csv",
+      "size": 29990,
+      "sha256": "0ca550fb0d31430f0dd6cd6ca7e72ccf750e28f59635456f435591b26e3f45f7"
+    },
+    {
+      "path": "MATRIZ_REQUISITOS.csv",
+      "size": 11264,
+      "sha256": "03349e88728eb41a148e67bfb61f59a26a23a6f9f5a19b89aa1c87cdf9523316"
+    },
+    {
+      "path": "PECSUS_COMPLETO_1_2_1.txt",
+      "size": 230736,
+      "sha256": "c6840a31dea41f19e4d305a6f0abfead1deda6b0e2081bd33db0ad3a508db1f6"
+    },
+    {
+      "path": "PONTO_DE_PARADA.json",
+      "size": 1134,
+      "sha256": "4910f63ac36483d43c53c9410a172d63a9403437982d66b647e6c4c9752b6292"
+    },
+    {
+      "path": "REGISTRO_EXECUCAO_MODELO.json",
+      "size": 558,
+      "sha256": "8f9622d660e68393cc257c37ad57205276f5066d022380557307b58f6ab420c3"
+    },
+    {
+      "path": "REVISAO_DOCUMENTAL.md",
+      "size": 1477,
+      "sha256": "4bdc2b53094727cfcff37dcfe4f7258c73bf7f07861933bf4d1d5932b897f02f"
+    },
+    {
+      "path": "SCRIPT_MESTRE_EXECUCAO_IA.txt",
+      "size": 10905,
+      "sha256": "f462e2b9ca674f8a7a8f6d80e769930e7399b769d92904bfb8f055187985794c"
+    },
+    {
+      "path": "TAREFAS.json",
+      "size": 47101,
+      "sha256": "005227c2a4f3246ec6013e93f7633142e2e5789f6c61d4ec14d50089a92a30e8"
+    },
+    {
+      "path": "VALIDACAO_DOCUMENTAL.json",
+      "size": 1054,
+      "sha256": "47ae9916eb0ad70b750de372286bad00454ee8d1f6660f000d0f1b6aac25995d"
+    },
+    {
+      "path": "tools/gerar_derivados.py",
+      "size": 4878,
+      "sha256": "d6ad36311284da12b219736d6218b1416499172bb9525e878d4d7596281cfc62"
+    },
+    {
+      "path": "tools/validar_plano.py",
+      "size": 9078,
+      "sha256": "631480fff422063a789ef7c0ccd5721b9b8b59576a1d0025af993c4b06a1561a"
+    }
+  ]
+}

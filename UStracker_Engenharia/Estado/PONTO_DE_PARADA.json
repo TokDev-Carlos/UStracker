@@ -1,0 +1,136 @@
+{
+  "plan_revision": "PECSUS-1.2.1",
+  "system_version": "1.00.00.000",
+  "state": "PAUSED_BY_OWNER",
+  "g0": "PASS_DOCUMENTAL",
+  "last_completed_task": "G0",
+  "next_task": "T01",
+  "next_gate": "T01/G1_NATIVE_FOUNDATION",
+  "completed_evidence": [
+    "Evidence/G0/validacao_documental.json"
+  ],
+  "open_blockers": [
+    {
+      "id": "C08_CLEAN_HOST",
+      "status": "BLOCKED",
+      "detail": "Proprietário confirmou que ainda não tem VM/computador Windows10 22H2 x64 limpo. Bloqueia homologação T01, não a implementação independente."
+    }
+  ],
+  "pending_architecture_decisions": [],
+  "preproduction_configuration": [
+    "identidade empresarial final",
+    "política organizacional de retenção/consentimento/incidente",
+    "destino de backup externo",
+    "chave privada de assinatura produtiva controlada pelo proprietário"
+  ],
+  "invalidated_cases": [],
+  "last_update": "2026-09-12T20:51:40.692810+00:00",
+  "instruction": "Usar PECSUS 1.2.1. Copiar esta semente para Estado/PONTO_DE_PARADA.json na engenharia; executar T01 no perfil formal win10_22h2. Não iniciar T02 sem T01 PASS. Compatibilidade Win11 é relatório separado.",
+  "product_cases_status": "NAO_EXECUTADO",
+  "runtime_evidence": [],
+  "homologation_profile": "win10_22h2",
+  "supported_platforms": [
+    "Windows 10 22H2 x64",
+    "Windows 11 x64"
+  ],
+  "current_task": "T01",
+  "next_action": "Retomar a unidade RED de drive mapeado: implementar consulta GetDriveTypeW por ctypes na fronteira _drive_type(anchor), rejeitar DRIVE_UNKNOWN/NO_ROOT_DIR/REMOTE/CDROM antes de acessar executável, aceitar local fixo/removível/RAM. Rodar testes paths + chaves e registrar GREEN. Revisar/commit da unidade; depois seguir harness fail-closed e cadeia de dependências conforme docs/T01_EXECUCAO.md. T02 proibida sem T01 homologada.",
+  "stop_reason": "Proprietário ordenou ponto de parada imediato; não continuar nesta sessão.",
+  "completed_units": [
+    "Histórico preservado: 4792 arquivos, SHA-256 antes/depois, 1862800083 bytes",
+    "Engenharia nova e autoridade original extraída; G0 documental PASS",
+    "Git inicial d38acdb; branch engenharia/pecsus-1.2.1",
+    "Paths/versionamento: 42 testes verdes antes da regressão de drive mapeado",
+    "DatabaseKeyProvider: protocolo com teste de consumidor sem Vault; 1 teste verde"
+  ],
+  "pending_defects": [
+    {
+      "id": "PATH_MAPPED_DRIVE",
+      "status": "RED",
+      "detail": "Revisão identificou drive SMB mapeado aceito. Testes novos rejeitando GetDriveType 0/1/4/5 falharam: 4 failed, 45 passed. Helper _drive_type ainda NÃO implementado; testes monkeypatch raising=False. Corrigir antes de considerar paths fechados."
+    }
+  ],
+  "latest_test_evidence": "Evidence/T01/drive_type_RED.json",
+  "last_green_evidence": [
+    "Evidence/T01/paths_confinement_GREEN.json",
+    "Evidence/T01/key_provider_GREEN.json"
+  ],
+  "native_gate_executed": false,
+  "candidate_created": false,
+  "cases": [
+    {
+      "id": "T01-C01",
+      "status": "NAO_EXECUTADO",
+      "required": true
+    },
+    {
+      "id": "T01-C02",
+      "status": "NAO_EXECUTADO",
+      "required": true
+    },
+    {
+      "id": "T01-C03",
+      "status": "NAO_EXECUTADO",
+      "required": true
+    },
+    {
+      "id": "T01-C04",
+      "status": "NAO_EXECUTADO",
+      "required": true
+    },
+    {
+      "id": "T01-C05",
+      "status": "NAO_EXECUTADO",
+      "required": false
+    },
+    {
+      "id": "T01-C06",
+      "status": "NAO_EXECUTADO",
+      "required": true
+    },
+    {
+      "id": "T01-C07",
+      "status": "NAO_EXECUTADO",
+      "required": true
+    },
+    {
+      "id": "T01-C08",
+      "status": "BLOCKED",
+      "required": true
+    },
+    {
+      "id": "T01-C09",
+      "status": "NAO_EXECUTADO",
+      "required": true
+    }
+  ],
+  "source_sha256": {
+    "src/ustracker/core/paths.py": "9778239ded9280021dde21b20ce4b1791e19d4dae4ec8f04d40d65b93b6b2185",
+    "src/ustracker/security/key_provider.py": "576403cc8ee3462927e66e2ac7a74f4d4435f33e14f9e47cf12dfa541b925d9f",
+    "tests/conftest.py": "4fc96987e7c94233a00bc21d7057dbc1afef102da96059bbb648223aa29b3225",
+    "tests/support/key_provider.py": "acd535e7014c2b2e601ad36200608871f85f2b5095125234541c05818820bcfd",
+    "tests/unit/test_key_provider.py": "2b48ada30d35d096ae1a8c1e9ef70d2a67a8e54d3867c7232eb46c940ec38fe8",
+    "tests/unit/test_paths_version.py": "f1ee1f202c0a575b79749d9d57783ed7b5423bb1b96e5df0ac66683092b4ff25",
+    "docs/T01_EXECUCAO.md": "8c205e4290d71538c3a321922c0e538cec96119273e6f22ccaacc6234e02e5f9"
+  },
+  "git_head": "d38acdb69f88dd9569e92c76886f05e2185174be",
+  "git_state": "Há código/testes/documentos/evidências não commitados; preservados por parada imediata. Último commit é somente baseline documental. Não reiniciar nem arquivar esta engenharia novamente.",
+  "changed_files": [
+    " M .gitattributes",
+    "?? Estado/Checkpoints/",
+    "?? Evidence/G0/pytest_install_report.json",
+    "?? Evidence/T01/",
+    "?? pyproject.toml",
+    "?? src/",
+    "?? tests/"
+  ],
+  "resume_command": "Set-Location -LiteralPath \"C:\\Users\\Carlos Alberto\\Downloads\\UStracker_Projeto_1_2_1\\UStracker_Engenharia\"; Get-Content -LiteralPath AGENTS.md; Get-Content -LiteralPath Estado\\PONTO_DE_PARADA.json; git status --short; git log -n 5 --oneline",
+  "next_test_command": "& .\\.venv\\Scripts\\python.exe -m pytest tests/unit -q",
+  "verification_limitations": [
+    "Nenhum executável/build/runtime/SQLCipher/WebView2 homologado",
+    "Junctions reais foram testadas; SMB mapeado foi simulado somente na classificação da API",
+    "Detecção de sincronizadores limitada a variáveis OneDrive; outros provedores não identificados",
+    "Primeiros RED tiveram erros de setup/temp; o RED comportamental válido é paths_RED_valid.json",
+    "Todos os PASS históricos continuam invalidados para a nova engenharia"
+  ]
+}

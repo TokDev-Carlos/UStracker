@@ -1,0 +1,10 @@
+[project]
+name = "ustracker"
+version = "1.0.0"
+requires-python = "==3.13.*"
+description = "UStracker portable Windows foundation — CRJ"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "."]
+addopts = "--strict-markers"

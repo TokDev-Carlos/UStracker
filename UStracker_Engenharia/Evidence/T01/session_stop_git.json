@@ -1,0 +1,34 @@
+{
+  "status": {
+    "command": "git status --short",
+    "cwd": "C:\\Users\\Carlos Alberto\\Downloads\\UStracker_Projeto_1_2_1\\UStracker_Engenharia",
+    "utc": "2026-09-12T20:51:40.692810+00:00",
+    "exit_code": 0,
+    "stdout": " M .gitattributes\n?? Estado/Checkpoints/\n?? Evidence/G0/pytest_install_report.json\n?? Evidence/T01/\n?? pyproject.toml\n?? src/\n?? tests/\n",
+    "stderr": ""
+  },
+  "diff": {
+    "command": "git diff --stat",
+    "cwd": "C:\\Users\\Carlos Alberto\\Downloads\\UStracker_Projeto_1_2_1\\UStracker_Engenharia",
+    "utc": "2026-09-12T20:51:40.692810+00:00",
+    "exit_code": 0,
+    "stdout": " .gitattributes | 3 ++-\n 1 file changed, 2 insertions(+), 1 deletion(-)\n",
+    "stderr": ""
+  },
+  "log": {
+    "command": "git log -n 5 --oneline",
+    "cwd": "C:\\Users\\Carlos Alberto\\Downloads\\UStracker_Projeto_1_2_1\\UStracker_Engenharia",
+    "utc": "2026-09-12T20:51:40.692810+00:00",
+    "exit_code": 0,
+    "stdout": "d38acdb chore: initialize clean PECSUS 1.2.1 engineering and audit\n",
+    "stderr": ""
+  },
+  "head": {
+    "command": "git rev-parse HEAD",
+    "cwd": "C:\\Users\\Carlos Alberto\\Downloads\\UStracker_Projeto_1_2_1\\UStracker_Engenharia",
+    "utc": "2026-09-12T20:51:40.692810+00:00",
+    "exit_code": 0,
+    "stdout": "d38acdb69f88dd9569e92c76886f05e2185174be\n",
+    "stderr": ""
+  }
+}

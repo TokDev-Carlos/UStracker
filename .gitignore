@@ -1,0 +1,63 @@
+# ============================================================
+# UStracker - arquivos locais / transitórios
+# ============================================================
+
+# Python
+**/.venv/
+**/venv/
+**/__pycache__/
+**/.pytest_cache/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/.coverage
+**/htmlcov/
+
+# .NET / Visual Studio
+**/bin/
+**/obj/
+**/.vs/
+
+# Build / distribuição local
+**/Dist/
+
+# Artefatos transitórios de testes
+**/Artifacts/TestRuns/
+**/Artifacts/NuGetPackages/
+
+# Caches binários reconstruíveis
+**/Artifacts/Wheelhouse/
+**/Artifacts/Native/
+**/Artifacts/NuGetFeed/
+
+# Engenharia histórica de diagnóstico
+UStracker_Engenharia_ARCHIVE_DIAGNOSTICO_*/
+
+# IDE
+**/.idea/
+**/.vscode/
+
+# Sistema operacional
+**/Thumbs.db
+**/Desktop.ini
+**/.DS_Store
+
+# Temporários
+**/*.tmp
+**/*.temp
+**/*.bak
+**/*.bak-*
+**/*~
+
+# Segredos / credenciais locais
+**/.env
+**/.env.*
+**/*.pfx
+**/*.p12
+**/*.key
+**/*private*.pem
+**/*secret*
+**/*credentials*
+
+# Não excluir arquivos públicos de Trust,
+# manifests, locks, Evidence ou documentação PECSUS.

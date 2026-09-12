@@ -1,0 +1,42 @@
+{
+  "ok": true,
+  "scope": "DOCUMENTAL_ONLY",
+  "plan_revision": "PECSUS-1.2.1",
+  "counts": {
+    "requirements": 36,
+    "tasks": 18,
+    "cases": 145,
+    "required_cases": 144,
+    "historical": 250,
+    "manifest_files": 20
+  },
+  "errors": [],
+  "product_tests_executed": false,
+  "validated_at": "2026-09-12T15:12:48.552011+00:00",
+  "command": "python tools/validar_plano.py --root .",
+  "exit_code": 0,
+  "scope_comparison": {
+    "task_fields_changed": [
+      "T01:steps",
+      "T01:required_profile",
+      "T16:steps",
+      "T16:required_profile",
+      "T18:steps",
+      "T18:required_profile"
+    ],
+    "case_ids_changed": [
+      "T01-C05",
+      "T01-C08",
+      "T01-C09",
+      "T18-C06"
+    ],
+    "requirements_matrix_unchanged": true,
+    "future_adjustments_content_unchanged": true,
+    "change_scope": "Somente política de plataforma e referências de revisão/derivados"
+  },
+  "regression_check": {
+    "mutation": "T01 required_profile=windows11 após regenerar manifesto",
+    "exit_code": 1,
+    "rejected": true
+  }
+}
