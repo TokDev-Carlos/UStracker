@@ -64,3 +64,5 @@ $env:USTRACKER_DEV_PLAINTEXT = "1"
 O workflow `build-release.yml` compila os hosts .NET Framework 4.8 x64, monta o runtime
 embeddable, verifica os hashes normativos do CPython/sqlcipher3, executa o release gate
 e publica o ZIP em GitHub Releases.
+
+Build distribuível gerado exclusivamente a partir da branch `main`.
