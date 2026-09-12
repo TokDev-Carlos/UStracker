@@ -1,0 +1,6 @@
+UStracker 1.00.00.000
+Copyright CRJ.
+
+Third-party runtime components include CPython, FastAPI, Uvicorn, SQLCipher/sqlcipher3,
+cryptography, Pillow, openpyxl, python-multipart and Microsoft WebView2. Their licenses
+and notices are not replaced by this product notice.
