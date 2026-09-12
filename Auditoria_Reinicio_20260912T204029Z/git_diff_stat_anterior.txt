@@ -1,8 +1,0 @@
- host/Bootstrap/Program.cs              | 62 ++++++++++++++++++++++++++-
- native-artifacts.lock.json             | 77 ++++++++++++++++++----------------
- requirements.lock                      | 30 ++++++++-----
- tests/unit/test_review3_regressions.py |  8 ++++
- tools/build.ps1                        | 33 ++++++++++++++-
- tools/finalize_native_lock.ps1         | 60 ++++++++++++++++++++++++--
- tools/resolve_python_lock.ps1          | 33 ++++++++++++++-
- 7 files changed, 247 insertions(+), 56 deletions(-)

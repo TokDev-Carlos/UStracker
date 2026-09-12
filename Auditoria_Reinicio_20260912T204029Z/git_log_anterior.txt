@@ -1,2 +1,0 @@
-8fb6ac2 Record review 3 verification status
-34a10aa T01 review 3 corrections and fail-closed verification
