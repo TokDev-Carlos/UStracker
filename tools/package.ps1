@@ -1,10 +1,13 @@
 [CmdletBinding()]
 param(
-    [string]$RepoRoot = (Split-Path -Parent $PSScriptRoot),
+    [string]$RepoRoot = "",
     [string]$OutDir = ""
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2
+if ([string]::IsNullOrWhiteSpace($RepoRoot)) { $RepoRoot = Split-Path -Parent $PSScriptRoot }
+if ([string]::IsNullOrWhiteSpace($RepoRoot)) { throw 'RepoRoot nao pode ser determinado' }
+$RepoRoot = (Resolve-Path $RepoRoot).Path
 if ([string]::IsNullOrWhiteSpace($OutDir)) { $OutDir = Join-Path $RepoRoot 'Dist' }
 $version = '1.00.00.000'
 $candidate = Join-Path $OutDir ("UStracker_{0}_win-x64" -f $version)
