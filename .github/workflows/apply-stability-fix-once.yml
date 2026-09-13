@@ -1,0 +1,48 @@
+name: Apply stability fix once
+
+on:
+  push:
+    branches: [fix/stability-login-webview-20260913]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: fix/stability-login-webview-20260913
+
+      - name: Patch frontend root cause
+        shell: powershell
+        run: |
+          $path = 'frontend\app.js'
+          $text = Get-Content $path -Raw -Encoding UTF8
+          $old401 = "  if(r.status===401){me=null;await boot();throw new Error('Sessão encerrada')}"
+          $new401 = "  if(r.status===401){const err=new Error('Sessão encerrada');err.status=401;me=null;csrf='';throw err}"
+          if (-not $text.Contains($old401)) { throw 'Trecho 401 esperado não localizado' }
+          $text = $text.Replace($old401, $new401)
+          $oldBoot = "async function boot(){const pub=await api('/public');applyBrand(pub);const st=await api('/auth/setup-status');if(st.enrolled===0)return setupScreen();try{me=await api('/auth/me');csrf=document.cookie.split('; ').find(x=>x.startsWith('us_csrf='))?.split('=')[1]||'';renderShell();await show('dashboard')}catch{loginScreen(st,pub)}}"
+          $newBoot = "async function boot(){const pub=await api('/public');applyBrand(pub);const st=await api('/auth/setup-status');if(st.enrolled===0)return setupScreen();try{me=await api('/auth/me');csrf=document.cookie.split('; ').find(x=>x.startsWith('us_csrf='))?.split('=')[1]||'';renderShell();await show('dashboard')}catch(err){if(err?.status===401)return loginScreen(st,pub);throw err}}"
+          if (-not $text.Contains($oldBoot)) { throw 'Trecho boot esperado não localizado' }
+          $text = $text.Replace($oldBoot, $newBoot)
+          [IO.File]::WriteAllText((Resolve-Path $path), $text, (New-Object Text.UTF8Encoding($false)))
+
+      - name: Verify frontend regression tests
+        shell: powershell
+        run: |
+          node --check frontend\app.js
+          node tests\test_frontend_boot.js
+          node tests\test_frontend_boot_error.js
+
+      - name: Commit fix and remove one-time workflow
+        shell: powershell
+        run: |
+          Remove-Item '.github\workflows\apply-stability-fix-once.yml' -Force
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add frontend\app.js .github\workflows\apply-stability-fix-once.yml
+          git commit -m 'fix: stop login boot recursion and surface backend failures'
+          git push origin HEAD:fix/stability-login-webview-20260913
