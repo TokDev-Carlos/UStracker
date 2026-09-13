@@ -28,7 +28,7 @@ jobs:
               $lines[$i] = "  if(r.status===401){const err=new Error('Sessao encerrada');err.status=401;me=null;csrf='';throw err}"
               $count401++
             }
-            elseif ($lines[$i].StartsWith('  if(!r.ok)throw new Error')) {
+            elseif ($lines[$i].StartsWith('  if(!r.ok)throw new Error') -and $lines[$i].Contains('data.detail?.code')) {
               $lines[$i] = "  if(!r.ok){const err=new Error(typeof data==='string'?data:(data.detail?.code||data.detail||data.error||JSON.stringify(data)));err.status=r.status;throw err}"
               $countNotOk++
             }
