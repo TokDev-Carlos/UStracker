@@ -82,6 +82,10 @@ jobs:
         shell: powershell
         run: python tools\release_gate.py --candidate "Dist\UStracker_${env:USTRACKER_VERSION}_win-x64.zip"
 
+      - name: Portable startup smoke
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File tools\smoke_portable.ps1 -Candidate "Dist\UStracker_${env:USTRACKER_VERSION}_win-x64.zip"
+
       - name: Create source snapshot
         shell: powershell
         run: |
@@ -102,7 +106,7 @@ jobs:
           if-no-files-found: error
 
       - name: Publish GitHub Release
-        if: github.event_name == 'workflow_dispatch' && inputs.publish_release == true && inputs.release_confirmation == 'PUBLICAR RELEASE USTRACKER'
+        if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.publish_release == true && inputs.release_confirmation == 'PUBLICAR RELEASE USTRACKER'
         shell: powershell
         env:
           GH_TOKEN: ${{ github.token }}
