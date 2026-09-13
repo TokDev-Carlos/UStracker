@@ -23,12 +23,12 @@ def test_bootstrap_login_and_client_crud(tmp_path: Path):
     r=c.post('/api/v1/auth/login',json={'name':'Carlos','password':'StrongPass!123'},headers={'X-CSRF-Token':csrf})
     assert r.status_code==200
     csrf=r.json()['csrf']
-    r=c.post('/api/v1/clients',json={'legal_name':'Cliente A','public_name':'Cliente Público','status':'ACTIVE'},headers={'X-CSRF-Token':csrf})
+    r=c.post('/api/v1/clients',json={'legal_name':'Cliente A','public_name':'Cliente Público','status':'ACTIVE'},headers={'X-CSRF-Token':csrf,'X-Operation-ID':'client-create-0001'})
     assert r.status_code==201, r.text
     cid=r.json()['id']
     r=c.get('/api/v1/clients'); assert len(r.json()['items'])==1
     r=c.get('/api/v1/dashboard'); assert r.status_code==200 and r.json()['active_clients']==1
     r=c.get('/api/v1/public'); assert r.status_code==200
     assert any(x['public_name']=='Cliente Público' for x in r.json()['clients'])
-    r=c.patch(f'/api/v1/clients/{cid}',json={'trade_name':'Fantasia'},headers={'X-CSRF-Token':csrf})
+    r=c.patch(f'/api/v1/clients/{cid}',json={'trade_name':'Fantasia','expected_revision':1},headers={'X-CSRF-Token':csrf,'X-Operation-ID':'client-update-0001'})
     assert r.status_code==200

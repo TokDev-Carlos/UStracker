@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ustracker"
-version = "1.0.0"
+version = "1.0.1"
 description = "UStracker local-first fleet, contract and financial management"
 requires-python = ">=3.13,<3.14"
 authors = [{name = "CRJ"}]

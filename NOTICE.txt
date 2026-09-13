@@ -1,4 +1,4 @@
-UStracker 1.00.00.000
+UStracker 1.00.01.000
 Copyright CRJ.
 
 Third-party runtime components include CPython, FastAPI, Uvicorn, SQLCipher/sqlcipher3,

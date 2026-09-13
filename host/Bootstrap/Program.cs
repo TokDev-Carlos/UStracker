@@ -14,7 +14,7 @@ namespace UStracker.Bootstrap
         [STAThread]
         private static void Main()
         {
-            using (var mutex = new Mutex(false, "Local\\UStracker.Launcher.1.00.00.000"))
+            using (var mutex = new Mutex(false, "Local\\UStracker.Launcher.1"))
             {
                 if (!mutex.WaitOne(TimeSpan.FromSeconds(10))) return;
                 try

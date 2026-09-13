@@ -16,6 +16,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      - name: Resolve version
+        shell: powershell
+        run: |
+          $version = (Get-Content VERSION.json -Raw | ConvertFrom-Json).version
+          if ([string]::IsNullOrWhiteSpace($version)) { throw 'VERSION.json sem version' }
+          "USTRACKER_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
       - name: Setup Python 3.13
         uses: actions/setup-python@v6
         with:
@@ -35,6 +42,7 @@ jobs:
           $env:USTRACKER_DEV_PLAINTEXT = "1"
           python -m pytest -q
           python -m compileall -q src
+          node --check frontend\app.js
 
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
@@ -57,24 +65,25 @@ jobs:
 
       - name: Release gate
         shell: powershell
-        run: python tools\release_gate.py --candidate Dist\UStracker_1.00.00.000_win-x64.zip
+        run: python tools\release_gate.py --candidate "Dist\UStracker_${env:USTRACKER_VERSION}_win-x64.zip"
 
       - name: Create source snapshot
         shell: powershell
         run: |
-          git archive --format=zip --output=Dist\UStracker_1.00.00.000_Source.zip HEAD
-          $h=(Get-FileHash Dist\UStracker_1.00.00.000_Source.zip -Algorithm SHA256).Hash
-          "$h  UStracker_1.00.00.000_Source.zip" | Set-Content Dist\UStracker_1.00.00.000_Source.zip.sha256 -Encoding ASCII
+          $source = "Dist\UStracker_$($env:USTRACKER_VERSION)_Source.zip"
+          git archive --format=zip --output=$source HEAD
+          $h=(Get-FileHash $source -Algorithm SHA256).Hash
+          "$h  $(Split-Path $source -Leaf)" | Set-Content ($source + '.sha256') -Encoding ASCII
 
       - name: Upload workflow artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: UStracker-1.00.00.000-win-x64
+          name: UStracker-${{ env.USTRACKER_VERSION }}-win-x64
           path: |
-            Dist/UStracker_1.00.00.000_win-x64.zip
-            Dist/UStracker_1.00.00.000_win-x64.zip.sha256
-            Dist/UStracker_1.00.00.000_Source.zip
-            Dist/UStracker_1.00.00.000_Source.zip.sha256
+            Dist/UStracker_${{ env.USTRACKER_VERSION }}_win-x64.zip
+            Dist/UStracker_${{ env.USTRACKER_VERSION }}_win-x64.zip.sha256
+            Dist/UStracker_${{ env.USTRACKER_VERSION }}_Source.zip
+            Dist/UStracker_${{ env.USTRACKER_VERSION }}_Source.zip.sha256
           if-no-files-found: error
 
       - name: Publish GitHub Release
@@ -82,12 +91,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag='v1.00.00.000'
+          $version=$env:USTRACKER_VERSION
+          $tag="v$version"
+          $portable="Dist\UStracker_${version}_win-x64.zip"
+          $source="Dist\UStracker_${version}_Source.zip"
           cmd /c "gh release view $tag >NUL 2>NUL"
           $releaseExists = ($LASTEXITCODE -eq 0)
           if (-not $releaseExists) {
-            gh release create $tag --target $env:GITHUB_SHA --title 'UStracker 1.00.00.000' --notes 'Release portátil Windows x64. Extraia o ZIP e execute UStracker.exe.'
+            gh release create $tag --target $env:GITHUB_SHA --title "UStracker $version" --notes 'Release portátil Windows x64. Extraia o ZIP e execute UStracker.exe.'
             if ($LASTEXITCODE -ne 0) { throw 'Falha ao criar GitHub Release' }
           }
-          gh release upload $tag Dist\UStracker_1.00.00.000_win-x64.zip Dist\UStracker_1.00.00.000_win-x64.zip.sha256 Dist\UStracker_1.00.00.000_Source.zip Dist\UStracker_1.00.00.000_Source.zip.sha256 --clobber
+          gh release upload $tag $portable "$portable.sha256" $source "$source.sha256" --clobber
           if ($LASTEXITCODE -ne 0) { throw 'Falha ao publicar assets da Release' }

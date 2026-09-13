@@ -35,10 +35,13 @@ namespace UStracker.Shell
             }
             catch (WebView2RuntimeNotFoundException)
             {
-                var installer = Path.Combine(RootPaths.ProductRoot, "Redist", "MicrosoftEdgeWebview2Setup.exe");
+                var installer = Path.Combine(RootPaths.ProductRoot, "Redist", "MicrosoftEdgeWebView2RuntimeInstallerX64.exe");
                 if (!File.Exists(installer)) throw;
                 var proc = Process.Start(new ProcessStartInfo(installer, "/silent /install") { UseShellExecute = true });
-                proc?.WaitForExit();
+                if (proc == null) throw new InvalidOperationException("Falha ao iniciar instalador offline do WebView2.");
+                proc.WaitForExit();
+                if (proc.ExitCode != 0 && proc.ExitCode != -2147219416 && proc.ExitCode != -2147219187)
+                    throw new InvalidOperationException("Instalador WebView2 retornou codigo " + proc.ExitCode);
                 await EnsureWebViewAsync();
             }
             Browser.Source = new Uri("http://127.0.0.1:" + _port + "/");

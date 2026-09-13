@@ -9,7 +9,7 @@ if ([string]::IsNullOrWhiteSpace($RepoRoot)) { $RepoRoot = Split-Path -Parent $P
 if ([string]::IsNullOrWhiteSpace($RepoRoot)) { throw 'RepoRoot nao pode ser determinado' }
 $RepoRoot = (Resolve-Path $RepoRoot).Path
 if ([string]::IsNullOrWhiteSpace($OutDir)) { $OutDir = Join-Path $RepoRoot 'Dist' }
-$version = '1.00.00.000'
+$version = (Get-Content (Join-Path $RepoRoot 'VERSION.json') -Raw | ConvertFrom-Json).version
 $candidate = Join-Path $OutDir ("UStracker_{0}_win-x64" -f $version)
 $zipPath = $candidate + '.zip'
 Remove-Item $candidate -Recurse -Force -ErrorAction SilentlyContinue
@@ -57,6 +57,7 @@ Copy-Tree (Join-Path $RepoRoot 'frontend') (Join-Path $candidate 'frontend')
 Copy-Tree (Join-Path $RepoRoot 'Trust') (Join-Path $candidate 'Trust')
 Copy-Tree (Join-Path $RepoRoot 'docs') (Join-Path $candidate 'Docs')
 Copy-Item (Join-Path $RepoRoot 'VERSION.json') $candidate -Force
+Copy-Item (Join-Path $RepoRoot 'current.json') $candidate -Force
 Copy-Item (Join-Path $RepoRoot 'LICENSE.txt') $candidate -Force
 Copy-Item (Join-Path $RepoRoot 'NOTICE.txt') $candidate -Force
 
@@ -75,25 +76,35 @@ $updaterExe = Find-BuildFile (Join-Path $RepoRoot 'host\Updater\bin') 'UStracker
 Copy-Item $updaterExe $candidate -Force
 $updaterConfig = $updaterExe + '.config'; if (Test-Path $updaterConfig) { Copy-Item $updaterConfig $candidate -Force }
 
+# Offline WebView2 runtime installer, pinned to the Microsoft/winget manifest for 152.0.4191.53.
 $redist = Join-Path $candidate 'Redist'; New-Item -ItemType Directory -Force -Path $redist | Out-Null
-$wv2 = Join-Path $redist 'MicrosoftEdgeWebview2Setup.exe'
-Invoke-WebRequest -Uri 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile $wv2 -UseBasicParsing
+$wv2Cache = Join-Path $cache 'MicrosoftEdgeWebView2RuntimeInstallerX64-152.0.4191.53.exe'
+$wv2Url = 'https://msedge.sf.dl.delivery.mp.microsoft.com/filestreamingservice/files/b7e683e6-e94c-4576-bfe5-34852785a4d6/MicrosoftEdgeWebView2RuntimeInstallerX64.exe'
+$wv2Expected = '987A9D8B3107E84F9B53B4A077D28AE4814FC3D964D5A55C559E7334BBF24D61'
+if (!(Test-Path $wv2Cache)) { Invoke-WebRequest -Uri $wv2Url -OutFile $wv2Cache -UseBasicParsing }
+$wv2Actual = (Get-FileHash $wv2Cache -Algorithm SHA256).Hash
+if ($wv2Actual -ne $wv2Expected) { throw "Hash WebView2 invalido: $wv2Actual" }
+$sig = Get-AuthenticodeSignature $wv2Cache
+if ($sig.Status -ne 'Valid') { throw "Assinatura Authenticode WebView2 invalida: $($sig.Status)" }
+if ($null -eq $sig.SignerCertificate -or $sig.SignerCertificate.Subject -notmatch 'Microsoft') { throw 'Certificado Authenticode WebView2 nao pertence a Microsoft' }
+Copy-Item $wv2Cache (Join-Path $redist 'MicrosoftEdgeWebView2RuntimeInstallerX64.exe') -Force
 
 $runtimePython = Join-Path $runtime 'python.exe'
-& $runtimePython -c "import fastapi,uvicorn,cryptography,PIL,openpyxl,sqlcipher3; c=sqlcipher3.connect(':memory:'); print('SQLCipher',c.execute('pragma cipher_version').fetchone()[0])"
+& $runtimePython -c "import fastapi,uvicorn,cryptography,PIL,openpyxl,sqlcipher3; c=sqlcipher3.connect(':memory:'); print('SQLCipher',c.execute('pragma cipher_version').fetchone()[0]); import ustracker; print('UStracker',ustracker.__version__)"
 if ($LASTEXITCODE -ne 0) { throw 'Smoke test do Runtime falhou' }
 
 & $runtimePython (Join-Path $RepoRoot 'tools\generate_sbom.py') (Join-Path $candidate 'SBOM.json')
 if ($LASTEXITCODE -ne 0) { throw 'Falha ao gerar SBOM' }
 
 New-Item -ItemType Directory -Force -Path (Join-Path $candidate 'UserData') | Out-Null
-@'
-UStracker 1.00.00.000
+@"
+UStracker $version
 1. Extraia a pasta inteira para um disco local NTFS.
 2. Execute UStracker.exe.
 3. No primeiro uso, cadastre o Administrador 1 e conclua os Administradores 2 e 3 com os tickets exibidos.
-4. O produto funciona localmente; nao mova UserData enquanto estiver em uso.
-'@ | Set-Content (Join-Path $candidate 'LEIA-ME.txt') -Encoding UTF8
+4. Production e Test sao isolados; nao mova UserData enquanto o sistema estiver em uso.
+5. Se o WebView2 nao existir, o instalador offline x64 incluido sera executado pelo Shell.
+"@ | Set-Content (Join-Path $candidate 'LEIA-ME.txt') -Encoding UTF8
 
 if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
 Compress-Archive -Path (Join-Path $candidate '*') -DestinationPath $zipPath -CompressionLevel Optimal

@@ -42,6 +42,12 @@ def test_recovery_export_round_trip(tmp_path):
     (source / 'UserData' / 'Auth').mkdir(parents=True)
     (source / 'UserData' / 'Auth' / 'auth.db').write_bytes(b'auth-data')
     (source / 'UserData' / 'Auth' / 'vault.json').write_text('{"x":1}', encoding='utf-8')
+    (source / 'UserData' / 'Production').mkdir(parents=True)
+    (source / 'UserData' / 'Production' / 'ustracker.db').write_bytes(b'production-data')
+    (source / 'UserData' / 'Test').mkdir(parents=True)
+    (source / 'UserData' / 'Test' / 'ustracker.db').write_bytes(b'test-data')
+    (source / 'UserData' / 'State').mkdir(parents=True)
+    (source / 'UserData' / 'State' / 'station.json').write_text('{"local":true}', encoding='utf-8')
     pkg = tmp_path / 'recovery.usre'
     export_recovery(source, pkg, 'correct horse battery staple')
     raw = pkg.read_bytes()
@@ -50,5 +56,8 @@ def test_recovery_export_round_trip(tmp_path):
     out = tmp_path / 'restored'
     import_recovery(pkg, out, 'correct horse battery staple')
     assert (out / 'UserData' / 'Auth' / 'auth.db').read_bytes() == b'auth-data'
+    assert (out / 'UserData' / 'Production' / 'ustracker.db').read_bytes() == b'production-data'
+    assert (out / 'UserData' / 'Test' / 'ustracker.db').read_bytes() == b'test-data'
+    assert not (out / 'UserData' / 'State').exists()
     with pytest.raises(Exception):
         import_recovery(pkg, tmp_path / 'wrong', 'wrong passphrase')

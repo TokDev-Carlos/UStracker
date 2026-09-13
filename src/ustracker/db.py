@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 SCHEMA_SQL = r'''
 CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -120,7 +120,7 @@ CREATE TABLE IF NOT EXISTS stations(
 );
 CREATE TABLE IF NOT EXISTS operations(
  operation_id TEXT PRIMARY KEY, actor_slot INTEGER NOT NULL, route TEXT NOT NULL, payload_hash TEXT NOT NULL,
- response_json TEXT NOT NULL, created_at TEXT NOT NULL
+ response_json TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'DONE', created_at TEXT NOT NULL, updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS ix_clients_name ON clients(legal_name,trade_name,public_name);
 CREATE INDEX IF NOT EXISTS ix_vehicles_plate ON vehicles(plate);
@@ -154,7 +154,7 @@ class Database:
         dbapi, cipher = self._module()
         con = dbapi.connect(str(self.path), timeout=5)
         try:
-            con.row_factory = sqlite3.Row
+            con.row_factory = dbapi.Row
         except Exception:
             pass
         if cipher:
@@ -173,8 +173,16 @@ class Database:
         with self.connect() as con:
             con.executescript(SCHEMA_SQL)
             current = con.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
-            if current and int(current[0]) > SCHEMA_VERSION:
+            current_version = int(current[0]) if current else 0
+            if current_version > SCHEMA_VERSION:
                 raise RuntimeError('database schema is newer than this application')
+            if current_version < 2:
+                cols = {r[1] for r in con.execute("PRAGMA table_info(operations)").fetchall()}
+                if 'status' not in cols:
+                    con.execute("ALTER TABLE operations ADD COLUMN status TEXT NOT NULL DEFAULT 'DONE'")
+                if 'updated_at' not in cols:
+                    con.execute("ALTER TABLE operations ADD COLUMN updated_at TEXT NOT NULL DEFAULT ''")
+                    con.execute("UPDATE operations SET updated_at=created_at WHERE updated_at='' OR updated_at IS NULL")
             con.execute("INSERT OR REPLACE INTO meta(key,value) VALUES('schema_version',?)", (str(SCHEMA_VERSION),))
 
     @contextmanager

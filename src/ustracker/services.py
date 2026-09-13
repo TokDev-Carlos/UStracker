@@ -63,6 +63,8 @@ def update_client(db:Database, actor:int, cid:str, p:dict)->dict:
         old=con.execute('SELECT * FROM clients WHERE id=?',(cid,)).fetchone()
         if not old: raise KeyError('client not found')
         before=dict(old); allowed={'legal_name','trade_name','public_name','document','email','phone','address','notes','status','archived'}
+        if p.get('expected_revision') is not None and int(p['expected_revision']) != int(old['revision']):
+            raise ValueError(f"revision conflict: current={old['revision']}")
         fields=[]; values=[]
         for k,v in p.items():
             if k in allowed:
@@ -77,10 +79,14 @@ def update_client(db:Database, actor:int, cid:str, p:dict)->dict:
 def create_vehicle(db:Database, actor:int, p:dict)->dict:
     if not p.get('client_id') or not p.get('plate') or not p.get('type'): raise ValueError('client_id, plate and type required')
     vid=uid(); ts=now(); plate=re.sub(r'[^A-Za-z0-9]','',p['plate']).upper()
-    rec={'id':vid,'client_id':p['client_id'],'fleet_id':p.get('fleet_id'),'plate':plate,'type':p['type'],'renavam':p.get('renavam'),
+    rec={'id':vid,'client_id':p['client_id'],'fleet_id':p.get('fleet_id') or None,'plate':plate,'type':p['type'],'renavam':p.get('renavam'),
          'tracker_ref':p.get('tracker_ref'),'tracker_serial_imei':p.get('tracker_serial_imei'),'installed_on':p.get('installed_on'),
          'tracking_status':p.get('tracking_status','UNTRACKED'),'notes':p.get('notes'),'archived':0,'revision':1,'created_at':ts,'updated_at':ts}
     with db.transaction() as con:
+        if not con.execute('SELECT id FROM clients WHERE id=? AND archived=0',(p['client_id'],)).fetchone(): raise ValueError('client not found')
+        if rec['fleet_id']:
+            fleet=con.execute('SELECT * FROM fleets WHERE id=? AND archived=0',(rec['fleet_id'],)).fetchone()
+            if not fleet or fleet['client_id']!=p['client_id']: raise ValueError('fleet does not belong to client')
         con.execute('''INSERT INTO vehicles(id,client_id,fleet_id,plate,type,renavam,tracker_ref,tracker_serial_imei,installed_on,tracking_status,notes,archived,revision,created_at,updated_at)
                      VALUES(:id,:client_id,:fleet_id,:plate,:type,:renavam,:tracker_ref,:tracker_serial_imei,:installed_on,:tracking_status,:notes,:archived,:revision,:created_at,:updated_at)''',rec)
         con.execute('INSERT INTO ownerships(id,vehicle_id,client_id,fleet_id,effective_from,created_at) VALUES(?,?,?,?,?,?)',(uid(),vid,p['client_id'],p.get('fleet_id'),p.get('effective_from',date.today().isoformat()),ts))
@@ -143,6 +149,15 @@ def _charge_paid(con, charge_id:str)->int:
     b=con.execute('SELECT COALESCE(SUM(amount_cents),0) FROM credit_allocations WHERE charge_id=? AND active=1',(charge_id,)).fetchone()[0]
     return int(a)+int(b)
 
+def _refresh_charge_status(con, charge_id:str)->str:
+    row=con.execute('SELECT amount_cents,adjustment_cents,status FROM charges WHERE id=?',(charge_id,)).fetchone()
+    if not row: raise KeyError('charge not found')
+    if row['status']=='VOID': return 'VOID'
+    total=int(row['amount_cents'])+int(row['adjustment_cents']); paid=_charge_paid(con,charge_id)
+    status='PAID' if paid>=total else ('PARTIAL' if paid>0 else 'OPEN')
+    con.execute('UPDATE charges SET status=?,updated_at=? WHERE id=?',(status,now(),charge_id))
+    return status
+
 def create_payment(db:Database, actor:int, p:dict)->dict:
     client_id=p.get('client_id'); amount=parse_money_api(p.get('amount','0'))
     if not client_id or amount<=0: raise ValueError('client_id and positive amount required')
@@ -167,6 +182,7 @@ def create_payment(db:Database, actor:int, p:dict)->dict:
             delta=amount-allocated; credit_id=uid()
             con.execute('INSERT INTO credits(id,client_id,origin_payment_id,amount_cents,balance_cents,status,created_at) VALUES(?,?,?,?,?,?,?)',
                         (credit_id,client_id,pid,delta,delta,'OPEN',ts))
+        for x in allocations: _refresh_charge_status(con,x['charge_id'])
         rec={'id':pid,'client_id':client_id,'paid_on':p.get('paid_on',date.today().isoformat()),'amount_cents':amount,'allocated_cents':allocated,'credit_id':credit_id}
         audit(con,actor,'PAYMENT_CREATE','payment',pid,None,rec)
         return rec
@@ -181,6 +197,7 @@ def apply_credit(db:Database, actor:int, credit_id:str, charge_id:str, amount_va
         caid=uid(); applied=date.today().isoformat()
         con.execute('INSERT INTO credit_allocations(id,credit_id,charge_id,amount_cents,active,applied_on) VALUES(?,?,?,?,1,?)',(caid,credit_id,charge_id,amount,applied))
         con.execute("UPDATE credits SET balance_cents=balance_cents-?,status=CASE WHEN balance_cents-?=0 THEN 'CLOSED' ELSE 'OPEN' END WHERE id=?",(amount,amount,credit_id))
+        _refresh_charge_status(con,charge_id)
         rec={'id':caid,'credit_id':credit_id,'charge_id':charge_id,'amount_cents':amount,'applied_on':applied}
         audit(con,actor,'CREDIT_APPLY','credit',credit_id,None,rec)
         return rec
@@ -189,17 +206,20 @@ def reverse_payment(db:Database, actor:int, payment_id:str)->dict:
     with db.transaction() as con:
         payment=con.execute('SELECT * FROM payments WHERE id=?',(payment_id,)).fetchone()
         if not payment or payment['reversed_at']: raise ValueError('payment not reversible')
+        affected={r[0] for r in con.execute('SELECT charge_id FROM payment_allocations WHERE payment_id=? AND active=1',(payment_id,)).fetchall()}
         ts=now(); con.execute('UPDATE payments SET reversed_at=? WHERE id=?',(ts,payment_id)); con.execute('UPDATE payment_allocations SET active=0 WHERE payment_id=?',(payment_id,))
         credits=con.execute('SELECT * FROM credits WHERE origin_payment_id=?',(payment_id,)).fetchall()
         for c in credits:
-            applied=con.execute('SELECT COALESCE(SUM(amount_cents),0) FROM credit_allocations WHERE credit_id=? AND active=1',(c['id'],)).fetchone()[0]
+            affected.update(r[0] for r in con.execute('SELECT charge_id FROM credit_allocations WHERE credit_id=? AND active=1',(c['id'],)).fetchall())
             con.execute('UPDATE credit_allocations SET active=0,reversed_on=? WHERE credit_id=? AND active=1',(date.today().isoformat(),c['id']))
             con.execute("UPDATE credits SET balance_cents=0,status='REVERSED' WHERE id=?",(c['id'],))
+        for charge_id in affected: _refresh_charge_status(con,charge_id)
         rec={'id':payment_id,'reversed_at':ts}; audit(con,actor,'PAYMENT_REVERSE','payment',payment_id,dict(payment),rec); return rec
 
 def create_expense(db:Database, actor:int, p:dict)->dict:
     if not p.get('category') or not p.get('description') or not p.get('competence'): raise ValueError('category, description and competence required')
     eid=uid(); ts=now(); amount=parse_money_api(p.get('expected_amount','0'))
+    if amount < 0: raise ValueError('expected amount cannot be negative')
     rec={'id':eid,'category':p['category'],'description':p['description'],'competence':p['competence'],'due_on':p.get('due_on'),'expected_amount_cents':amount,
          'supplier':p.get('supplier'),'client_id':p.get('client_id'),'vehicle_id':p.get('vehicle_id'),'subscription_id':p.get('subscription_id'),'catalog_id':p.get('catalog_id'),
          'recurrence_id':p.get('recurrence_id'),'status':'OPEN','revision':1,'created_at':ts,'updated_at':ts}
@@ -217,7 +237,9 @@ def add_disbursement(db:Database, actor:int, expense_id:str, p:dict)->dict:
         paid=con.execute('SELECT COALESCE(SUM(amount_cents),0) FROM disbursements WHERE expense_id=? AND reversed_at IS NULL',(expense_id,)).fetchone()[0]
         if amount<=0 or paid+amount>exp['expected_amount_cents']: raise ValueError('disbursement exceeds expense')
         con.execute('INSERT INTO disbursements(id,expense_id,paid_on,amount_cents,created_at) VALUES(?,?,?,?,?)',(did,expense_id,p.get('paid_on',date.today().isoformat()),amount,ts))
-        rec={'id':did,'expense_id':expense_id,'amount_cents':amount}; audit(con,actor,'DISBURSEMENT_CREATE','expense',expense_id,None,rec); return rec
+        total=paid+amount; status='PAID' if total==exp['expected_amount_cents'] else 'PARTIAL'
+        con.execute('UPDATE expenses SET status=?,updated_at=? WHERE id=?',(status,now(),expense_id))
+        rec={'id':did,'expense_id':expense_id,'amount_cents':amount,'expense_status':status}; audit(con,actor,'DISBURSEMENT_CREATE','expense',expense_id,None,rec); return rec
 
 def create_fiscal(db:Database, actor:int, p:dict)->dict:
     fid=uid(); ts=now(); amount=parse_money_api(p['amount']) if p.get('amount') not in (None,'') else None
