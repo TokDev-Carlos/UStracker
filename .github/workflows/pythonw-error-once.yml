@@ -1,0 +1,55 @@
+name: Capture pythonw backend exception once
+
+on:
+  push:
+    branches: [fix/stability-login-webview-20260913]
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  capture:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: fix/stability-login-webview-20260913
+      - uses: actions/download-artifact@v4
+        with:
+          name: UStracker-stability-candidate
+          path: candidate
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: 34789108654
+      - name: Capture failure
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $zip=Get-ChildItem candidate -Recurse -File -Filter 'UStracker_*_win-x64.zip'|Select-Object -First 1
+          $stage=Join-Path $env:RUNNER_TEMP 'ustracker-pythonw-error'
+          Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue
+          Expand-Archive $zip.FullName $stage -Force
+          $stdout=Join-Path $env:RUNNER_TEMP 'pythonw.stdout.log'
+          $stderr=Join-Path $env:RUNNER_TEMP 'pythonw.stderr.log'
+          Remove-Item $stdout,$stderr -Force -ErrorAction SilentlyContinue
+          $p=Start-Process -FilePath "$stage\Runtime\pythonw.exe" -ArgumentList @('-m','ustracker.server','--root',$stage) -WorkingDirectory $stage -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru
+          $stateFile=Join-Path $stage 'UserData\State\backend.json'
+          for($i=0;$i -lt 40;$i++){if($p.HasExited -or (Test-Path $stateFile)){break};Start-Sleep -Milliseconds 250}
+          Write-Host "EXITED=$($p.HasExited)"
+          if($p.HasExited){Write-Host "EXIT=$($p.ExitCode)"}
+          Write-Host "STATE_EXISTS=$(Test-Path $stateFile)"
+          Write-Host 'STDOUT_BEGIN'; if(Test-Path $stdout){Get-Content $stdout -Raw}; Write-Host 'STDOUT_END'
+          Write-Host 'STDERR_BEGIN'; if(Test-Path $stderr){Get-Content $stderr -Raw}; Write-Host 'STDERR_END'
+          if(-not $p.HasExited){Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue}
+      - name: Remove one-time workflow
+        if: always()
+        shell: powershell
+        run: |
+          Remove-Item '.github\workflows\pythonw-error-once.yml' -Force
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .github\workflows\pythonw-error-once.yml
+          git commit -m 'chore: remove one-time pythonw error workflow'
+          git push origin HEAD:fix/stability-login-webview-20260913
