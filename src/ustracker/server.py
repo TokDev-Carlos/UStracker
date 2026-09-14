@@ -625,7 +625,7 @@ def create_app(root: Path | str) -> FastAPI:
 def run(root: Path | str):
     root = Path(root).resolve(); state_dir = root/'UserData'/'State'; state_dir.mkdir(parents=True, exist_ok=True); port_file = state_dir/'backend.json'
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM); sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1); sock.bind(('127.0.0.1', 0)); sock.listen(2048); port = sock.getsockname()[1]
-    app = create_app(root); config = uvicorn.Config(app, host='127.0.0.1', port=port, log_level='info', access_log=False); server = uvicorn.Server(config); app.state.server = server
+    app = create_app(root); config = uvicorn.Config(app, host='127.0.0.1', port=port, log_level='info', access_log=False, log_config=None); server = uvicorn.Server(config); app.state.server = server
     tmp = port_file.with_suffix('.tmp'); tmp.write_text(json.dumps({'port':port,'pid':os.getpid(),'version':PRODUCT_VERSION}), encoding='utf-8'); tmp.replace(port_file)
     try: server.run(sockets=[sock])
     finally: port_file.unlink(missing_ok=True)
