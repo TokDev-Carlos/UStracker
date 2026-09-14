@@ -1,9 +1,22 @@
-name: Build and Release UStracker
+name: Build UStracker
 
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
+    inputs:
+      publish_release:
+        description: 'Publicar GitHub Release após build e validação'
+        required: true
+        type: boolean
+        default: false
+      release_confirmation:
+        description: 'Digite exatamente: PUBLICAR RELEASE USTRACKER'
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: write
@@ -41,8 +54,15 @@ jobs:
           $env:PYTHONPATH = "$PWD\src"
           $env:USTRACKER_DEV_PLAINTEXT = "1"
           python -m pytest -q
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -m compileall -q src
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node --check frontend\app.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node tests\test_frontend_boot.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node tests\test_frontend_boot_error.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
@@ -67,6 +87,10 @@ jobs:
         shell: powershell
         run: python tools\release_gate.py --candidate "Dist\UStracker_${env:USTRACKER_VERSION}_win-x64.zip"
 
+      - name: Portable startup smoke
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File tools\smoke_portable.ps1 -Candidate "Dist\UStracker_${env:USTRACKER_VERSION}_win-x64.zip"
+
       - name: Create source snapshot
         shell: powershell
         run: |
@@ -87,6 +111,7 @@ jobs:
           if-no-files-found: error
 
       - name: Publish GitHub Release
+        if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.publish_release == true && inputs.release_confirmation == 'PUBLICAR RELEASE USTRACKER'
         shell: powershell
         env:
           GH_TOKEN: ${{ github.token }}
