@@ -1,3 +1,4 @@
+from datetime import timedelta
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -62,3 +63,17 @@ def test_shell_detach_does_not_revoke_session(tmp_path: Path):
     after = client.get('/api/v1/auth/me')
     assert after.status_code == 200
     assert after.json()['name'] == 'Admin 1'
+
+
+def test_authenticated_read_activity_refreshes_idle_timeout(tmp_path: Path):
+    client = _authenticated_client(tmp_path)
+    auth = client.app.state.auth
+    token = client.cookies.get('us_session')
+    session = auth.get_session(token)
+    assert session is not None
+    old_activity = auth._now() - timedelta(minutes=59)
+    session.last_human_activity = old_activity
+
+    dashboard = client.get('/api/v1/dashboard')
+    assert dashboard.status_code == 200
+    assert session.last_human_activity > old_activity
