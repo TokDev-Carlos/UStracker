@@ -1,0 +1,70 @@
+name: Diagnose embedded pythonw once
+
+on:
+  push:
+    branches: [fix/stability-login-webview-20260913]
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  diagnose-pythonw:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: fix/stability-login-webview-20260913
+
+      - name: Download validated candidate
+        uses: actions/download-artifact@v4
+        with:
+          name: UStracker-stability-candidate
+          path: candidate
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: 34789108654
+
+      - name: Diagnose pythonw
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $zip=Get-ChildItem candidate -Recurse -File -Filter 'UStracker_*_win-x64.zip' | Select-Object -First 1
+          $stage=Join-Path $env:RUNNER_TEMP 'ustracker-pythonw-diagnostic'
+          Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue
+          Expand-Archive $zip.FullName $stage -Force
+          $probe=Join-Path $stage 'pythonw_probe.txt'
+          & "$stage\Runtime\pythonw.exe" -c "import sys,pathlib; pathlib.Path(r'$probe').write_text('stdout='+repr(sys.stdout)+' stderr='+repr(sys.stderr),encoding='utf-8')"
+          Start-Sleep -Seconds 1
+          if (Test-Path $probe) { Write-Host "PYTHONW_PROBE=$(Get-Content $probe -Raw)" } else { Write-Host 'PYTHONW_PROBE_MISSING' }
+          Remove-Item "$stage\UserData\State\backend.json" -Force -ErrorAction SilentlyContinue
+          $p=Start-Process -FilePath "$stage\Runtime\pythonw.exe" -ArgumentList @('-m','ustracker.server','--root',$stage) -WorkingDirectory $stage -PassThru
+          $stateFile=Join-Path $stage 'UserData\State\backend.json'
+          $healthy=$false
+          for($i=0;$i -lt 40;$i++){
+            if($p.HasExited){break}
+            if(Test-Path $stateFile){
+              try{$s=Get-Content $stateFile -Raw|ConvertFrom-Json;$h=Invoke-RestMethod -Uri "http://127.0.0.1:$($s.port)/api/v1/health" -TimeoutSec 2;if($h.status -eq 'ok'){$healthy=$true;break}}catch{}
+            }
+            Start-Sleep -Milliseconds 250
+          }
+          Write-Host "PYTHONW_EXITED=$($p.HasExited)"
+          if($p.HasExited){Write-Host "PYTHONW_EXIT_CODE=$($p.ExitCode)"}
+          Write-Host "PYTHONW_STATE_EXISTS=$(Test-Path $stateFile)"
+          if(Test-Path $stateFile){Write-Host "PYTHONW_STATE=$(Get-Content $stateFile -Raw)"}
+          Write-Host "PYTHONW_HEALTHY=$healthy"
+          if(-not $p.HasExited){Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue}
+          if($healthy){throw 'Expected current pythonw path to reproduce launcher failure, but it was healthy.'}
+
+      - name: Remove one-time workflow
+        if: always()
+        shell: powershell
+        run: |
+          Remove-Item '.github\workflows\pythonw-diagnostic-once.yml' -Force
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .github\workflows\pythonw-diagnostic-once.yml
+          git commit -m 'chore: remove one-time pythonw diagnostic workflow'
+          git push origin HEAD:fix/stability-login-webview-20260913
