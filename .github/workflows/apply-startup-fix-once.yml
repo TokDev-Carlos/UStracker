@@ -1,0 +1,70 @@
+name: Apply startup fix once
+
+on:
+  push:
+    branches: [fix/stability-login-webview-20260913]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: fix/stability-login-webview-20260913
+      - name: Apply proven fixes
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $utf8 = New-Object Text.UTF8Encoding($false)
+
+          $serverPath='src\ustracker\server.py'
+          $server=[IO.File]::ReadAllText($serverPath)
+          $serverOld="uvicorn.Config(app, host='127.0.0.1', port=port, log_level='info', access_log=False)"
+          $serverNew="uvicorn.Config(app, host='127.0.0.1', port=port, log_level='info', access_log=False, log_config=None)"
+          if(-not $server.Contains($serverOld)){throw 'server.py target not found'}
+          [IO.File]::WriteAllText($serverPath,$server.Replace($serverOld,$serverNew),$utf8)
+
+          $workflowPath='.github\workflows\build-release.yml'
+          $workflow=[IO.File]::ReadAllText($workflowPath)
+          $old=@'
+          python -m pytest -q
+          python -m compileall -q src
+          node --check frontend\app.js
+          node tests\test_frontend_boot.js
+          node tests\test_frontend_boot_error.js
+'@
+          $new=@'
+          python -m pytest -q
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m compileall -q src
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --check frontend\app.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node tests\test_frontend_boot.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node tests\test_frontend_boot_error.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+'@
+          if(-not $workflow.Contains($old)){throw 'build-release.yml verification block not found'}
+          [IO.File]::WriteAllText($workflowPath,$workflow.Replace($old,$new),$utf8)
+
+      - name: Targeted regression verification
+        shell: powershell
+        run: |
+          python -m pip install --disable-pip-version-check pytest==9.0.2
+          python -m pytest -q tests\test_gui_backend_logging.py tests\test_release_workflow.py tests\test_shell_window.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Commit fixes and remove one-time workflow
+        shell: powershell
+        run: |
+          Remove-Item '.github\workflows\apply-startup-fix-once.yml' -Force
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src\ustracker\server.py .github\workflows\build-release.yml .github\workflows\apply-startup-fix-once.yml
+          git commit -m 'fix: make packaged GUI backend startup console-independent'
+          git push origin HEAD:fix/stability-login-webview-20260913
