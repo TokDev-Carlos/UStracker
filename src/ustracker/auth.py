@@ -51,6 +51,7 @@ class AuthService:
         self.vault_path = self.auth_dir / 'vault.json'
         self._lock = threading.RLock()
         self._sessions: dict[str, Session] = {}
+        self._login_failures: dict[str, tuple[int, datetime]] = {}
         self._init_store()
 
     def _connect(self) -> sqlite3.Connection:
@@ -110,10 +111,28 @@ class AuthService:
         }
 
     def _create_admin_envelope(self, vrk: bytes, password: str) -> tuple[str, str, str]:
+        self._validate_secret(password)
         salt = random_bytes(16)
         key = derive_password_key(password, salt)
         nonce, cipher = aes_encrypt(key, vrk, b'UStracker/VRK/admin/v1')
         return b64e(salt), b64e(nonce), b64e(cipher)
+
+    @staticmethod
+    def _validate_secret(secret: str) -> None:
+        if len(secret) < 4:
+            raise ValueError('secret must have at least 4 characters')
+
+    def _check_login_throttle(self, identity: str) -> None:
+        attempts, blocked_until = self._login_failures.get(identity, (0, self._now()))
+        if blocked_until > self._now():
+            remaining = max(1, int((blocked_until - self._now()).total_seconds() + 0.999))
+            raise ValueError(f'login temporarily locked; try again in {remaining} seconds')
+
+    def _record_login_failure(self, identity: str) -> None:
+        attempts, _ = self._login_failures.get(identity, (0, self._now()))
+        attempts += 1
+        delay = min(300, 2 ** (attempts - 3)) if attempts >= 3 else 0
+        self._login_failures[identity] = (attempts, self._now() + timedelta(seconds=delay))
 
     def _write_vault(self, vrk: bytes) -> None:
         payload = {
@@ -174,7 +193,6 @@ class AuthService:
             key = derive_ticket_key(ticket, b64d(row['salt']))
             vrk = aes_decrypt(key, b64d(row['vrk_nonce']), b64d(row['vrk_cipher']),
                               f"UStracker/enroll/{row['slot']}/v1".encode())
-            # Validates that the ticket yielded the same VRK before persisting a new envelope.
             self._read_vault(vrk)
             salt, nonce, cipher = self._create_admin_envelope(vrk, password)
             now = self._now().isoformat()
@@ -191,16 +209,21 @@ class AuthService:
     def login(self, name: str, password: str, environment: str = 'production') -> Session:
         if environment not in ('production', 'test'):
             raise ValueError('invalid environment')
+        identity = name.strip().casefold()
         with self._lock, self._connect() as con:
+            self._check_login_throttle(identity)
             row = con.execute("SELECT * FROM admins WHERE name=? AND status='ENROLLED'", (name.strip(),)).fetchone()
             if not row:
+                self._record_login_failure(identity)
                 raise ValueError('invalid credentials')
             try:
                 key = derive_password_key(password, b64d(row['salt']))
                 vrk = aes_decrypt(key, b64d(row['vrk_nonce']), b64d(row['vrk_cipher']), b'UStracker/VRK/admin/v1')
                 vault = self._read_vault(vrk)
             except Exception as exc:
+                self._record_login_failure(identity)
                 raise ValueError('invalid credentials') from exc
+            self._login_failures.pop(identity, None)
             now = self._now()
             session = Session(
                 token=secrets.token_urlsafe(32), csrf=secrets.token_urlsafe(24), slot=row['slot'], name=row['name'],

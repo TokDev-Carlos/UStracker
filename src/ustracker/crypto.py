@@ -25,8 +25,8 @@ def random_bytes(size: int = 32) -> bytes:
 
 
 def derive_password_key(password: str, salt: bytes) -> bytes:
-    if len(password) < 10:
-        raise ValueError('password must have at least 10 characters')
+    if len(password) < 4:
+        raise ValueError('secret must have at least 4 characters')
     # PECSUS D15/T04: scrypt N=131072,r=8,p=1.
     kdf = Scrypt(salt=salt, length=32, n=131072, r=8, p=1)
     return kdf.derive(password.encode('utf-8'))
