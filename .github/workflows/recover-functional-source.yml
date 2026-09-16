@@ -1,0 +1,61 @@
+name: Recover verified functional source
+
+on:
+  push:
+    branches: [release/sanitize-1.00.01.000]
+
+permissions:
+  contents: write
+
+jobs:
+  recover:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Verify recovery payload hashes
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "3d2809bf49614d31b8e3a9965d1ba836ed91e1adaab889d26df404d205480434  .release-recovery/server.py.gz" | sha256sum -c -
+          echo "d53a9204db5e89b4e1f0da4e24f4314a00c4df4d358fdffde286308341e8ac40  .release-recovery/services.py.gz" | sha256sum -c -
+          echo "214a6bf76ca26c2bd3e7fa1ae84c2a992468f97cfa5eab5182f2067c00395dbe  .release-recovery/app.js.gz" | sha256sum -c -
+          echo "21131fb8ba4df397c27eff8bffa734f0a6114f0e3f54bddefd6926a1dc63cd99  .release-recovery/frontend_text.tar.gz" | sha256sum -c -
+          echo "9396971557cfed02d9f02ec883efed881a3bee2fab50c775a2c52a9361871145  .release-recovery/icons.tar.gz" | sha256sum -c -
+
+      - name: Reconstruct clean functional source
+        shell: bash
+        run: |
+          set -euo pipefail
+          gzip -dc .release-recovery/server.py.gz > src/ustracker/server.py
+          gzip -dc .release-recovery/services.py.gz > src/ustracker/services.py
+          gzip -dc .release-recovery/app.js.gz > frontend/app.js
+          tar -xzf .release-recovery/frontend_text.tar.gz
+          tar -xzf .release-recovery/icons.tar.gz
+          test -f frontend/ui/session.js
+          test -f frontend/icons/icon-set.json
+          test "$(find frontend/icons -type f -name '*.png' | wc -l)" -gt 0
+          python -m compileall -q src
+          node --check frontend/app.js
+          for f in frontend/ui/*.js; do node --check "$f"; done
+
+      - name: Remove one-time transport
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .release-recovery
+          rm -f .github/workflows/recover-functional-source.yml
+
+      - name: Commit verified recovered source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git diff --cached --quiet && { echo 'No recovered changes to commit'; exit 1; }
+          git commit -m "chore(release): recover verified functional source"
+          git push
