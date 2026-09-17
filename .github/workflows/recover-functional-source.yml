@@ -20,7 +20,9 @@ jobs:
         run: |
           set -euo pipefail
           echo "3d2809bf49614d31b8e3a9965d1ba836ed91e1adaab889d26df404d205480434  .release-recovery/server.py.gz" | sha256sum -c -
-          echo "d53a9204db5e89b4e1f0da4e24f4314a00c4df4d358fdffde286308341e8ac40  .release-recovery/services.py.gz" | sha256sum -c -
+          services_source_sha="$(gzip -dc .release-recovery/services.py.gz | sha256sum | awk '{print $1}')"
+          test "$services_source_sha" = "d18b326e69d0c17f2c1da46f1f724efe5000e76ed11cfb92ed915e36d043d86c"
+          echo "services.py source SHA-256: $services_source_sha"
           echo "214a6bf76ca26c2bd3e7fa1ae84c2a992468f97cfa5eab5182f2067c00395dbe  .release-recovery/app.js.gz" | sha256sum -c -
           echo "21131fb8ba4df397c27eff8bffa734f0a6114f0e3f54bddefd6926a1dc63cd99  .release-recovery/frontend_text.tar.gz" | sha256sum -c -
           echo "9396971557cfed02d9f02ec883efed881a3bee2fab50c775a2c52a9361871145  .release-recovery/icons.tar.gz" | sha256sum -c -
