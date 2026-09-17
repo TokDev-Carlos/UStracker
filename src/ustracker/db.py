@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 SCHEMA_SQL = r'''
 CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -56,7 +56,8 @@ CREATE TABLE IF NOT EXISTS catalog_prices(
 CREATE TABLE IF NOT EXISTS subscriptions(
  id TEXT PRIMARY KEY, client_id TEXT NOT NULL REFERENCES clients(id), signed_on TEXT NOT NULL,
  start_on TEXT NOT NULL, end_on TEXT, due_day INTEGER NOT NULL CHECK(due_day BETWEEN 1 AND 31),
- billing_interval_months INTEGER NOT NULL DEFAULT 1, renewal_mode TEXT NOT NULL DEFAULT 'MANUAL',
+ billing_interval_months INTEGER NOT NULL DEFAULT 1, billing_cycle TEXT NOT NULL DEFAULT 'MONTHLY',
+ renewal_mode TEXT NOT NULL DEFAULT 'MANUAL',
  lifecycle_status TEXT NOT NULL CHECK(lifecycle_status IN ('ACTIVE','PAUSED','CANCELLED','ENDED')),
  revision INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
 );
@@ -65,6 +66,19 @@ CREATE TABLE IF NOT EXISTS subscription_items(
  catalog_id TEXT REFERENCES catalog(id), vehicle_id TEXT REFERENCES vehicles(id), description TEXT NOT NULL,
  quantity INTEGER NOT NULL DEFAULT 1, unit_price_cents INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS direct_sales(
+ id TEXT PRIMARY KEY, client_id TEXT NOT NULL REFERENCES clients(id), sold_on TEXT NOT NULL,
+ status TEXT NOT NULL DEFAULT 'OPEN', paid_on TEXT, total_cents INTEGER NOT NULL DEFAULT 0,
+ notes TEXT, revision INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS direct_sale_items(
+ id TEXT PRIMARY KEY, sale_id TEXT NOT NULL REFERENCES direct_sales(id) ON DELETE CASCADE,
+ catalog_id TEXT REFERENCES catalog(id), vehicle_id TEXT REFERENCES vehicles(id),
+ description TEXT NOT NULL, quantity INTEGER NOT NULL DEFAULT 1, unit_price_cents INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_direct_sales_client ON direct_sales(client_id,sold_on,status);
+CREATE INDEX IF NOT EXISTS ix_direct_sales_paid ON direct_sales(paid_on,status);
+CREATE INDEX IF NOT EXISTS ix_direct_sale_items_sale ON direct_sale_items(sale_id);
 CREATE TABLE IF NOT EXISTS charges(
  id TEXT PRIMARY KEY, subscription_id TEXT NOT NULL REFERENCES subscriptions(id), client_id TEXT NOT NULL REFERENCES clients(id),
  competence TEXT NOT NULL, due_on TEXT NOT NULL, amount_cents INTEGER NOT NULL, adjustment_cents INTEGER NOT NULL DEFAULT 0,
@@ -183,6 +197,12 @@ class Database:
                 if 'updated_at' not in cols:
                     con.execute("ALTER TABLE operations ADD COLUMN updated_at TEXT NOT NULL DEFAULT ''")
                     con.execute("UPDATE operations SET updated_at=created_at WHERE updated_at='' OR updated_at IS NULL")
+            if current_version < 3:
+                cols = {r[1] for r in con.execute("PRAGMA table_info(subscriptions)").fetchall()}
+                if 'billing_cycle' not in cols:
+                    con.execute("ALTER TABLE subscriptions ADD COLUMN billing_cycle TEXT NOT NULL DEFAULT 'MONTHLY'")
+                con.execute("""UPDATE subscriptions SET billing_cycle=CASE
+                    WHEN billing_interval_months >= 12 THEN 'ANNUAL' ELSE 'MONTHLY' END""")
             con.execute("INSERT OR REPLACE INTO meta(key,value) VALUES('schema_version',?)", (str(SCHEMA_VERSION),))
 
     @contextmanager
