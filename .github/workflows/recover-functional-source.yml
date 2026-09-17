@@ -3,6 +3,8 @@ name: Recover verified functional source
 on:
   push:
     branches: [release/sanitize-1.00.01.000]
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: write
@@ -12,8 +14,10 @@ jobs:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout preparation branch
         uses: actions/checkout@v5
+        with:
+          ref: release/sanitize-1.00.01.000
 
       - name: Verify recovery payload hashes
         shell: bash
@@ -60,4 +64,4 @@ jobs:
           git diff --cached --check
           git diff --cached --quiet && { echo 'No recovered changes to commit'; exit 1; }
           git commit -m "chore(release): recover verified functional source"
-          git push
+          git push origin HEAD:release/sanitize-1.00.01.000
