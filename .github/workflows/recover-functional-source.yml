@@ -28,8 +28,15 @@ jobs:
           test "$services_source_sha" = "d18b326e69d0c17f2c1da46f1f724efe5000e76ed11cfb92ed915e36d043d86c"
           echo "services.py source SHA-256: $services_source_sha"
           echo "214a6bf76ca26c2bd3e7fa1ae84c2a992468f97cfa5eab5182f2067c00395dbe  .release-recovery/app.js.gz" | sha256sum -c -
-          echo "ac8f1af277d81aca571d24a50db4f8e576f8ba9369ad206a8b665779f464a9e2  .release-recovery/frontend_text.tar.gz" | sha256sum -c -
-          echo "dba25944559329a22f3a23b6626eb59ed4bfc3c3722d8dd6b67ffc0985250276  .release-recovery/icons.tar.gz" | sha256sum -c -
+          echo "f910a38f5d64178c2d0d456aa1835e3e02faac20bc5e3177b906d185027eacbc  .release-recovery/frontend_core.tar.gz" | sha256sum -c -
+          echo "b63faea056067cf0f56d814b4f5ebd6ce05c4dd2f6194615ce2d80897dc94ea7  .release-recovery/frontend_icon_json.tar.gz" | sha256sum -c -
+          echo "60e19f56a3472770130db9b4677f2dd8b1ba20acdf1d5697f81b92701cd031ae  .release-recovery/frontend_ptbr.tar.gz" | sha256sum -c -
+          echo "405d5829d217377e2f0796bc86ccf902997743ab66ced4dcc353b36ac33c658a  .release-recovery/frontend_r2ui.tar.gz" | sha256sum -c -
+          echo "cca0db21bb543f073135eaaa703fb0dd261ed5dce6887319b760de4de1d0200b  .release-recovery/frontend_ui1.tar.gz" | sha256sum -c -
+          echo "ed4c953247a4c281e5b49315035a8a492d1933f40077092fc8ed9763026404cd  .release-recovery/frontend_ui2b.tar.gz" | sha256sum -c -
+          echo "fd79e88bbf6a9dbd29d98c9977c51afbb1078e73688484693c0987e60517239a  .release-recovery/icons_actions.tar.gz" | sha256sum -c -
+          echo "eb75d3f8163644af57a52c661708500dfe496a385aac6a64d58fb6607f4b5629  .release-recovery/icons_brand.tar.gz" | sha256sum -c -
+          echo "d8fba7ee658c72e3d70e35183804c1f1f5e796dce16b9f4cd2f3a6598ac938af  .release-recovery/icons_menu.tar.gz" | sha256sum -c -
 
       - name: Reconstruct clean functional source
         shell: bash
@@ -38,11 +45,21 @@ jobs:
           gzip -dc .release-recovery/server.py.gz > src/ustracker/server.py
           gzip -dc .release-recovery/services.py.gz > src/ustracker/services.py
           gzip -dc .release-recovery/app.js.gz > frontend/app.js
-          tar -xzf .release-recovery/frontend_text.tar.gz
-          tar -xzf .release-recovery/icons.tar.gz
+          for archive in \
+            frontend_core.tar.gz \
+            frontend_icon_json.tar.gz \
+            frontend_ptbr.tar.gz \
+            frontend_r2ui.tar.gz \
+            frontend_ui1.tar.gz \
+            frontend_ui2b.tar.gz \
+            icons_actions.tar.gz \
+            icons_brand.tar.gz \
+            icons_menu.tar.gz; do
+            tar -xzf ".release-recovery/$archive"
+          done
           test -f frontend/ui/session.js
           test -f frontend/icons/icon-set.json
-          test "$(find frontend/icons -type f -name '*.png' | wc -l)" -gt 0
+          test "$(find frontend/icons -type f -name '*.png' | wc -l)" -eq 33
           python -m compileall -q src
           node --check frontend/app.js
           for f in frontend/ui/*.js; do node --check "$f"; done
