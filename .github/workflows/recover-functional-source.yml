@@ -28,8 +28,8 @@ jobs:
           test "$services_source_sha" = "d18b326e69d0c17f2c1da46f1f724efe5000e76ed11cfb92ed915e36d043d86c"
           echo "services.py source SHA-256: $services_source_sha"
           echo "214a6bf76ca26c2bd3e7fa1ae84c2a992468f97cfa5eab5182f2067c00395dbe  .release-recovery/app.js.gz" | sha256sum -c -
-          echo "21131fb8ba4df397c27eff8bffa734f0a6114f0e3f54bddefd6926a1dc63cd99  .release-recovery/frontend_text.tar.gz" | sha256sum -c -
-          echo "9396971557cfed02d9f02ec883efed881a3bee2fab50c775a2c52a9361871145  .release-recovery/icons.tar.gz" | sha256sum -c -
+          echo "ac8f1af277d81aca571d24a50db4f8e576f8ba9369ad206a8b665779f464a9e2  .release-recovery/frontend_text.tar.gz" | sha256sum -c -
+          echo "dba25944559329a22f3a23b6626eb59ed4bfc3c3722d8dd6b67ffc0985250276  .release-recovery/icons.tar.gz" | sha256sum -c -
 
       - name: Reconstruct clean functional source
         shell: bash
