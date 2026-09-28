@@ -1,12 +1,10 @@
 import { getIconPath } from './icon-registry.js';
+import { formatBRL, formatDateBR } from './formatters.js';
+import { renderMoneyInput } from './money-input.js';
 
 const escapeHtml = value => String(value ?? '').replace(/[&<>'"]/g, character => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
 }[character]));
-
-const money = cents => (Number(cents || 0) / 100).toLocaleString('pt-BR', {
-  style: 'currency', currency: 'BRL'
-});
 
 export function renderBillingCycleSelect(selected = 'MONTHLY') {
   const cycles = [['DAILY', 'Diário'], ['MONTHLY', 'Mensal'], ['ANNUAL', 'Anual']];
@@ -29,7 +27,7 @@ export function renderPurchasesForm({ clients = [], catalog = [], vehicles = [] 
     <div class="row"><div class="field"><label>Item do catálogo</label><select id="purchaseCatalog">${catalogOptions}</select></div>
     <div class="field"><label>Veículo (opcional)</label><select id="purchaseVehicle"><option value="">—</option>${vehicleOptions}</select></div>
     <div class="field"><label>Quantidade</label><input name="quantity" type="number" min="1" value="1"></div>
-    <div class="field"><label>Preço unitário</label><input name="unit_price" type="text" placeholder="Preço do catálogo"></div></div>
+    ${renderMoneyInput({ name: 'unit_price', label: 'Preço unitário', placeholder: 'Preço do catálogo' })}</div>
     <div class="actions"><button type="button" id="addPurchaseItem" class="ui-btn ui-btn-secondary">Adicionar item</button></div>
     <div id="purchaseItems" class="notice">Nenhum item.</div>
     <div class="field"><label>Observações</label><textarea name="notes"></textarea></div>
@@ -50,7 +48,7 @@ export function renderDashboardCards(data = {}) {
   return `<div class="r2-kpis">${metrics.map(([label, key, currency]) => {
     const value = Number(data[key] || 0);
     const tone = key === 'monthly_spent_cents' || value < 0 ? 'attention' : currency && value > 0 ? 'positive' : 'info';
-    return `<div class="card r2-kpi r2-kpi-${tone}"><div class="r2-kpi-value">${escapeHtml(currency ? money(value) : value)}</div><div class="r2-kpi-label">${label}</div></div>`;
+    return `<div class="card r2-kpi r2-kpi-${tone}"><div class="r2-kpi-value">${escapeHtml(currency ? formatBRL(value) : value)}</div><div class="r2-kpi-label">${label}</div></div>`;
   }).join('')}</div>`;
 }
 
@@ -60,7 +58,7 @@ export function formatSubscriptionRates(row = {}) {
     ['subscription_monthly_cents', '/mês'],
     ['subscription_annual_cents', '/ano'],
   ].filter(([key]) => Number(row[key] || 0) !== 0);
-  return rates.length ? rates.map(([key, suffix]) => money(row[key]) + suffix).join(' · ') : '—';
+  return rates.length ? rates.map(([key, suffix]) => formatBRL(row[key]) + suffix).join(' · ') : '—';
 }
 
 export function renderClientProfile(profile = {}) {
@@ -74,7 +72,7 @@ export function renderClientProfile(profile = {}) {
     `<strong>${escapeHtml(({ DAILY: 'Diária', MONTHLY: 'Mensal', ANNUAL: 'Anual' })[subscription.billing_cycle] || subscription.billing_cycle)}</strong>
      ${list(subscription.subscription_items, item => `${escapeHtml(item.description)} · ${Number(item.quantity || 0)} unidade(s)`)}`);
   const sales = list(profile.direct_sales, sale =>
-    `<strong>${escapeHtml(sale.sold_on)} · ${escapeHtml(sale.status)} · ${escapeHtml(money(sale.total_cents))}</strong>
+    `<strong>${escapeHtml(formatDateBR(sale.sold_on, false))} · ${escapeHtml(sale.status)} · ${escapeHtml(formatBRL(sale.total_cents))}</strong>
      ${list(sale.direct_sale_items, item => `${escapeHtml(item.description)} · ${Number(item.quantity || 0)} unidade(s)`)}`);
   const financial = profile.financial || {};
   return `<div class="r2-profile">
@@ -85,7 +83,7 @@ export function renderClientProfile(profile = {}) {
     ${card('Veículos', vehicles)}
     ${card('Assinaturas', subscriptions)}
     ${card('Compras Diretas', sales)}
-    ${card('Resumo Financeiro', `<dl><dt>Assinaturas recebidas</dt><dd>${escapeHtml(money(financial.subscription_received_cents))}</dd><dt>Compras pagas</dt><dd>${escapeHtml(money(financial.direct_sales_paid_cents))}</dd><dt>Despesas pagas do cliente</dt><dd>${escapeHtml(money(financial.client_expenses_paid_cents))}</dd></dl>`)}
+    ${card('Resumo Financeiro', `<dl><dt>Assinaturas recebidas</dt><dd>${escapeHtml(formatBRL(financial.subscription_received_cents))}</dd><dt>Compras pagas</dt><dd>${escapeHtml(formatBRL(financial.direct_sales_paid_cents))}</dd><dt>Despesas pagas do cliente</dt><dd>${escapeHtml(formatBRL(financial.client_expenses_paid_cents))}</dd></dl>`)}
   </div>`;
 }
 
@@ -104,7 +102,7 @@ export function renderLoginScreen(setup = {}, publicData = {}) {
           <div class="actions"><button type="submit" class="ui-btn ui-btn-primary">Entrar</button></div></form><div id="loginOut"></div>
       </section>
       <section class="r2-login-marketing"><h2>Planos e Serviços</h2><p class="muted">${escapeHtml(brand.company_display_name || 'UStracker')}</p>
-        ${catalog.length ? `<div class="r2-login-catalog">${catalog.map(item => `<article class="card"><strong>${escapeHtml(item.name)}</strong><p>${escapeHtml(item.category)}</p><span>${escapeHtml(money(item.price_cents))}</span></article>`).join('')}</div>` : '<p class="muted">Nenhum item público.</p>'}
+        ${catalog.length ? `<div class="r2-login-catalog">${catalog.map(item => `<article class="card"><strong>${escapeHtml(item.name)}</strong><p>${escapeHtml(item.category)}</p><span>${escapeHtml(formatBRL(item.price_cents))}</span></article>`).join('')}</div>` : '<p class="muted">Nenhum item público.</p>'}
       </section>
     </div></section>`;
 }

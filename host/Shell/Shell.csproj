@@ -8,8 +8,10 @@
     <Prefer32Bit>false</Prefer32Bit>
     <AssemblyName>UStracker.Shell</AssemblyName>
     <RootNamespace>UStracker.Shell</RootNamespace>
+    <ApplicationIcon>Assets\UStracker.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
+    <Resource Include="Assets\UStracker.ico" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4191.47" />
     <Compile Include="..\Shared\RootPaths.cs" Link="Shared\RootPaths.cs" />
   </ItemGroup>

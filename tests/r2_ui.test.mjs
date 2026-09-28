@@ -63,7 +63,7 @@ test('Mensalidade apresenta somente os ciclos existentes sem conversão inventad
     subscription_daily_cents: 1500,
     subscription_monthly_cents: 12000,
     subscription_annual_cents: 120000,
-  }), 'R$\u00a015,00/dia · R$\u00a0120,00/mês · R$\u00a01.200,00/ano');
+  }), 'R$ 15,00/dia · R$ 120,00/mês · R$ 1.200,00/ano');
   assert.equal(formatSubscriptionRates({}), '—');
 });
 

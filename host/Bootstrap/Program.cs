@@ -20,6 +20,7 @@ namespace UStracker.Bootstrap
                 try
                 {
                     var root = RootPaths.ProductRoot;
+                    try { DesktopShortcut.CreateOrUpdate(); } catch { /* shortcut failure is non-fatal */ }
                     if (!File.Exists(RootPaths.RuntimePython))
                         throw new FileNotFoundException("Runtime Python não encontrado.", RootPaths.RuntimePython);
                     var port = ReadHealthyPort();

@@ -27,9 +27,14 @@
     "One schema step maximum per changeset; migrations must be transactional and idempotent."
   ],
   "acceptance_checks": [
-    "python -m unittest discover -s tests -p \"test_*.py\" -v",
-    "node --test tests/r2_ui.test.mjs",
-    "node --check frontend/app.js"
+    "PYTHONPATH=src python -m unittest discover -s tests -p \"test_*.py\" -v",
+    "node --test tests/r01_foundation.test.mjs tests/r2_ui.test.mjs",
+    "node --check frontend/app.js",
+    "python -m compileall -q src/ustracker tests",
+    "dotnet build host/Bootstrap/Bootstrap.csproj -c Release -p:Platform=x64 --no-restore --nologo",
+    "dotnet build host/Shell/Shell.csproj -c Release -p:Platform=x64 --no-restore --nologo",
+    "Windows smoke: primeira e segunda inicializacao mantem um unico atalho UStracker.lnk e icones visiveis",
+    "Homologacao visual no ambiente Teste antes do R02"
   ],
   "checkpoint_name": "PONTO-DE-PARADA-1",
   "notes": [
