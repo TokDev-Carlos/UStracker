@@ -39,5 +39,13 @@
   "checkpoint_name": "PONTO-DE-PARADA-1",
   "notes": [
     "Scope is derived from the canonical handoff and must be narrowed further if implementation touches fewer files."
+  ],
+  "node_test_files": [
+    "tests/r01_foundation.test.mjs",
+    "tests/r2_ui.test.mjs"
+  ],
+  "manual_gates": [
+    "Windows smoke: primeira e segunda inicializacao mantem um unico atalho UStracker.lnk e icones visiveis",
+    "Homologacao visual no ambiente Teste antes do R02"
   ]
 }

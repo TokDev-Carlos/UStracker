@@ -44,9 +44,20 @@ function Invoke-Check([string]$Name, [string]$Exe, [string[]]$Arguments) {
     return $exit
 }
 
+$nodeTestFiles = @('tests/r2_ui.test.mjs')
+if ($null -ne $changeset.PSObject.Properties['node_test_files']) {
+    $configuredNodeTests = @($changeset.node_test_files | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
+    if ($configuredNodeTests.Count -gt 0) { $nodeTestFiles = $configuredNodeTests }
+}
+$manualGates = @()
+if ($null -ne $changeset.PSObject.Properties['manual_gates']) {
+    $manualGates = @($changeset.manual_gates | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
+}
+
 $failed = $false
 if ((Invoke-Check 'python-unittest' $PythonPath @('-m','unittest','discover','-s','tests','-p','test_*.py','-v')) -ne 0) { $failed = $true }
-if ((Invoke-Check 'node-tests' 'node' @('--test','tests/r2_ui.test.mjs')) -ne 0) { $failed = $true }
+$nodeArgs = @('--test') + $nodeTestFiles
+if ((Invoke-Check 'node-tests' 'node' $nodeArgs) -ne 0) { $failed = $true }
 if ((Invoke-Check 'node-check' 'node' @('--check','frontend/app.js')) -ne 0) { $failed = $true }
 if ((Invoke-Check 'python-compileall' $PythonPath @('-m','compileall','-q','src/ustracker','tests')) -ne 0) { $failed = $true }
 if ((Invoke-Check 'dotnet-bootstrap' 'dotnet' @('build','host/Bootstrap/Bootstrap.csproj','-c','Release','-p:Platform=x64','--no-restore','--nologo')) -ne 0) { $failed = $true }
@@ -54,26 +65,39 @@ if ((Invoke-Check 'dotnet-shell' 'dotnet' @('build','host/Shell/Shell.csproj','-
 if ((Invoke-Check 'dotnet-updater' 'dotnet' @('build','host/Updater/Updater.csproj','-c','Release','-p:Platform=x64','--no-restore','--nologo')) -ne 0) { $failed = $true }
 if ($policyExit -ne 0 -or $policy.status -ne 'PASS') { $failed = $true }
 
+$manualPending = (-not $failed -and $manualGates.Count -gt 0)
+$status = 'PASS'
+if ($failed) { $status = 'FAIL' }
+elseif ($manualPending) { $status = 'PASS_AUTOMATED_AWAITING_MANUAL' }
+
 $head = (& git -C $RepoRoot rev-parse HEAD).Trim()
 $report = [ordered]@{
     changeset_id = $ChangesetId
-    status = $(if ($failed) { 'FAIL' } else { 'PASS' })
+    status = $status
     git_head = $head
     base_commit = $changeset.base_commit
     checked_at = (Get-Date).ToUniversalTime().ToString('o')
     policy = $policy
     checks = $checks
+    manual_gates = $manualGates
 }
 $reportPath = Join-Path $reportDir 'verification.json'
 $report | ConvertTo-Json -Depth 20 | Set-Content $reportPath -Encoding UTF8
 
-if (-not $failed) {
-    $changeset.status = 'VERIFIED'
-    $changeset | ConvertTo-Json -Depth 20 | Set-Content $changesetPath -Encoding UTF8
-    Write-Host "VERIFICATION=PASS"
+if ($failed) {
+    Write-Host "VERIFICATION=FAIL"
     Write-Host "REPORT=$reportPath"
-    exit 0
+    exit 2
 }
-Write-Host "VERIFICATION=FAIL"
+if ($manualPending) {
+    Write-Host "VERIFICATION=PASS_AUTOMATED_AWAITING_MANUAL"
+    Write-Host "MANUAL_GATES=$($manualGates.Count)"
+    Write-Host "REPORT=$reportPath"
+    exit 3
+}
+
+$changeset.status = 'VERIFIED'
+$changeset | ConvertTo-Json -Depth 20 | Set-Content $changesetPath -Encoding UTF8
+Write-Host "VERIFICATION=PASS"
 Write-Host "REPORT=$reportPath"
-exit 2
+exit 0
