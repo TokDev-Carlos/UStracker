@@ -1,0 +1,46 @@
+{
+  "id": "R04-catalog",
+  "task_number": 4,
+  "title": "Reestruturar Planos e Produtos",
+  "baseline_version": "1.00.01.000",
+  "schema_from": 5,
+  "schema_to": 6,
+  "base_commit": "",
+  "status": "PREPARED",
+  "user_approved_execution": false,
+  "allowed_paths": [
+    "frontend/**",
+    "src/ustracker/catalog.py",
+    "src/ustracker/services.py",
+    "src/ustracker/server.py",
+    "src/ustracker/db.py",
+    "src/ustracker/backup.py",
+    "src/ustracker/recovery.py",
+    "src/ustracker/reports.py",
+    "src/ustracker/public_projection.py",
+    "VERSION.json",
+    "current.json",
+    "tests/**",
+    "docs/**"
+  ],
+  "explicitly_allowed_sensitive_paths": [
+    "src/ustracker/db.py",
+    "src/ustracker/backup.py",
+    "src/ustracker/recovery.py"
+  ],
+  "invariants": [
+    "Do not edit or test directly in C:\\UStracker.",
+    "Do not copy or version UserData.",
+    "Preserve authentication, writer-station, CSRF, idempotency and audit contracts.",
+    "Do not publish, push, deploy, install or replace the active installation without separate authorization.",
+    "One schema step maximum per changeset; migrations must be transactional and idempotent."
+  ],
+  "acceptance_checks": [
+    "python -m unittest discover -s tests -p \"test_*.py\" -v",
+    "node --test tests/r2_ui.test.mjs"
+  ],
+  "checkpoint_name": "PONTO-DE-PARADA-4",
+  "notes": [
+    "Scope is derived from the canonical handoff and must be narrowed further if implementation touches fewer files."
+  ]
+}

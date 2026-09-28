@@ -1,0 +1,6 @@
+{
+  "canonical_tag": "baseline/1.00.01.000-schema3",
+  "version": "1.00.01.000",
+  "schema_version": 3,
+  "rule": "Do not duplicate or edit the baseline here; the Git tag is the authority."
+}

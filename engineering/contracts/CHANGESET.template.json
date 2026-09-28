@@ -1,0 +1,17 @@
+{
+  "id": "rX-example",
+  "task_number": 0,
+  "title": "",
+  "baseline_version": "1.00.01.000",
+  "schema_from": 3,
+  "schema_to": 3,
+  "base_commit": "",
+  "status": "PREPARED",
+  "user_approved_execution": false,
+  "allowed_paths": [],
+  "explicitly_allowed_sensitive_paths": [],
+  "invariants": [],
+  "acceptance_checks": [],
+  "checkpoint_name": "",
+  "notes": []
+}

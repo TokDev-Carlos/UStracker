@@ -18,3 +18,14 @@ UserData/
 .vs/
 .idea/
 .vscode/
+
+# Engineering isolated workspaces and runtime evidence
+.worktrees/
+.superpowers/
+candidate/*
+!candidate/README.md
+increment/*
+!increment/README.md
+engineering/logs/
+engineering/checkpoints/
+engineering/reports/runtime/

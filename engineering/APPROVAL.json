@@ -1,0 +1,7 @@
+{
+  "user_approved_execution": false,
+  "approved_changeset_id": null,
+  "approved_at": null,
+  "approval_source": "Must be set only after explicit user confirmation in the controlling conversation.",
+  "note": "Preparation is authorized. Functional tasks 1-10 are locked."
+}

@@ -1,0 +1,9 @@
+{
+  "changeset_id": "",
+  "rollback_authority": "user",
+  "trigger_conditions": [],
+  "workspace_rollback": "git worktree removal/recreate from base_commit",
+  "database_rollback": "restore verified backup; never reverse-mark schema metadata manually",
+  "package_rollback": "use existing updater journal/backup contract before ACCEPTED",
+  "active_install_automatic_write": false
+}
