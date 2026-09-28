@@ -1,0 +1,7 @@
+UStracker - Copyright (c) 2026 CRJ
+All rights reserved.
+
+This repository and distributed binaries are proprietary project material of CRJ.
+No trademark, warranty, redistribution, sublicensing or commercial-use permission is
+granted except by explicit authorization of the copyright holder. Third-party
+components remain subject to their own licenses, included in the release package.
