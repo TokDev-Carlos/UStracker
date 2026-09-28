@@ -5,9 +5,9 @@
   "baseline_version": "1.00.01.000",
   "schema_from": 3,
   "schema_to": 3,
-  "base_commit": "",
-  "status": "PREPARED",
-  "user_approved_execution": false,
+  "base_commit": "aff64d0ac32225b588119fe76a81aac1442156da",
+  "status": "IN_PROGRESS",
+  "user_approved_execution": true,
   "allowed_paths": [
     "frontend/**",
     "host/Bootstrap/**",
