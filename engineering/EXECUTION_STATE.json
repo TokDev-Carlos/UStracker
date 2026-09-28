@@ -1,5 +1,5 @@
 {
-  "phase": "R01_APPROVED",
+  "phase": "R01_SOURCE_READY_AWAITING_WINDOWS",
   "functional_plan_started": true,
   "baseline_version": "1.00.01.000",
   "baseline_schema_version": 3,
@@ -7,5 +7,6 @@
   "active_changeset_id": "R01-foundation-visual",
   "last_verified_checkpoint": null,
   "supabase_remote_modified": false,
-  "active_install_modified": false
+  "active_install_modified": false,
+  "last_source_checkpoint": "engineering/checkpoints/R01-source-ready.json"
 }

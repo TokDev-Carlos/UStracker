@@ -1,0 +1,31 @@
+{
+  "label": "PONTO-DE-PARADA-1-SOURCE-READY",
+  "created_at": "2026-09-28T23:52:56Z",
+  "head": "1599676beccd4d4b11b97f513f903aa99bd12ec8",
+  "branch": "feature/R01-foundation-visual",
+  "base_ref": "aff64d0ac32225b588119fe76a81aac1442156da",
+  "changed_files": [
+    "engineering/changesets/R01-foundation-visual.json",
+    "engineering/ledgers/progress.md",
+    "frontend/app.js",
+    "frontend/index.html",
+    "frontend/styles.css",
+    "frontend/ui/formatters.js",
+    "frontend/ui/money-input.js",
+    "frontend/ui/r2-ui.js",
+    "frontend/ui/shell.js",
+    "host/Bootstrap/Assets/UStracker.ico",
+    "host/Bootstrap/Bootstrap.csproj",
+    "host/Bootstrap/DesktopShortcut.cs",
+    "host/Bootstrap/Program.cs",
+    "host/Shell/Assets/UStracker.ico",
+    "host/Shell/MainWindow.xaml",
+    "host/Shell/Shell.csproj",
+    "src/ustracker/money.py",
+    "tests/r01_foundation.test.mjs",
+    "tests/r2_ui.test.mjs",
+    "tests/test_r01_foundation.py"
+  ],
+  "working_tree_status": [],
+  "changeset_id": "R01-foundation-visual"
+}

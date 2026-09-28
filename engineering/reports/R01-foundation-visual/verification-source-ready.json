@@ -1,0 +1,108 @@
+{
+  "changeset_id": "R01-foundation-visual",
+  "status": "SOURCE_READY_AWAITING_WINDOWS",
+  "git_head": "1599676beccd4d4b11b97f513f903aa99bd12ec8",
+  "base_commit": "aff64d0ac32225b588119fe76a81aac1442156da",
+  "recorded_at": "2026-09-28T23:52:56Z",
+  "checks": [
+    {
+      "name": "git diff --cached --check",
+      "status": "PASS",
+      "result": "exit 0 before source commit"
+    },
+    {
+      "name": "node --test tests/r01_foundation.test.mjs tests/r2_ui.test.mjs",
+      "status": "PASS",
+      "result": "19/19"
+    },
+    {
+      "name": "node --check frontend/app.js",
+      "status": "PASS",
+      "result": "exit 0"
+    },
+    {
+      "name": "PYTHONPATH=src python -m unittest tests.test_r01_foundation -v",
+      "status": "PASS",
+      "result": "3/3"
+    },
+    {
+      "name": "python -m compileall -q src/ustracker tests",
+      "status": "PASS",
+      "result": "exit 0"
+    },
+    {
+      "name": "full Python suite",
+      "status": "BLOCKED_ENVIRONMENT",
+      "result": "13 PASS / 1 ERROR: sqlcipher3 unavailable"
+    },
+    {
+      "name": "guard policy",
+      "status": "PASS",
+      "result": "0 path-policy violations"
+    },
+    {
+      "name": "guard preflight after source commit",
+      "status": "PASS",
+      "result": "clean worktree, no warnings"
+    },
+    {
+      "name": "candidate gate",
+      "status": "EXPECTED_BLOCK",
+      "result": "changeset-not-verified:IN_PROGRESS"
+    },
+    {
+      "name": "dotnet Bootstrap build",
+      "status": "NOT_RUN",
+      "result": "dotnet unavailable in this environment"
+    },
+    {
+      "name": "dotnet Shell build",
+      "status": "NOT_RUN",
+      "result": "dotnet unavailable in this environment"
+    },
+    {
+      "name": "Windows shortcut/icon smoke",
+      "status": "NOT_RUN",
+      "result": "requires Windows target"
+    },
+    {
+      "name": "visual Test homologation",
+      "status": "NOT_RUN",
+      "result": "requires Windows Test environment"
+    }
+  ],
+  "diff_policy": {
+    "status": "PASS",
+    "violations": []
+  },
+  "schema_gate": {
+    "status": "PASS",
+    "schema_from": 3,
+    "schema_to": 3,
+    "migration_required": false
+  },
+  "known_environment_limitations": [
+    "sqlcipher3 is not installed in the analysis environment.",
+    "dotnet/msbuild are not available in the analysis environment.",
+    "PowerShell and Windows shell/link integration are not available in the analysis environment.",
+    "Existing ResourceWarning messages for SQLite connections remain outside R01 scope."
+  ],
+  "review_findings": [
+    {
+      "severity": "Important",
+      "status": "FIXED",
+      "finding": "R01 CSS initially overrode the legacy <=800px responsive behavior.",
+      "evidence": "Regression test observed RED, responsive override added, focused R01 suite GREEN 11/11."
+    }
+  ],
+  "promotion": {
+    "allowed": false,
+    "reason": "Windows/.NET smoke and visual Test homologation remain outstanding; changeset remains IN_PROGRESS."
+  },
+  "external_side_effects": {
+    "supabase_remote_modified": false,
+    "active_install_modified": false,
+    "pushed": false,
+    "deployed": false
+  }
+}
