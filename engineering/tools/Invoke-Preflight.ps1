@@ -35,7 +35,7 @@ if ($RepoRoot.TrimEnd('\') -ieq ([string]$config.active_install_root).TrimEnd('\
 
 # Nenhum processo de produto/python pode apontar para esta arvore de trabalho.
 $processHits = @()
-if ($IsWindows -or $env:OS -eq 'Windows_NT') {
+if ($env:OS -eq 'Windows_NT') {
     try {
         $processHits = @(Get-CimInstance Win32_Process | Where-Object {
             $_.CommandLine -and $_.CommandLine.IndexOf($RepoRoot, [StringComparison]::OrdinalIgnoreCase) -ge 0 -and

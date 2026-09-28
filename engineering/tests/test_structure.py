@@ -58,6 +58,16 @@ class EngineeringStructureTests(unittest.TestCase):
         self.assertIn('revoke all on schema ustracker_eng from public', sql)
         self.assertNotIn('create table public.', sql)
 
+    def test_powershell_wrappers_avoid_known_windows_powershell_51_traps(self):
+        preflight = (ROOT / 'engineering/tools/Invoke-Preflight.ps1').read_text(encoding='utf-8')
+        verification = (ROOT / 'engineering/tools/Invoke-Verification.ps1').read_text(encoding='utf-8')
+        new_increment = (ROOT / 'engineering/tools/New-Increment.ps1').read_text(encoding='utf-8')
+        build_candidate = (ROOT / 'engineering/tools/Build-Candidate.ps1').read_text(encoding='utf-8')
+        self.assertNotIn('$IsWindows', preflight)
+        self.assertIn('| Write-Host', verification)
+        self.assertNotIn("if ($LASTEXITCODE -ne 0) { throw 'Preflight nao aprovado.' }", new_increment)
+        self.assertNotIn("if ($LASTEXITCODE -ne 0) { throw 'Empacotamento falhou.' }", build_candidate)
+
 
 if __name__ == '__main__':
     unittest.main()

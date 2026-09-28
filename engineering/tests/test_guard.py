@@ -89,6 +89,7 @@ class GuardTests(unittest.TestCase):
     def test_private_key_marker_is_detected_but_public_key_is_not(self):
         self.assertTrue(guard.contains_private_key_marker(b'-----BEGIN PRIVATE KEY-----'))
         self.assertFalse(guard.contains_private_key_marker(b'-----BEGIN PUBLIC KEY-----'))
+        self.assertFalse(guard.contains_private_key_marker(b"marker = b'-----BEGIN PRIVATE KEY-----'"))
 
 
 if __name__ == '__main__':

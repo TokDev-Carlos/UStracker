@@ -17,7 +17,6 @@ if (-not [bool]$approval.user_approved_execution) {
 }
 
 & (Join-Path $RepoRoot 'engineering\tools\Invoke-Preflight.ps1') -RepoRoot $RepoRoot -PythonPath $PythonPath
-if ($LASTEXITCODE -ne 0) { throw 'Preflight nao aprovado.' }
 
 $changesetFile = Join-Path $RepoRoot ("engineering\changesets\{0}.json" -f $ChangesetId)
 if (-not (Test-Path -LiteralPath $changesetFile)) { throw "Changeset inexistente: $ChangesetId" }

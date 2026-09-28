@@ -37,7 +37,7 @@ function Invoke-Check([string]$Name, [string]$Exe, [string[]]$Arguments) {
     $safeName = $Name -replace '[^A-Za-z0-9_.-]', '_'
     $log = Join-Path $reportDir ($safeName + '.log')
     $started = (Get-Date).ToUniversalTime().ToString('o')
-    & $Exe @Arguments 2>&1 | Tee-Object -FilePath $log
+    & $Exe @Arguments 2>&1 | Tee-Object -FilePath $log | Write-Host
     $exit = $LASTEXITCODE
     $finished = (Get-Date).ToUniversalTime().ToString('o')
     $script:checks += [pscustomobject]@{ name=$Name; exit_code=$exit; started_at=$started; finished_at=$finished; log=$log }

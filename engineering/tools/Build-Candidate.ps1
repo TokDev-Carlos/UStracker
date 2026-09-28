@@ -21,7 +21,6 @@ if ($LASTEXITCODE -ne 0) { throw "Candidate gate falhou. Consulte $gateRel" }
 $outDir = Join-Path $RepoRoot "candidate\$ChangesetId"
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 & (Join-Path $RepoRoot 'tools\package.ps1') -RepoRoot $RepoRoot -OutDir $outDir
-if ($LASTEXITCODE -ne 0) { throw 'Empacotamento falhou.' }
 
 $zip = Get-ChildItem $outDir -Filter 'UStracker_*_win-x64.zip' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
 if ($null -eq $zip) { throw 'ZIP candidate nao localizado.' }

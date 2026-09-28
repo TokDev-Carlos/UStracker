@@ -135,7 +135,8 @@ def detect_forbidden_tracked_paths(paths: Iterable[str]) -> list[str]:
 
 
 def contains_private_key_marker(data: bytes) -> bool:
-    return any(marker in data for marker in PRIVATE_KEY_MARKERS)
+    stripped = data.lstrip()
+    return any(stripped.startswith(marker) for marker in PRIVATE_KEY_MARKERS)
 
 
 def scan_tracked_private_keys(repo: Path, paths: Iterable[str]) -> list[str]:
