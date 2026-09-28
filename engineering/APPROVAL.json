@@ -1,7 +1,7 @@
 {
-  "user_approved_execution": false,
-  "approved_changeset_id": null,
-  "approved_at": null,
-  "approval_source": "Must be set only after explicit user confirmation in the controlling conversation.",
+  "user_approved_execution": true,
+  "approved_changeset_id": "R01-foundation-visual",
+  "approved_at": "2026-09-28T23:36:37Z",
+  "approval_source": "Explicit user message: Prossiga a Execução",
   "note": "Preparation is authorized. Functional tasks 1-10 are locked."
 }

@@ -1,10 +1,10 @@
 {
-  "phase": "PREPARED_AWAITING_USER_CONFIRMATION",
-  "functional_plan_started": false,
+  "phase": "R01_APPROVED",
+  "functional_plan_started": true,
   "baseline_version": "1.00.01.000",
   "baseline_schema_version": 3,
   "target_schema_version": 8,
-  "active_changeset_id": null,
+  "active_changeset_id": "R01-foundation-visual",
   "last_verified_checkpoint": null,
   "supabase_remote_modified": false,
   "active_install_modified": false
