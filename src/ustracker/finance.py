@@ -66,7 +66,6 @@ def finance_snapshot(db:Database)->dict:
         'cash_result_cents':realized_received-realized_expenses,
         'expenses':[dict(r) for r in db.query('SELECT * FROM expenses ORDER BY competence DESC,created_at DESC')],
         'fiscal':[dict(r) for r in db.query('SELECT * FROM fiscal_obligations ORDER BY competence DESC,created_at DESC')],
-        'clients':[dict(r) for r in db.query('SELECT id,legal_name FROM clients WHERE archived=0 ORDER BY legal_name')],
         'charges':[dict(r) for r in db.query("SELECT * FROM charges WHERE status<>'VOID' ORDER BY due_on DESC,created_at DESC")],
         'disbursements':[dict(r) for r in db.query('SELECT * FROM disbursements ORDER BY paid_on DESC,created_at DESC')],
     }

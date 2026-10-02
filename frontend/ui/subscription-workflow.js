@@ -1,3 +1,5 @@
+import { bindEntityAutocomplete, renderEntityAutocomplete } from './entity-autocomplete.js';
+
 const escapeHtml = value => String(value ?? '').replace(/[&<>'"]/g, character => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;',
 }[character]));
@@ -38,7 +40,10 @@ export function renderSubscriptionWorkflow(model = {}) {
   const selectedClient = clients.find(row => row.id === selectedClientId) || {};
   const clientField = locked
     ? `<div class="field"><label>Cliente</label><select name="client_display" disabled><option>${escapeHtml(selectedClient.legal_name || selectedClientId)}</option></select><input type="hidden" name="client_id" value="${escapeHtml(selectedClientId)}"></div>`
-    : `<div class="field"><label>Buscar cliente</label><input type="search" data-subscription-client-search autocomplete="off" placeholder="Digite o nome"><label>Cliente*</label><select name="client_id" required><option value="">Selecione o cliente</option>${clients.map(row => `<option value="${escapeHtml(row.id)}" ${row.id === selectedClientId ? 'selected' : ''}>${escapeHtml(row.legal_name)}</option>`).join('')}</select></div>`;
+    : `<div data-subscription-client-search>${renderEntityAutocomplete({
+        name: 'client_id', label: 'Cliente', required: true,
+        selected: selectedClientId ? { id: selectedClientId, display_name: selectedClient.legal_name || selectedClientId } : null,
+      })}</div>`;
   const plans = activeMonthlyPlans(model.catalog);
   const startOn = escapeHtml(model.startOn || new Date().toISOString().slice(0, 10));
   return `<form id="subscriptionWorkflowForm" data-subscription-context="${escapeHtml(context)}">
@@ -76,25 +81,16 @@ export function buildSubscriptionPayload(form = {}, selections = {}, _options = 
   };
 }
 
-export function bindSubscriptionWorkflow(root, { model = {}, onSubmit, onError } = {}) {
+export function bindSubscriptionWorkflow(root, { model = {}, searchClients, onSubmit, onError } = {}) {
   const form = root?.querySelector?.('#subscriptionWorkflowForm');
   if (!form) return null;
   const targetHost = form.querySelector('[data-subscription-targets]');
-  const clientSelect = form.querySelector('[name=client_id]');
-  const clientSearch = form.querySelector('[data-subscription-client-search]');
-  if (clientSelect && targetHost) clientSelect.onchange = () => {
-    targetHost.innerHTML = targetChoices(model, clientSelect.value);
-  };
-  if (clientSearch && clientSelect) clientSearch.oninput = () => {
-    const matches = new Set(searchSubscriptionClients(model.clients, clientSearch.value).map(client => client.id));
-    for (const option of [...clientSelect.options].slice(1)) {
-      option.hidden = !matches.has(option.value);
-    }
-    if (clientSelect.selectedOptions[0]?.hidden) {
-      clientSelect.value = '';
-      clientSelect.onchange?.();
-    }
-  };
+  if (typeof searchClients === 'function') bindEntityAutocomplete(form, {
+    search: searchClients,
+    onSelection: client => {
+      if (targetHost) targetHost.innerHTML = targetChoices(model, client?.id || '');
+    },
+  });
   form.onsubmit = async event => {
     event.preventDefault();
     const errorBox = form.querySelector('[data-subscription-error]');

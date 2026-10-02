@@ -10,6 +10,7 @@ import { labelPtBR, localizeDom, messagePtBR, observePtBR, valuePtBR } from './u
 import { formatBRL, formatDateBR } from './ui/formatters.js';
 import { bindMoneyInputs, renderMoneyInput } from './ui/money-input.js';
 import { bindSubscriptionWorkflow, renderSubscriptionWorkflow } from './ui/subscription-workflow.js';
+import { bindEntityAutocomplete } from './ui/entity-autocomplete.js';
 import { buildClientCreatePayload, clientTableDefinition, renderClientEditor } from './pages/clients.js';
 import { buildMobilityQuery, buildVehiclePayload, renderFleetProfile, renderMobilityPage, renderTransferCaseForm } from './pages/mobility.js';
 import { catalogPayload, renderCatalogEditForm, renderCatalogPage } from './pages/catalog.js';
@@ -25,6 +26,7 @@ const session=createSession({api:apiClient,onUserChange:user=>{me=user}});
 const api=(path,opt)=>path==='/auth/logout'?session.logout():apiClient.request(path,opt).then(result=>{if(path==='/auth/login')session.authenticate(result);return result});
 const getCsrf=()=>apiClient.acquireCsrf();
 const apiForm=(path,form,method='POST')=>apiClient.requestForm(path,form,method);
+const searchClientEntities=async(query,limit=30)=>(await api('/entities/clients?q='+encodeURIComponent(query)+'&limit='+Math.min(Number(limit)||30,30))).items||[];
 const tableStore=new Map();
 const esc=s=>String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 const sessionProfileLabel=user=>user?.role||(user?.slot?'Administrador':'Usuário');
@@ -42,7 +44,7 @@ function moneyField(label,name,valueCents=null,required=false){return renderMone
 function openSubscriptionWorkflow(model,{onSuccess,onCancel}={}){
   const drawer=openDrawer({title:'Nova Assinatura',subtitle:'Plano mensal e alvos de mobilidade',content:renderSubscriptionWorkflow(model)});
   if(onCancel)drawer.querySelectorAll('[data-close-overlay]').forEach(button=>button.onclick=async()=>{closeOverlay();await onCancel()});
-  bindSubscriptionWorkflow(drawer,{model,onSubmit:async payload=>{
+  bindSubscriptionWorkflow(drawer,{model,searchClients:searchClientEntities,onSubmit:async payload=>{
     await api('/subscriptions',{method:'POST',body:JSON.stringify(payload)});
     closeOverlay();toast({message:'Assinatura criada.'});await onSuccess?.();
   },onError:error=>toast({type:'error',message:error.message})});
@@ -218,15 +220,22 @@ async function catalogPage(){
 }
 async function commercialPage(){
   const data=await api('/commercial');
+  let purchaseClient=null;
   const legacyTab=current==='purchases'?'purchases':current==='credits'?'credits':'subscriptions';
   let active=(location.hash.match(/^#commercial\/(subscriptions|purchases|credits)$/)?.[1])||legacyTab;
   current='commercial'; document.querySelectorAll('[data-page]').forEach(b=>b.classList.toggle('active',b.dataset.page==='commercial'));
   const draw=()=>{
-    content(renderCommercialPage(data,active));
+    content(renderCommercialPage({...data,purchase_client:purchaseClient},active));
     document.querySelectorAll('[data-commercial-tab]').forEach(button=>button.onclick=()=>{active=button.dataset.commercialTab;history.replaceState(null,'','#commercial/'+active);draw()});
-    document.querySelectorAll('[data-buy-client]').forEach(button=>button.onclick=()=>{active='purchases';history.replaceState(null,'','#commercial/purchases');draw();const select=document.querySelector('#commercialPurchaseForm [name=client_id]');if(select)select.value=button.dataset.buyClient});
-    const newSubscription=document.querySelector('[data-new-subscription]');if(newSubscription)newSubscription.onclick=()=>openSubscriptionWorkflow({context:'COMMERCIAL',clients:data.clients||[],catalog:data.catalog_mensal||[],vehicles:data.vehicles||[],fleets:data.fleets||[]},{onSuccess:()=>show('commercial')});
-    const purchase=document.querySelector('#commercialPurchaseForm'); if(purchase)purchase.onsubmit=async event=>{event.preventDefault();const p=formData(purchase);const item={catalog_id:p.catalog_id,vehicle_id:p.vehicle_id||null,quantity:Number(p.quantity||1)};await api('/direct-sales',{method:'POST',body:JSON.stringify({client_id:p.client_id,sold_on:p.sold_on||new Date().toISOString().slice(0,10),items:[item]})});toast({message:'Compra direta registrada.'});show('commercial')};
+    document.querySelectorAll('[data-buy-client]').forEach(button=>button.onclick=()=>{purchaseClient={id:button.dataset.buyClient,display_name:button.dataset.buyClientName};active='purchases';history.replaceState(null,'','#commercial/purchases');draw()});
+    const newSubscription=document.querySelector('[data-new-subscription]');if(newSubscription)newSubscription.onclick=()=>openSubscriptionWorkflow({context:'COMMERCIAL',catalog:data.catalog_mensal||[],vehicles:data.vehicles||[],fleets:data.fleets||[]},{onSuccess:()=>show('commercial')});
+    const purchase=document.querySelector('#commercialPurchaseForm'); if(purchase){
+      const vehicleSelect=purchase.querySelector('[name=vehicle_id]');
+      const filterVehicles=client=>{const clientId=client?.id||'';vehicleSelect.disabled=!clientId;for(const option of [...vehicleSelect.options].slice(1))option.hidden=option.dataset.client!==clientId;if(vehicleSelect.selectedOptions[0]?.hidden)vehicleSelect.value=''};
+      bindEntityAutocomplete(purchase,{search:searchClientEntities,onSelection:filterVehicles});
+      filterVehicles(purchaseClient);
+      purchase.onsubmit=async event=>{event.preventDefault();const p=formData(purchase);const item={catalog_id:p.catalog_id,vehicle_id:p.vehicle_id||null,quantity:Number(p.quantity||1)};await api('/direct-sales',{method:'POST',body:JSON.stringify({client_id:p.client_id,sold_on:p.sold_on||new Date().toISOString().slice(0,10),items:[item]})});toast({message:'Compra direta registrada.'});show('commercial')};
+    }
     const coverage=document.querySelector('#coverageForm'); if(coverage)coverage.onsubmit=async event=>{event.preventDefault();const p=formData(coverage);p.cycles=Number(p.cycles||1);if(!p.start_on)delete p.start_on;if(!p.value||p.value==='R$ 0,00')delete p.value;await api('/commercial/coverage',{method:'POST',body:JSON.stringify(p)});toast({message:'Tempo ativo registrado.'});show('commercial')};
   }; draw();
 }
@@ -299,7 +308,11 @@ async function financePage(){
   const draw=()=>{
     content(renderFinancePage(data,active));
     document.querySelectorAll('[data-finance-tab]').forEach(button=>button.onclick=()=>{active=button.dataset.financeTab;history.replaceState(null,'','#finance/'+active);draw()});
-    const payment=document.querySelector('#financePaymentForm');if(payment)payment.onsubmit=async event=>{event.preventDefault();const p=formData(payment);p.create_credit=p.create_credit==='true';p.allocations=[];if(p.charge_id&&p.allocation_amount&&p.allocation_amount!=='R$ 0,00')p.allocations.push({charge_id:p.charge_id,amount:p.allocation_amount});delete p.charge_id;delete p.allocation_amount;if(!p.paid_on)delete p.paid_on;await api('/payments',{method:'POST',body:JSON.stringify(p)});toast({message:'Recebimento registrado.'});show('finance')};
+    const payment=document.querySelector('#financePaymentForm');if(payment){
+      const chargeSelect=payment.querySelector('[name=charge_id]');
+      bindEntityAutocomplete(payment,{search:searchClientEntities,onSelection:client=>{const clientId=client?.id||'';chargeSelect.disabled=!clientId;for(const option of [...chargeSelect.options].slice(1))option.hidden=option.dataset.client!==clientId;if(chargeSelect.selectedOptions[0]?.hidden)chargeSelect.value=''}});
+      payment.onsubmit=async event=>{event.preventDefault();const p=formData(payment);p.create_credit=p.create_credit==='true';p.allocations=[];if(p.charge_id&&p.allocation_amount&&p.allocation_amount!=='R$ 0,00')p.allocations.push({charge_id:p.charge_id,amount:p.allocation_amount});delete p.charge_id;delete p.allocation_amount;if(!p.paid_on)delete p.paid_on;await api('/payments',{method:'POST',body:JSON.stringify(p)});toast({message:'Recebimento registrado.'});show('finance')};
+    }
     const expense=document.querySelector('#financeExpenseForm');if(expense)expense.onsubmit=async event=>{event.preventDefault();const p=formData(expense);if(!p.due_on)delete p.due_on;await api('/expenses',{method:'POST',body:JSON.stringify(p)});toast({message:'Despesa registrada.'});show('finance')};
     const fiscal=document.querySelector('#financeFiscalForm');if(fiscal)fiscal.onsubmit=async event=>{event.preventDefault();const p=formData(fiscal);if(!p.amount)delete p.amount;if(!p.due_on)delete p.due_on;if(!p.external_ref)delete p.external_ref;await api('/fiscal',{method:'POST',body:JSON.stringify(p)});toast({message:'Obrigação fiscal registrada.'});show('finance')};
   };draw();
