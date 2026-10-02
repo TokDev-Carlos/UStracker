@@ -1,5 +1,7 @@
 import asyncio
+import gc
 import json
+import shutil
 import sys
 import tempfile
 import unittest
@@ -9,6 +11,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parents[1] / 'src'))
 
 from ustracker.db import Database
+from ustracker.auth import AuthService
 from ustracker.server import create_app
 from ustracker.services import create_catalog, create_client
 
@@ -45,6 +48,20 @@ def asgi_request(app, method, path, session=None, payload=None):
 
 
 class R2RouteTests(unittest.TestCase):
+    def test_auth_store_releases_database_after_request_lifecycle(self):
+        root = Path(tempfile.mkdtemp())
+        try:
+            auth = AuthService(root)
+            auth.bootstrap('Admin', '1234')
+            auth.login('Admin', '1234', 'test')
+
+            shutil.rmtree(root)
+
+            self.assertFalse(root.exists())
+        finally:
+            gc.collect()
+            shutil.rmtree(root, ignore_errors=True)
+
     def test_sales_and_client_profile_routes_use_real_session_and_mutation(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

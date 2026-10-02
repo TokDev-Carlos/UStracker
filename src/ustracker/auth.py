@@ -5,6 +5,7 @@ import json
 import secrets
 import sqlite3
 import threading
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -60,8 +61,17 @@ class AuthService:
         con.execute('PRAGMA foreign_keys=ON')
         return con
 
+    @contextmanager
+    def _connection(self):
+        con = self._connect()
+        try:
+            with con:
+                yield con
+        finally:
+            con.close()
+
     def _init_store(self) -> None:
-        with self._connect() as con:
+        with self._connection() as con:
             con.executescript('''
             CREATE TABLE IF NOT EXISTS admins(
               slot INTEGER PRIMARY KEY CHECK(slot BETWEEN 1 AND 3),
@@ -100,7 +110,7 @@ class AuthService:
         return datetime.now(UTC)
 
     def setup_status(self) -> dict:
-        with self._connect() as con:
+        with self._connection() as con:
             rows = con.execute('SELECT slot,name,status FROM admins ORDER BY slot').fetchall()
         enrolled = sum(1 for r in rows if r['status'] == 'ENROLLED')
         return {
@@ -166,7 +176,7 @@ class AuthService:
         name = name.strip()
         if not name:
             raise ValueError('admin name is required')
-        with self._lock, self._connect() as con:
+        with self._lock, self._connection() as con:
             if con.execute("SELECT COUNT(*) FROM admins WHERE status='ENROLLED'").fetchone()[0] != 0:
                 raise ValueError('bootstrap already completed')
             vrk = random_bytes(32)
@@ -183,7 +193,7 @@ class AuthService:
     def enroll(self, ticket: str, name: str, password: str) -> dict:
         name = name.strip()
         digest = hashlib.sha256(ticket.encode()).hexdigest()
-        with self._lock, self._connect() as con:
+        with self._lock, self._connection() as con:
             row = con.execute('SELECT * FROM enrollment WHERE ticket_hash=?', (digest,)).fetchone()
             if not row:
                 raise ValueError('invalid enrollment ticket')
@@ -211,7 +221,7 @@ class AuthService:
         if environment not in ('production', 'test'):
             raise ValueError('invalid environment')
         identity = name.strip().casefold()
-        with self._lock, self._connect() as con:
+        with self._lock, self._connection() as con:
             self._check_login_throttle(identity)
             row = con.execute("SELECT * FROM admins WHERE name=? AND status='ENROLLED'", (name.strip(),)).fetchone()
             if not row:
@@ -258,7 +268,7 @@ class AuthService:
             self._sessions.pop(token, None)
 
     def change_password(self, session: Session, current_password: str, new_password: str) -> None:
-        with self._lock, self._connect() as con:
+        with self._lock, self._connection() as con:
             row = con.execute('SELECT * FROM admins WHERE slot=?', (session.slot,)).fetchone()
             old = derive_password_key(current_password, b64d(row['salt']))
             vrk = aes_decrypt(old, b64d(row['vrk_nonce']), b64d(row['vrk_cipher']), b'UStracker/VRK/admin/v1')
@@ -272,7 +282,7 @@ class AuthService:
     def reset_admin(self, session: Session, slot: int, reason: str) -> str:
         if slot == session.slot or slot not in (1, 2, 3) or not reason.strip():
             raise ValueError('invalid reset request')
-        with self._lock, self._connect() as con:
+        with self._lock, self._connection() as con:
             row = con.execute('SELECT status FROM admins WHERE slot=?', (slot,)).fetchone()
             if not row or row['status'] != 'ENROLLED':
                 raise ValueError('slot is not enrolled')
