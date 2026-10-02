@@ -6,6 +6,11 @@ const activeMonthlyPlans = catalog => (catalog || []).filter(item =>
   Number(item.active ?? 1) === 1 && String(item.category || '').toUpperCase() === 'MENSAL'
 );
 
+export function searchSubscriptionClients(clients = [], query = '') {
+  const needle = String(query || '').trim().toLocaleLowerCase('pt-BR');
+  return needle ? clients.filter(client => String(client.legal_name || '').toLocaleLowerCase('pt-BR').includes(needle)) : [...clients];
+}
+
 export function subscriptionOptionsForClient(model = {}, clientId = '') {
   const belongs = row => row.client_id === clientId && Number(row.archived || 0) === 0;
   return {
@@ -33,7 +38,7 @@ export function renderSubscriptionWorkflow(model = {}) {
   const selectedClient = clients.find(row => row.id === selectedClientId) || {};
   const clientField = locked
     ? `<div class="field"><label>Cliente</label><select name="client_display" disabled><option>${escapeHtml(selectedClient.legal_name || selectedClientId)}</option></select><input type="hidden" name="client_id" value="${escapeHtml(selectedClientId)}"></div>`
-    : `<div class="field"><label>Cliente*</label><select name="client_id" required><option value="">Selecione o cliente</option>${clients.map(row => `<option value="${escapeHtml(row.id)}" ${row.id === selectedClientId ? 'selected' : ''}>${escapeHtml(row.legal_name)}</option>`).join('')}</select></div>`;
+    : `<div class="field"><label>Buscar cliente</label><input type="search" data-subscription-client-search autocomplete="off" placeholder="Digite o nome"><label>Cliente*</label><select name="client_id" required><option value="">Selecione o cliente</option>${clients.map(row => `<option value="${escapeHtml(row.id)}" ${row.id === selectedClientId ? 'selected' : ''}>${escapeHtml(row.legal_name)}</option>`).join('')}</select></div>`;
   const plans = activeMonthlyPlans(model.catalog);
   const startOn = escapeHtml(model.startOn || new Date().toISOString().slice(0, 10));
   return `<form id="subscriptionWorkflowForm" data-subscription-context="${escapeHtml(context)}">
@@ -76,8 +81,19 @@ export function bindSubscriptionWorkflow(root, { model = {}, onSubmit, onError }
   if (!form) return null;
   const targetHost = form.querySelector('[data-subscription-targets]');
   const clientSelect = form.querySelector('[name=client_id]');
+  const clientSearch = form.querySelector('[data-subscription-client-search]');
   if (clientSelect && targetHost) clientSelect.onchange = () => {
     targetHost.innerHTML = targetChoices(model, clientSelect.value);
+  };
+  if (clientSearch && clientSelect) clientSearch.oninput = () => {
+    const matches = new Set(searchSubscriptionClients(model.clients, clientSearch.value).map(client => client.id));
+    for (const option of [...clientSelect.options].slice(1)) {
+      option.hidden = !matches.has(option.value);
+    }
+    if (clientSelect.selectedOptions[0]?.hidden) {
+      clientSelect.value = '';
+      clientSelect.onchange?.();
+    }
   };
   form.onsubmit = async event => {
     event.preventDefault();

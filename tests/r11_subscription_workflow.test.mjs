@@ -6,6 +6,7 @@ import {
   bindSubscriptionWorkflow,
   buildSubscriptionPayload,
   renderSubscriptionWorkflow,
+  searchSubscriptionClients,
   subscriptionOptionsForClient,
 } from '../frontend/ui/subscription-workflow.js';
 
@@ -45,6 +46,7 @@ test('Ficha do Cliente bloqueia o cliente e filtra planos e alvos', () => {
 
 test('Comercial exige seleção de cliente antes de mostrar mobilidade', () => {
   const initial = renderSubscriptionWorkflow({ ...model, context: 'COMMERCIAL' });
+  assert.match(initial, /data-subscription-client-search/);
   assert.match(initial, /name="client_id"/);
   assert.match(initial, /Selecione o cliente/);
   assert.doesNotMatch(initial, /AAA1A11|BBB2B22|Frota Um|Frota Dois/);
@@ -54,6 +56,7 @@ test('Comercial exige seleção de cliente antes de mostrar mobilidade', () => {
   assert.match(selected, /Frota Dois/);
   assert.doesNotMatch(selected, /AAA1A11|Frota Um/);
   assert.deepEqual(subscriptionOptionsForClient(model, 'c1').vehicles.map(row => row.id), ['v1']);
+  assert.deepEqual(searchSubscriptionClients(model.clients, 'dois').map(row => row.id), ['c2']);
 });
 
 test('Os dois contextos produzem o mesmo payload e rejeitam duplicidades', () => {

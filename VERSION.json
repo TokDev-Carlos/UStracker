@@ -1,6 +1,6 @@
 {
   "product": "UStracker",
-  "version": "1.001",
+  "version": "1.002",
   "schema_version": 9,
   "platform": "win-x64",
   "authority": "PECSUS 1.2.1",
