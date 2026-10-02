@@ -7,7 +7,7 @@ from contextlib import closing, contextmanager
 from pathlib import Path
 from typing import Iterator
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 SCHEMA_SQL = r'''
 CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -96,6 +96,17 @@ CREATE TABLE IF NOT EXISTS subscription_items(
  catalog_id TEXT REFERENCES catalog(id), vehicle_id TEXT REFERENCES vehicles(id), description TEXT NOT NULL,
  quantity INTEGER NOT NULL DEFAULT 1, unit_price_cents INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS subscription_targets(
+ id TEXT PRIMARY KEY, subscription_id TEXT NOT NULL REFERENCES subscriptions(id) ON DELETE CASCADE,
+ vehicle_id TEXT REFERENCES vehicles(id), fleet_id TEXT REFERENCES fleets(id), created_at TEXT NOT NULL,
+ CHECK((vehicle_id IS NOT NULL AND fleet_id IS NULL) OR (vehicle_id IS NULL AND fleet_id IS NOT NULL))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_subscription_targets_vehicle
+ ON subscription_targets(subscription_id,vehicle_id) WHERE vehicle_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS ux_subscription_targets_fleet
+ ON subscription_targets(subscription_id,fleet_id) WHERE fleet_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS ix_subscription_targets_vehicle ON subscription_targets(vehicle_id,subscription_id);
+CREATE INDEX IF NOT EXISTS ix_subscription_targets_fleet ON subscription_targets(fleet_id,subscription_id);
 CREATE TABLE IF NOT EXISTS direct_sales(
  id TEXT PRIMARY KEY, client_id TEXT NOT NULL REFERENCES clients(id), sold_on TEXT NOT NULL,
  status TEXT NOT NULL DEFAULT 'OPEN', paid_on TEXT, total_cents INTEGER NOT NULL DEFAULT 0,
@@ -316,6 +327,9 @@ class Database:
                 pass
             if current_version < 8:
                 # R08 attachments are additive; SCHEMA_SQL creates the table and indexes.
+                pass
+            if current_version < 9:
+                # R11 subscription targets are additive; SCHEMA_SQL creates the table and indexes.
                 pass
             con.execute("INSERT OR REPLACE INTO meta(key,value) VALUES('schema_version',?)", (str(SCHEMA_VERSION),))
             con.commit()
