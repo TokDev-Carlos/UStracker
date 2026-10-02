@@ -46,12 +46,13 @@ class R2BackendTests(unittest.TestCase):
         self.assertEqual(upgraded.one("SELECT value FROM meta WHERE key='schema_version'")[0], '8')
         self.assertIsNotNone(upgraded.one("SELECT name FROM sqlite_master WHERE name='direct_sales'"))
 
-    def test_package_metadata_declares_schema3_without_product_version_change(self):
+    def test_package_metadata_is_synchronized_from_canonical_version(self):
         root = Path(__file__).parents[1]
         version = json.loads((root / 'VERSION.json').read_text(encoding='utf-8'))
         current = json.loads((root / 'current.json').read_text(encoding='utf-8'))
         self.assertEqual((version['schema_version'], current['schema_version']), (8, 8))
-        self.assertEqual((version['version'], current['version']), ('1.00.01.000', '1.00.01.000'))
+        canonical = (root / 'version.md').read_text(encoding='utf-8').strip()
+        self.assertEqual((version['version'], current['version']), (canonical, canonical))
 
     @unittest.skipUnless(importlib.util.find_spec('sqlcipher3'), 'sqlcipher3 unavailable in this environment')
     def test_schema3_alters_actual_legacy_table_without_billing_cycle(self):

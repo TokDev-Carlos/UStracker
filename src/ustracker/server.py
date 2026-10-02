@@ -87,15 +87,15 @@ from .station import (
     relinquish_writer,
     require_writer,
 )
-
-PRODUCT_VERSION = '1.00.01.000'
+from .versioning import read_version
 
 
 def create_app(root: Path | str) -> FastAPI:
     root = Path(root).resolve()
     root.mkdir(parents=True, exist_ok=True)
+    product_version = read_version(root)
     auth = AuthService(root)
-    app = FastAPI(title='UStracker', version=PRODUCT_VERSION, docs_url=None, redoc_url=None, openapi_url=None)
+    app = FastAPI(title='UStracker', version=product_version, docs_url=None, redoc_url=None, openapi_url=None)
     app.state.root = root
     app.state.auth = auth
     app.state.server = None
@@ -183,7 +183,7 @@ def create_app(root: Path | str) -> FastAPI:
 
     @app.get('/api/v1/health')
     def health():
-        return {'status': 'ok', 'product': 'UStracker', 'version': PRODUCT_VERSION}
+        return {'status': 'ok', 'product': 'UStracker', 'version': product_version}
 
     @app.get('/api/v1/public')
     def public():
@@ -776,7 +776,7 @@ def run(root: Path | str):
     root = Path(root).resolve(); state_dir = root/'UserData'/'State'; state_dir.mkdir(parents=True, exist_ok=True); port_file = state_dir/'backend.json'
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM); sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1); sock.bind(('127.0.0.1', 0)); sock.listen(2048); port = sock.getsockname()[1]
     app = create_app(root); config = uvicorn.Config(app, host='127.0.0.1', port=port, log_level='info', access_log=False, log_config=None); server = uvicorn.Server(config); app.state.server = server
-    tmp = port_file.with_suffix('.tmp'); tmp.write_text(json.dumps({'port':port,'pid':os.getpid(),'version':PRODUCT_VERSION}), encoding='utf-8'); tmp.replace(port_file)
+    tmp = port_file.with_suffix('.tmp'); tmp.write_text(json.dumps({'port':port,'pid':os.getpid(),'version':app.version}), encoding='utf-8'); tmp.replace(port_file)
     try: server.run(sockets=[sock])
     finally: port_file.unlink(missing_ok=True)
 

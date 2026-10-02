@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ustracker"
-version = "1.0.1"
+dynamic = ["version"]
 description = "UStracker local-first fleet, contract and financial management"
 requires-python = ">=3.13,<3.14"
 authors = [{name = "CRJ"}]
@@ -20,3 +20,6 @@ dependencies = [
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.dynamic]
+version = {attr = "ustracker.__version__"}

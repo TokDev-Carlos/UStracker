@@ -11,13 +11,14 @@ from pathlib import Path
 
 from cryptography.hazmat.primitives.serialization import load_pem_public_key
 from .update import inspect_package, safe_extract
+from .versioning import read_version
 
 UTC = timezone.utc
 STATES = ('RECEIVED','VALIDATED','QUIESCED','BACKED_UP','STAGED','MIGRATED','SWITCHED','VERIFIED','ACCEPTED')
 
 
 def _version(root: Path) -> str:
-    return json.loads((root/'VERSION.json').read_text(encoding='utf-8'))['version']
+    return read_version(root)
 
 
 def _write_journal(root: Path, journal: dict, state: str) -> None:

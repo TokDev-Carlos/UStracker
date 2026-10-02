@@ -21,7 +21,9 @@ function Build-HostProject([string]$Project) {
 Build-HostProject 'host\Bootstrap\Bootstrap.csproj'
 Build-HostProject 'host\Shell\Shell.csproj'
 Build-HostProject 'host\Updater\Updater.csproj'
-$version = (Get-Content (Join-Path $RepoRoot 'VERSION.json') -Raw | ConvertFrom-Json).version
+& python (Join-Path $RepoRoot 'tools\sync_version.py') $RepoRoot
+if ($LASTEXITCODE -ne 0) { throw 'Falha ao sincronizar version.md' }
+$version = (Get-Content (Join-Path $RepoRoot 'version.md') -Raw).Trim()
 $candidate = Join-Path $OutDir ("UStracker_{0}_win-x64" -f $version)
 $zipPath = $candidate + '.zip'
 Remove-Item $candidate -Recurse -Force -ErrorAction SilentlyContinue
@@ -70,6 +72,7 @@ Copy-Tree (Join-Path $RepoRoot 'Trust') (Join-Path $candidate 'Trust')
 Copy-Tree (Join-Path $RepoRoot 'docs') (Join-Path $candidate 'Docs')
 Copy-Item (Join-Path $RepoRoot 'VERSION.json') $candidate -Force
 Copy-Item (Join-Path $RepoRoot 'current.json') $candidate -Force
+Copy-Item (Join-Path $RepoRoot 'version.md') $candidate -Force
 Copy-Item (Join-Path $RepoRoot 'LICENSE.txt') $candidate -Force
 Copy-Item (Join-Path $RepoRoot 'NOTICE.txt') $candidate -Force
 
