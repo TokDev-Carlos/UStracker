@@ -1,0 +1,81 @@
+ROLE=UStracker_IMPLEMENTER
+MODE=STRICT_INCREMENTAL
+BASE=source/ branch handoff/schema8-r10v2
+PLAN=handoff/02_PLAN_R11_R23.md
+CONTRACT=handoff/00_CODEX_EXECUTION_CONTRACT.md
+
+EXECUTE R11 THROUGH R23 IN ORDER.
+
+MANDATORY:
+- create isolated feature branch/worktree before edits
+- inspect repository instructions/status/diff first
+- preserve schema8 data and backward compatibility
+- write failing test before each behavior change
+- confirm RED reason
+- implement minimum coherent change
+- confirm GREEN
+- run broad regression per stage
+- checkpoint/commit per behavior or migration
+- update handoff/04_EXECUTION_LEDGER.md and handoff/05_ACCEPTANCE_MATRIX.csv in working copy
+- report exact commands/results
+
+ARCHITECTURE:
+- frontend JavaScript ES modules; no framework rewrite
+- FastAPI/Python backend/domain services
+- SQLCipher/SQLite local implementation remains supported
+- host .NET/WebView2 remains supported
+- business/financial rules backend-owned
+- integer cents
+- portable paths
+
+ABSOLUTE PORTABILITY:
+Never assume C:\UStracker. Resolve APP_ROOT from executable/repository runtime root. Derive DATA_ROOT/CACHE_ROOT/BACKUP_ROOT/LOG_ROOT centrally. Updater operates relative to installed APP_ROOT.
+
+CLIENT RELATIONSHIP FLOW MUST BECOME:
+Client -> Company -> Vehicle/Fleet -> Monthly Plan -> Subscription -> Payment -> Finance -> Overview.
+Both Client Profile and Commercial subscription creation must call the same backend domain operation.
+
+SEARCH:
+No unbounded client dropdowns. Reusable debounced, accent/case-insensitive bounded autocomplete. Must handle 1000+ clients without rendering all records.
+
+UI MUTATIONS:
+No successful mutation may require F5. Guard double submissions. Show loading/success/error. Refresh only affected state.
+
+MEDIA:
+One user action opens chooser and executes upload. Do not require select+send two-button workflow.
+
+VISUAL:
+Preserve approved visual direction. Standardize icons/alignment/spacing only. No broad redesign.
+
+OVERVIEW:
+Support all-time and per-year Receita/Despesas/Resultado. Use realized financial data only. No future-charge revenue.
+
+SYSTEM MENU:
+Split Administration and Development. Do not expose secrets.
+
+REMOTE DATA:
+Prepare repository boundary. Do not put shared live SQLite DB on Google Drive. Do not implement speculative cloud provider.
+
+UPDATER:
+Versioned + checksum/signature + schema validation + backup + staged apply + healthcheck + rollback. No arbitrary install clones.
+
+STOP CONDITIONS:
+- destructive/irreversible operation
+- production deployment/push
+- security-sensitive action requiring authorization
+- specification ambiguity that changes public/data contract
+- failing broad regression not understood
+
+PER-STAGE OUTPUT:
+BASE_HEAD=
+FINAL_HEAD=
+MIGRATION=
+CHANGED_FILES=
+RED_TESTS=
+GREEN_TESTS=
+FULL_REGRESSION=
+COMPATIBILITY=
+PORTABILITY=
+DATA_RISK=
+UNVERIFIED=
+NEXT_GATE=

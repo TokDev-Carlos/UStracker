@@ -1,0 +1,33 @@
+ID,Stage,Requirement,Required Evidence,Status
+R11-01,R11,Create subscription from client profile without reselecting client,API/domain+frontend integration test,NOT_STARTED
+R11-02,R11,Subscription accepts monthly plans only,Domain/API negative test,NOT_STARTED
+R11-03,R11,Subscription links eligible client vehicle/fleet,Domain integrity test,NOT_STARTED
+R11-04,R11,Commercial new subscription uses real-time client search,E2E/frontend+API test,NOT_STARTED
+R11-05,R11,Both creation entrypoints use one domain operation,Code inspection+tests,NOT_STARTED
+R11-06,R11,Payment updates finance/overview without double counting,Integration test,NOT_STARTED
+R12-01,R12,Client autocomplete handles 1000+ without rendering all,Frontend/API performance fixture,NOT_STARTED
+R12-02,R12,Search is accent/case insensitive,Search test,NOT_STARTED
+R12-03,R12,Debounce and stale response protection,Frontend async test,NOT_STARTED
+R13-01,R13,Mutation does not require F5,Frontend integration smoke,NOT_STARTED
+R13-02,R13,Double click does not double write,Idempotency/UI test,NOT_STARTED
+R13-03,R13,API error preserves old state and displays error,Frontend integration test,NOT_STARTED
+R14-01,R14,Photo upload is single visible action,UI test,NOT_STARTED
+R14-02,R14,Replace/remove photo safe and confirmed,UI/API test,NOT_STARTED
+R15-01,R15,Menu/action icon map complete,Static registry test,NOT_STARTED
+R15-02,R15,No emoji production icons,Static scan,NOT_STARTED
+R16-01,R16,Control/table alignment consistent,Visual smoke checklist,NOT_STARTED
+R17-01,R17,Brand assets preserve aspect ratio,Static CSS+visual smoke,NOT_STARTED
+R18-01,R18,Overview period supports Geral and years,API+frontend test,NOT_STARTED
+R18-02,R18,Revenue uses realized only,Finance integration test,NOT_STARTED
+R18-03,R18,Expense and result drilldown reconciles,Finance integration test,NOT_STARTED
+R19-01,R19,System defaults to Administration tab,Frontend test,NOT_STARTED
+R19-02,R19,Development diagnostics separated and protected,Auth/frontend test,NOT_STARTED
+R20-01,R20,No product dependency on C:\UStracker,Source scan+path tests,NOT_STARTED
+R20-02,R20,App roots derive from runtime root,Path unit tests,NOT_STARTED
+R21-01,R21,Repository boundary exists without speculative cloud provider,Architecture test/review,NOT_STARTED
+R22-01,R22,Updater verifies version/hash/schema,Updater tests,NOT_STARTED
+R22-02,R22,Updater rolls back failed healthcheck,Updater integration test,NOT_STARTED
+R22-03,R22,Updater creates no arbitrary install clones,Filesystem integration test,NOT_STARTED
+R23-01,R23,Every menu passes functional audit,Audit report,NOT_STARTED
+R23-02,R23,Backup/restore covers all active domains,Restore integration test,NOT_STARTED
+R23-03,R23,Windows physical smoke completed,Windows homologation evidence,NOT_STARTED

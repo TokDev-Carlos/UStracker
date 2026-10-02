@@ -1,0 +1,47 @@
+{
+  "project": "UStracker",
+  "snapshot_date": "2026-10-02",
+  "baseline_source": "source/",
+  "baseline_branch": "handoff/schema8-r10v2",
+  "schema_version": 8,
+  "product_version_line": "1.00.01.000-derived cumulative candidate",
+  "manual_homologation": {
+    "R01": "confirmed",
+    "R02": "confirmed",
+    "R03_to_R10": "implemented in cumulative candidate; no individual explicit manual confirmation recorded",
+    "visual_direction": "accepted; preserve current visual language"
+  },
+  "current_client_profile": {
+    "sections": ["Dados Básicos", "Empresas", "Veículos", "Financeiro", "Assinaturas"],
+    "document_policy": "one active CPF/RG/CNH; replacement archives prior record",
+    "status_options_for_new_edits": ["ATIVO", "INATIVO", "CANCELADO"],
+    "photo": "integrated into Dados Básicos"
+  },
+  "implemented_domains": [
+    "clients",
+    "mobility",
+    "catalog",
+    "commercial",
+    "finance",
+    "overview",
+    "attachments",
+    "backup_recovery",
+    "schema8_reconciliation"
+  ],
+  "known_gap_focus": [
+    "end-to-end client-plan-subscription-vehicle flow",
+    "real-time entity search",
+    "UI mutation refresh and action feedback",
+    "single-action media operations",
+    "icon consistency",
+    "alignment and visual polish",
+    "dashboard annual/general financial drilldown",
+    "system admin-vs-development separation",
+    "portable path enforcement",
+    "future remote data abstraction",
+    "transactional updater"
+  ],
+  "known_environment_limit": "sqlcipher3-specific test may skip outside supported Windows/runtime environment",
+  "production_installation_policy": "do not modify production installation during development/homologation",
+  "latest_reference_artifact": "artifacts/UStracker_R10_HOMOLOGACAO_CUMULATIVA_SCHEMA8_v2_FICHA_CLIENTE.zip"
+}
