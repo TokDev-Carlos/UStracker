@@ -262,29 +262,129 @@ def create_catalog(db:Database, actor:int, p:dict)->dict:
     from .catalog import create_catalog_item
     return create_catalog_item(db,actor,p)
 
+def _hydrate_subscription(con, row)->dict:
+    rec=dict(row)
+    client=con.execute('''SELECT c.legal_name,
+        (SELECT cc.legal_name FROM client_companies cc
+         WHERE cc.client_id=c.id AND cc.archived=0
+         ORDER BY cc.is_primary DESC,cc.created_at,cc.id LIMIT 1) AS company_name
+        FROM clients c WHERE c.id=?''',(rec['client_id'],)).fetchone()
+    rec['client_name']=client['legal_name'] if client else None
+    rec['company_name']=client['company_name'] if client else None
+    items=[]
+    for item in con.execute('''SELECT si.*,c.code AS plan_code,c.name AS plan_name,c.category AS plan_category
+                               FROM subscription_items si
+                               LEFT JOIN catalog c ON c.id=si.catalog_id
+                               WHERE si.subscription_id=? ORDER BY si.rowid''',(rec['id'],)).fetchall():
+        items.append(dict(item))
+    targets=[]
+    for target in con.execute('''SELECT st.*,
+        CASE WHEN st.vehicle_id IS NOT NULL THEN 'VEHICLE' ELSE 'FLEET' END AS target_type,
+        v.plate AS vehicle_plate,v.brand AS vehicle_brand,v.model AS vehicle_model,
+        f.name AS fleet_name,cc.legal_name AS fleet_company_name
+        FROM subscription_targets st
+        LEFT JOIN vehicles v ON v.id=st.vehicle_id
+        LEFT JOIN fleets f ON f.id=st.fleet_id
+        LEFT JOIN client_companies cc ON cc.id=f.client_company_id
+        WHERE st.subscription_id=? ORDER BY st.created_at,st.rowid''',(rec['id'],)).fetchall():
+        item=dict(target)
+        item['target_name']=item['vehicle_plate'] if item['target_type']=='VEHICLE' else item['fleet_name']
+        targets.append(item)
+    rec['items']=items
+    rec['subscription_items']=items
+    rec['targets']=targets
+    rec['effective_total_cents']=sum(int(item['quantity'])*int(item['unit_price_cents']) for item in items)
+    return rec
+
+def get_subscription(db:Database, subscription_id:str)->dict:
+    with db.transaction() as con:
+        row=con.execute('SELECT * FROM subscriptions WHERE id=?',(subscription_id,)).fetchone()
+        if not row: raise KeyError('subscription not found')
+        return _hydrate_subscription(con,row)
+
+def list_subscriptions(db:Database, *, client_id:str|None=None, limit:int=500)->list[dict]:
+    where=' WHERE client_id=?' if client_id else ''
+    args=(client_id,) if client_id else ()
+    with db.transaction() as con:
+        rows=con.execute(f'SELECT * FROM subscriptions{where} ORDER BY created_at DESC,id LIMIT ?',(*args,int(limit))).fetchall()
+        return [_hydrate_subscription(con,row) for row in rows]
+
 def create_subscription(db:Database, actor:int, p:dict)->dict:
     sid=uid(); ts=now(); items=p.get('items') or []
-    if not p.get('client_id') or not p.get('start_on') or not items: raise ValueError('client_id, start_on and items required')
+    client_id=str(p.get('client_id') or '').strip()
+    start_on=str(p.get('start_on') or '').strip()
+    if not client_id or not start_on or not items: raise ValueError('client_id, start_on and items required')
+    try:
+        signed_on=date.fromisoformat(str(p.get('signed_on') or date.today().isoformat()))
+        start_date=date.fromisoformat(start_on)
+        end_on=str(p.get('end_on') or '').strip() or None
+        end_date=date.fromisoformat(end_on) if end_on else None
+    except (TypeError,ValueError) as exc:
+        raise ValueError('invalid subscription date') from exc
+    if end_date and end_date<start_date: raise ValueError('end_on cannot precede start_on')
+    try: due_day=int(p.get('due_day',10))
+    except (TypeError,ValueError) as exc: raise ValueError('due_day must be between 1 and 31') from exc
+    if due_day<1 or due_day>31: raise ValueError('due_day must be between 1 and 31')
     cycle=p.get('billing_cycle') or ('ANNUAL' if int(p.get('billing_interval_months',1))>=12 else 'MONTHLY')
     if cycle not in {'DAILY','MONTHLY','ANNUAL'}: raise ValueError('invalid billing_cycle')
     interval={'DAILY':0,'MONTHLY':1,'ANNUAL':12}[cycle]
-    rec={'id':sid,'client_id':p['client_id'],'signed_on':p.get('signed_on',date.today().isoformat()),'start_on':p['start_on'],'end_on':p.get('end_on'),
-         'due_day':int(p.get('due_day',10)),'billing_interval_months':interval,'billing_cycle':cycle,'renewal_mode':p.get('renewal_mode','MANUAL'),
-         'lifecycle_status':p.get('lifecycle_status','ACTIVE'),'revision':1,'created_at':ts,'updated_at':ts}
+    lifecycle_status=p.get('lifecycle_status','ACTIVE')
+    if lifecycle_status not in {'ACTIVE','PAUSED','CANCELLED','ENDED'}: raise ValueError('invalid lifecycle_status')
+    raw_vehicle_ids=list(p.get('target_vehicle_ids') or [])
+    raw_fleet_ids=list(p.get('target_fleet_ids') or [])
+    for item in items:
+        if item.get('vehicle_id'): raw_vehicle_ids.append(item['vehicle_id'])
+    vehicle_ids=[str(value or '').strip() for value in raw_vehicle_ids]
+    fleet_ids=[str(value or '').strip() for value in raw_fleet_ids]
+    if any(not value for value in vehicle_ids+fleet_ids): raise ValueError('target id required')
+    if len(vehicle_ids)!=len(set(vehicle_ids)): raise ValueError('duplicate vehicle target')
+    if len(fleet_ids)!=len(set(fleet_ids)): raise ValueError('duplicate fleet target')
+    rec={'id':sid,'client_id':client_id,'signed_on':signed_on.isoformat(),'start_on':start_date.isoformat(),'end_on':end_on,
+         'due_day':due_day,'billing_interval_months':interval,'billing_cycle':cycle,'renewal_mode':p.get('renewal_mode','MANUAL'),
+         'lifecycle_status':lifecycle_status,'revision':1,'created_at':ts,'updated_at':ts}
     with db.transaction() as con:
+        client=con.execute('SELECT id FROM clients WHERE id=? AND archived=0 AND status=?',(client_id,'ACTIVE')).fetchone()
+        if not client: raise ValueError('client is not eligible for subscription')
+        normalized_items=[]
+        for item in items:
+            catalog_id=str(item.get('catalog_id') or '').strip()
+            catalog=con.execute("SELECT * FROM catalog WHERE id=? AND active=1 AND upper(category)='MENSAL'",(catalog_id,)).fetchone()
+            if not catalog: raise ValueError('active monthly plan not found')
+            try: quantity=int(item.get('quantity',1))
+            except (TypeError,ValueError) as exc: raise ValueError('quantity must be positive') from exc
+            if quantity<=0: raise ValueError('quantity must be positive')
+            unit=parse_money_api(item['unit_price']) if 'unit_price' in item else int(catalog['price_cents'])
+            if unit<0: raise ValueError('unit price cannot be negative')
+            normalized_items.append({
+                'id':uid(),'subscription_id':sid,'catalog_id':catalog_id,
+                'vehicle_id':str(item.get('vehicle_id') or '').strip() or None,
+                'description':str(item.get('description') or catalog['name']).strip(),
+                'quantity':quantity,'unit_price_cents':unit,
+            })
+        for vehicle_id in vehicle_ids:
+            vehicle=con.execute('SELECT client_id FROM vehicles WHERE id=? AND archived=0',(vehicle_id,)).fetchone()
+            if not vehicle or vehicle['client_id']!=client_id: raise ValueError('vehicle does not belong to client')
+        for fleet_id in fleet_ids:
+            fleet=con.execute('''SELECT f.client_id,cc.client_id AS company_client_id
+                                 FROM fleets f LEFT JOIN client_companies cc
+                                 ON cc.id=f.client_company_id AND cc.archived=0
+                                 WHERE f.id=? AND f.archived=0''',(fleet_id,)).fetchone()
+            if not fleet or fleet['client_id']!=client_id: raise ValueError('fleet does not belong to client')
+            if fleet['company_client_id']!=client_id: raise ValueError('fleet company does not belong to client')
         con.execute('''INSERT INTO subscriptions(id,client_id,signed_on,start_on,end_on,due_day,billing_interval_months,billing_cycle,renewal_mode,lifecycle_status,revision,created_at,updated_at)
                      VALUES(:id,:client_id,:signed_on,:start_on,:end_on,:due_day,:billing_interval_months,:billing_cycle,:renewal_mode,:lifecycle_status,:revision,:created_at,:updated_at)''',rec)
-        for item in items:
-            catalog=None
-            if item.get('catalog_id'):
-                catalog=con.execute('SELECT * FROM catalog WHERE id=?',(item['catalog_id'],)).fetchone()
-            description=item.get('description') or (catalog['name'] if catalog else None)
-            if not description: raise ValueError('subscription item description required')
-            unit=parse_money_api(item['unit_price']) if 'unit_price' in item else int(catalog['price_cents'] if catalog else 0)
+        for item in normalized_items:
             con.execute('INSERT INTO subscription_items(id,subscription_id,catalog_id,vehicle_id,description,quantity,unit_price_cents) VALUES(?,?,?,?,?,?,?)',
-                        (uid(),sid,item.get('catalog_id'),item.get('vehicle_id'),description,int(item.get('quantity',1)),unit))
-        audit(con,actor,'SUBSCRIPTION_CREATE','subscription',sid,None,rec)
-    return rec
+                        (item['id'],sid,item['catalog_id'],item['vehicle_id'],item['description'],item['quantity'],item['unit_price_cents']))
+        for vehicle_id in vehicle_ids:
+            con.execute('INSERT INTO subscription_targets(id,subscription_id,vehicle_id,fleet_id,created_at) VALUES(?,?,?,?,?)',
+                        (uid(),sid,vehicle_id,None,ts))
+        for fleet_id in fleet_ids:
+            con.execute('INSERT INTO subscription_targets(id,subscription_id,vehicle_id,fleet_id,created_at) VALUES(?,?,?,?,?)',
+                        (uid(),sid,None,fleet_id,ts))
+        hydrated=_hydrate_subscription(con,con.execute('SELECT * FROM subscriptions WHERE id=?',(sid,)).fetchone())
+        audit(con,actor,'SUBSCRIPTION_CREATE','subscription',sid,None,hydrated)
+        return hydrated
 
 def create_direct_sale(db:Database, actor:int, p:dict)->dict:
     client_id=p.get('client_id')
@@ -364,9 +464,7 @@ def client_profile(db:Database, client_id:str)->dict:
     if row['phone']: contacts.append({'type':'PHONE','value':row['phone'],'is_primary':0 if row['email'] else 1})
     fleets=[dict(r) for r in db.query('SELECT * FROM fleets WHERE client_id=? AND archived=0 ORDER BY name',(client_id,))]
     vehicles=[dict(r) for r in db.query('SELECT * FROM vehicles WHERE client_id=? AND archived=0 ORDER BY plate',(client_id,))]
-    subscriptions=[dict(r) for r in db.query('SELECT * FROM subscriptions WHERE client_id=? ORDER BY created_at DESC',(client_id,))]
-    for subscription in subscriptions:
-        subscription['subscription_items']=[dict(r) for r in db.query('SELECT * FROM subscription_items WHERE subscription_id=?',(subscription['id'],))]
+    subscriptions=list_subscriptions(db,client_id=client_id)
     direct_sales=[dict(r) for r in db.query('SELECT * FROM direct_sales WHERE client_id=? ORDER BY sold_on DESC,created_at DESC',(client_id,))]
     for sale in direct_sales:
         sale['direct_sale_items']=[dict(r) for r in db.query('SELECT * FROM direct_sale_items WHERE sale_id=?',(sale['id'],))]
