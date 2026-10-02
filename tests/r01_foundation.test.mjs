@@ -65,7 +65,8 @@ test('shell coloca marca e ações no cabeçalho fixo e remove PRODUÇÃO · ESC
   });
   assert.match(html, /class="topbar shell-topbar"/);
   assert.match(html, /UStracker/);
-  assert.match(html, /Carlos · Administrador/);
+  assert.match(html, />Carlos<\/button>/);
+  assert.doesNotMatch(html, /Carlos · Administrador/);
   assert.match(html, /id="globalHelp"/);
   assert.match(html, /id="globalLogout"/);
   assert.match(html, /id="globalShutdown"/);

@@ -52,10 +52,9 @@ class R2RouteTests(unittest.TestCase):
             app.state.auth.bootstrap('Admin', '1234')
             session = app.state.auth.login('Admin', '1234', 'test')
             db = Database(root, 'test', session.db_key)
-            client = create_client(db, 1, {'legal_name': 'Cliente API'})
+            client = create_client(db, 1, {'legal_name': 'Cliente API', 'email': 'api@example.test', 'documents': [{'type': 'RG', 'number': 'TEST003', 'is_primary': True}]})
             catalog = create_catalog(db, 1, {
-                'code': 'API-R2', 'name': 'Plano API', 'category': 'Serviço',
-                'kind': 'PLAN', 'price': '50.00',
+                'description': 'Produto API', 'category': 'Avulsa', 'price': '50.00', 'cost': '0.00',
             })
             status, sale = asgi_request(app, 'POST', '/api/v1/direct-sales', session, {
                 'client_id': client['id'], 'sold_on': '2026-05-01',

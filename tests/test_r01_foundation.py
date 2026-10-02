@@ -1,10 +1,11 @@
 from pathlib import Path
+import sys
 import unittest
 
-from ustracker.money import parse_money_api
-
-
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
+
+from ustracker.money import parse_money_api
 
 
 class R01FoundationTests(unittest.TestCase):

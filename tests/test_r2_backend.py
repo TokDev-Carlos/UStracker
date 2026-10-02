@@ -3,6 +3,7 @@ import json
 import sys
 import tempfile
 import unittest
+import importlib.util
 from datetime import date
 from pathlib import Path
 
@@ -17,10 +18,15 @@ class R2BackendTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.db = Database(Path(self.tmp.name), 'test', b'0' * 32)
-        self.client = create_client(self.db, 1, {'legal_name': 'Cliente R2'})
+        self.client = create_client(self.db, 1, {
+            'legal_name': 'Cliente R2', 'email': 'cliente@example.test',
+            'documents': [{'type': 'RG', 'number': 'TEST001', 'is_primary': True}],
+        })
+        self.plan_catalog = create_catalog(self.db, 1, {
+            'description': 'Plano R2', 'category': 'Mensal', 'price': '120.00', 'cost': '0.00',
+        })
         self.catalog = create_catalog(self.db, 1, {
-            'code': 'PLAN-R2', 'name': 'Plano R2', 'category': 'Serviço',
-            'kind': 'PLAN', 'price': '120.00',
+            'description': 'Produto R2', 'category': 'Avulsa', 'price': '120.00', 'cost': '0.00',
         })
 
     def tearDown(self):
@@ -30,23 +36,24 @@ class R2BackendTests(unittest.TestCase):
         create_subscription(self.db, 1, {
             'client_id': self.client['id'], 'start_on': '2026-01-01',
             'billing_interval_months': 12,
-            'items': [{'catalog_id': self.catalog['id'], 'quantity': 1}],
+            'items': [{'catalog_id': self.plan_catalog['id'], 'quantity': 1}],
         })
         with self.db.transaction() as con:
             con.execute("UPDATE meta SET value='2' WHERE key='schema_version'")
         upgraded = Database(Path(self.tmp.name), 'test', b'0' * 32)
         row = upgraded.one('SELECT billing_cycle FROM subscriptions')
         self.assertEqual(row[0], 'ANNUAL')
-        self.assertEqual(upgraded.one("SELECT value FROM meta WHERE key='schema_version'")[0], '3')
+        self.assertEqual(upgraded.one("SELECT value FROM meta WHERE key='schema_version'")[0], '8')
         self.assertIsNotNone(upgraded.one("SELECT name FROM sqlite_master WHERE name='direct_sales'"))
 
     def test_package_metadata_declares_schema3_without_product_version_change(self):
         root = Path(__file__).parents[1]
         version = json.loads((root / 'VERSION.json').read_text(encoding='utf-8'))
         current = json.loads((root / 'current.json').read_text(encoding='utf-8'))
-        self.assertEqual((version['schema_version'], current['schema_version']), (3, 3))
+        self.assertEqual((version['schema_version'], current['schema_version']), (8, 8))
         self.assertEqual((version['version'], current['version']), ('1.00.01.000', '1.00.01.000'))
 
+    @unittest.skipUnless(importlib.util.find_spec('sqlcipher3'), 'sqlcipher3 unavailable in this environment')
     def test_schema3_alters_actual_legacy_table_without_billing_cycle(self):
         import sqlcipher3
         with tempfile.TemporaryDirectory() as directory:
@@ -77,7 +84,7 @@ class R2BackendTests(unittest.TestCase):
             'items': [{'catalog_id': self.catalog['id'], 'quantity': 2}],
         })
         self.assertEqual(sale['total_cents'], 24000)
-        self.assertEqual(sale['items'][0]['description'], 'Plano R2')
+        self.assertEqual(sale['items'][0]['description'], 'Produto R2')
         paid = set_direct_sale_status(self.db, 1, sale['id'], {
             'status': 'PAID', 'paid_on': '2026-05-04', 'expected_revision': 1,
         })
@@ -88,9 +95,9 @@ class R2BackendTests(unittest.TestCase):
 
     def test_direct_sale_rejects_vehicle_from_other_client(self):
         from ustracker.services import create_direct_sale, create_vehicle
-        other = create_client(self.db, 1, {'legal_name': 'Outro Cliente'})
+        other = create_client(self.db, 1, {'legal_name': 'Outro Cliente', 'phone': '21999990000', 'documents': [{'type': 'RG', 'number': 'TEST002', 'is_primary': True}]})
         vehicle = create_vehicle(self.db, 1, {
-            'client_id': other['id'], 'plate': 'ABC1234', 'type': 'CAR',
+            'client_id': other['id'], 'plate': 'ABC1234', 'type': 'Carro', 'brand': 'Marca', 'model': 'Modelo', 'year': 2026,
         })
         with self.assertRaises(ValueError):
             create_direct_sale(self.db, 1, {
@@ -103,7 +110,7 @@ class R2BackendTests(unittest.TestCase):
         create_subscription(self.db, 1, {
             'client_id': self.client['id'], 'start_on': '2026-01-01',
             'billing_cycle': 'MONTHLY',
-            'items': [{'catalog_id': self.catalog['id'], 'quantity': 2}],
+            'items': [{'catalog_id': self.plan_catalog['id'], 'quantity': 2}],
         })
         create_direct_sale(self.db, 1, {
             'client_id': self.client['id'], 'sold_on': '2026-04-15',
@@ -126,18 +133,18 @@ class R2BackendTests(unittest.TestCase):
         rec = create_subscription(self.db, 1, {
             'client_id': self.client['id'], 'start_on': '2026-05-01',
             'billing_cycle': 'DAILY',
-            'items': [{'catalog_id': self.catalog['id'], 'quantity': 1}],
+            'items': [{'catalog_id': self.plan_catalog['id'], 'quantity': 1}],
         })
         self.assertEqual((rec['billing_cycle'], rec['billing_interval_months']), ('DAILY', 0))
 
     def test_client_profile_collects_related_records_and_paid_totals(self):
         from ustracker.services import client_profile, create_direct_sale, create_vehicle
         vehicle = create_vehicle(self.db, 1, {
-            'client_id': self.client['id'], 'plate': 'DEF5678', 'type': 'CAR',
+            'client_id': self.client['id'], 'plate': 'DEF5678', 'type': 'Carro', 'brand': 'Marca', 'model': 'Modelo', 'year': 2026,
         })
         create_subscription(self.db, 1, {
             'client_id': self.client['id'], 'start_on': '2026-05-01',
-            'items': [{'catalog_id': self.catalog['id'], 'quantity': 1}],
+            'items': [{'catalog_id': self.plan_catalog['id'], 'quantity': 1}],
         })
         create_direct_sale(self.db, 1, {
             'client_id': self.client['id'], 'sold_on': '2026-05-01', 'status': 'PAID',
@@ -155,6 +162,8 @@ class R2BackendTests(unittest.TestCase):
             'subscription_received_cents': 2000,
             'direct_sales_paid_cents': 12000,
             'client_expenses_paid_cents': 1000,
+            'client_expenses_generated_cents': 1000,
+            'generated_total_cents': 13000,
         })
         with self.assertRaises(KeyError):
             client_profile(self.db, 'missing-client')

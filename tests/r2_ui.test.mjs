@@ -67,7 +67,7 @@ test('Mensalidade apresenta somente os ciclos existentes sem conversão inventad
   assert.equal(formatSubscriptionRates({}), '—');
 });
 
-test('A ficha do cliente mostra oito cards recolhíveis e reutiliza miniaturas', async () => {
+test('A ficha do cliente usa cinco blocos consolidados e reutiliza miniaturas', async () => {
   const { renderClientProfile } = await import('../frontend/ui/r2-ui.js');
   const html = renderClientProfile({
     client: { legal_name: '<Empresa>', trade_name: 'Marca', document: '123' },
@@ -79,8 +79,7 @@ test('A ficha do cliente mostra oito cards recolhíveis e reutiliza miniaturas',
     financial: { subscription_received_cents: 2000, direct_sales_paid_cents: 5000, client_expenses_paid_cents: 1000 },
   });
   const titles = [...html.matchAll(/<summary>([^<]+)/g)].map(match => match[1]);
-  assert.deepEqual(titles, ['Cliente', 'Empresa / Identificação', 'Foto do Cliente', 'Frotas',
-    'Veículos', 'Assinaturas', 'Compras Diretas', 'Resumo Financeiro']);
+  assert.deepEqual(titles, ['Dados Básicos', 'Empresas', 'Veículos', 'Financeiro', 'Assinaturas']);
   assert.match(html, /\/api\/v1\/media\/m1\/thumb/);
   assert.match(html, /\/api\/v1\/media\/m2\/thumb/);
   assert.match(html, /&lt;Empresa&gt;/);
