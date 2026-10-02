@@ -42,6 +42,11 @@ def create_backup(root: Path, db: Database, vrk: bytes) -> Path:
                 for p in media_root.rglob('*'):
                     if p.is_file():
                         z.write(p, arcname='media/' + p.relative_to(media_root).as_posix())
+            attachments_root = root / 'UserData' / 'Attachments' / db.environment
+            if attachments_root.exists():
+                for p in attachments_root.rglob('*'):
+                    if p.is_file():
+                        z.write(p, arcname='attachments/' + p.relative_to(attachments_root).as_posix())
             public = root / 'UserData' / 'Public' / 'production' / 'view.json'
             if db.environment == 'production' and public.exists():
                 z.write(public, arcname='public/view.json')
@@ -133,6 +138,12 @@ def restore_backup(root: Path, db: Database, vrk: bytes, path: Path) -> None:
             if media_dst.exists():
                 shutil.rmtree(media_dst)
             shutil.copytree(media_src, media_dst)
+        attachments_src = staging / 'attachments'
+        attachments_dst = root / 'UserData' / 'Attachments' / db.environment
+        if attachments_src.exists():
+            if attachments_dst.exists():
+                shutil.rmtree(attachments_dst)
+            shutil.copytree(attachments_src, attachments_dst)
     finally:
         shutil.rmtree(staging, ignore_errors=True)
 

@@ -3,11 +3,11 @@ from __future__ import annotations
 import os
 import sqlite3
 import threading
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from pathlib import Path
 from typing import Iterator
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 8
 
 SCHEMA_SQL = r'''
 CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -24,15 +24,29 @@ CREATE TABLE IF NOT EXISTS clients(
  created_at TEXT NOT NULL, updated_at TEXT NOT NULL
 );
 CREATE UNIQUE INDEX IF NOT EXISTS ux_clients_document ON clients(document) WHERE document IS NOT NULL AND document<>'';
+CREATE TABLE IF NOT EXISTS client_documents(
+ id TEXT PRIMARY KEY, client_id TEXT NOT NULL REFERENCES clients(id), type TEXT NOT NULL CHECK(type IN ('CPF','RG','CNH')),
+ number TEXT NOT NULL, normalized_number TEXT NOT NULL, is_primary INTEGER NOT NULL DEFAULT 0,
+ archived INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_client_documents_type_number_active
+ ON client_documents(type,normalized_number) WHERE archived=0;
+CREATE INDEX IF NOT EXISTS ix_client_documents_client ON client_documents(client_id,archived,is_primary);
+CREATE TABLE IF NOT EXISTS client_companies(
+ id TEXT PRIMARY KEY, client_id TEXT NOT NULL REFERENCES clients(id), legal_name TEXT NOT NULL,
+ trade_name TEXT, document TEXT, normalized_document TEXT, is_primary INTEGER NOT NULL DEFAULT 0,
+ archived INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_client_companies_client ON client_companies(client_id,archived,is_primary);
 CREATE TABLE IF NOT EXISTS fleets(
- id TEXT PRIMARY KEY, client_id TEXT NOT NULL REFERENCES clients(id), name TEXT NOT NULL,
+ id TEXT PRIMARY KEY, client_id TEXT NOT NULL REFERENCES clients(id), client_company_id TEXT REFERENCES client_companies(id), name TEXT NOT NULL,
  sector_or_unit TEXT, archived INTEGER NOT NULL DEFAULT 0, revision INTEGER NOT NULL DEFAULT 1,
  created_at TEXT NOT NULL, updated_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS vehicles(
  id TEXT PRIMARY KEY, client_id TEXT NOT NULL REFERENCES clients(id), fleet_id TEXT REFERENCES fleets(id),
- plate TEXT NOT NULL, type TEXT NOT NULL, renavam TEXT, tracker_ref TEXT, tracker_serial_imei TEXT,
- installed_on TEXT, tracking_status TEXT NOT NULL DEFAULT 'UNTRACKED', notes TEXT,
+ plate TEXT NOT NULL, type TEXT NOT NULL, brand TEXT, model TEXT, year INTEGER, contracted_on TEXT, review_on TEXT,
+ renavam TEXT, tracker_ref TEXT, tracker_serial_imei TEXT, installed_on TEXT, tracking_status TEXT NOT NULL DEFAULT 'UNTRACKED', notes TEXT,
  archived INTEGER NOT NULL DEFAULT 0, revision INTEGER NOT NULL DEFAULT 1,
  created_at TEXT NOT NULL, updated_at TEXT NOT NULL
 );
@@ -41,6 +55,16 @@ CREATE TABLE IF NOT EXISTS ownerships(
  id TEXT PRIMARY KEY, vehicle_id TEXT NOT NULL REFERENCES vehicles(id), client_id TEXT NOT NULL REFERENCES clients(id),
  fleet_id TEXT REFERENCES fleets(id), effective_from TEXT NOT NULL, effective_to TEXT, created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS vehicle_transfer_cases(
+ id TEXT PRIMARY KEY, vehicle_id TEXT NOT NULL REFERENCES vehicles(id),
+ from_client_id TEXT NOT NULL REFERENCES clients(id), from_fleet_id TEXT REFERENCES fleets(id),
+ to_client_id TEXT NOT NULL REFERENCES clients(id), to_fleet_id TEXT REFERENCES fleets(id),
+ effective_from TEXT NOT NULL, status TEXT NOT NULL CHECK(status IN ('PENDING','COMPLETED','CANCELLED')),
+ source_revision INTEGER NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+ completed_at TEXT, cancelled_at TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_vehicle_transfer_pending ON vehicle_transfer_cases(vehicle_id) WHERE status='PENDING';
+CREATE INDEX IF NOT EXISTS ix_vehicle_transfer_status ON vehicle_transfer_cases(status,created_at);
 CREATE TABLE IF NOT EXISTS catalog(
  id TEXT PRIMARY KEY, code TEXT NOT NULL UNIQUE, name TEXT NOT NULL, description TEXT, category TEXT NOT NULL,
  kind TEXT NOT NULL CHECK(kind IN ('PLAN','ITEM')), billing_interval_months INTEGER NOT NULL DEFAULT 1,
@@ -53,6 +77,12 @@ CREATE TABLE IF NOT EXISTS catalog_prices(
  price_cents INTEGER NOT NULL, cost_cents INTEGER NOT NULL, created_at TEXT NOT NULL,
  UNIQUE(catalog_id,effective_from)
 );
+CREATE TABLE IF NOT EXISTS catalog_cost_components(
+ id TEXT PRIMARY KEY, catalog_id TEXT NOT NULL REFERENCES catalog(id) ON DELETE CASCADE,
+ description TEXT, amount_cents INTEGER NOT NULL CHECK(amount_cents>=0), position INTEGER NOT NULL DEFAULT 0,
+ created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_catalog_cost_components_catalog ON catalog_cost_components(catalog_id,position,id);
 CREATE TABLE IF NOT EXISTS subscriptions(
  id TEXT PRIMARY KEY, client_id TEXT NOT NULL REFERENCES clients(id), signed_on TEXT NOT NULL,
  start_on TEXT NOT NULL, end_on TEXT, due_day INTEGER NOT NULL CHECK(due_day BETWEEN 1 AND 31),
@@ -102,6 +132,13 @@ CREATE TABLE IF NOT EXISTS credits(
  id TEXT PRIMARY KEY, client_id TEXT NOT NULL REFERENCES clients(id), origin_payment_id TEXT REFERENCES payments(id),
  amount_cents INTEGER NOT NULL, balance_cents INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'OPEN', created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS service_coverage_periods(
+ id TEXT PRIMARY KEY, client_id TEXT NOT NULL REFERENCES clients(id), subscription_id TEXT NOT NULL REFERENCES subscriptions(id),
+ origin_payment_id TEXT NOT NULL REFERENCES payments(id), start_on TEXT NOT NULL, end_on TEXT NOT NULL,
+ cycles INTEGER NOT NULL CHECK(cycles>0), applied_value_cents INTEGER NOT NULL CHECK(applied_value_cents>=0), created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_service_coverage_subscription ON service_coverage_periods(subscription_id,end_on);
+CREATE INDEX IF NOT EXISTS ix_service_coverage_payment ON service_coverage_periods(origin_payment_id);
 CREATE TABLE IF NOT EXISTS credit_allocations(
  id TEXT PRIMARY KEY, credit_id TEXT NOT NULL REFERENCES credits(id), charge_id TEXT NOT NULL REFERENCES charges(id),
  amount_cents INTEGER NOT NULL, active INTEGER NOT NULL DEFAULT 1, applied_on TEXT NOT NULL, reversed_on TEXT
@@ -127,6 +164,16 @@ CREATE TABLE IF NOT EXISTS media(
  thumb_path TEXT NOT NULL, original_path TEXT, mime TEXT NOT NULL, width INTEGER NOT NULL, height INTEGER NOT NULL,
  sha256 TEXT NOT NULL, created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS attachments(
+ id TEXT PRIMARY KEY, entity_type TEXT NOT NULL, entity_id TEXT NOT NULL,
+ client_id TEXT REFERENCES clients(id), subscription_id TEXT REFERENCES subscriptions(id),
+ vehicle_id TEXT REFERENCES vehicles(id), fleet_id TEXT REFERENCES fleets(id),
+ filename TEXT, mime TEXT, size_bytes INTEGER NOT NULL DEFAULT 0, sha256 TEXT,
+ origin TEXT NOT NULL CHECK(origin IN ('LOCAL','LINK')), local_path TEXT, url TEXT,
+ created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_attachments_local_hash ON attachments(sha256) WHERE origin='LOCAL' AND sha256 IS NOT NULL;
+CREATE INDEX IF NOT EXISTS ix_attachments_entity ON attachments(entity_type,entity_id,created_at);
 CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS stations(
  id TEXT PRIMARY KEY, name TEXT NOT NULL, fingerprint TEXT, is_writer INTEGER NOT NULL DEFAULT 0,
@@ -184,7 +231,7 @@ class Database:
         return con
 
     def _ensure_schema(self) -> None:
-        with self.connect() as con:
+        with closing(self.connect()) as con:
             con.executescript(SCHEMA_SQL)
             current = con.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
             current_version = int(current[0]) if current else 0
@@ -203,7 +250,75 @@ class Database:
                     con.execute("ALTER TABLE subscriptions ADD COLUMN billing_cycle TEXT NOT NULL DEFAULT 'MONTHLY'")
                 con.execute("""UPDATE subscriptions SET billing_cycle=CASE
                     WHEN billing_interval_months >= 12 THEN 'ANNUAL' ELSE 'MONTHLY' END""")
+            if current_version < 4:
+                from .clients import infer_document_type, normalize_document_number
+                legacy_clients = con.execute(
+                    "SELECT id,document,created_at,updated_at FROM clients "
+                    "WHERE document IS NOT NULL AND trim(document)<>''"
+                ).fetchall()
+                for client in legacy_clients:
+                    exists = con.execute(
+                        'SELECT 1 FROM client_documents WHERE client_id=? AND archived=0 LIMIT 1',
+                        (client['id'],)
+                    ).fetchone()
+                    if exists:
+                        continue
+                    number = str(client['document']).strip()
+                    normalized = normalize_document_number(number)
+                    if not normalized:
+                        continue
+                    dtype = infer_document_type(number)
+                    duplicate = con.execute(
+                        'SELECT 1 FROM client_documents WHERE type=? AND normalized_number=? AND archived=0 LIMIT 1',
+                        (dtype, normalized)
+                    ).fetchone()
+                    if duplicate:
+                        continue
+                    con.execute(
+                        'INSERT INTO client_documents(id,client_id,type,number,normalized_number,is_primary,archived,created_at,updated_at) '
+                        'VALUES(?,?,?,?,?,1,0,?,?)',
+                        (os.urandom(16).hex(), client['id'], dtype, number, normalized, client['created_at'], client['updated_at'])
+                    )
+            if current_version < 5:
+                fleet_cols = {r[1] for r in con.execute("PRAGMA table_info(fleets)").fetchall()}
+                if 'client_company_id' not in fleet_cols:
+                    con.execute("ALTER TABLE fleets ADD COLUMN client_company_id TEXT REFERENCES client_companies(id)")
+                vehicle_cols = {r[1] for r in con.execute("PRAGMA table_info(vehicles)").fetchall()}
+                for column, ddl in (
+                    ('brand', 'TEXT'), ('model', 'TEXT'), ('year', 'INTEGER'),
+                    ('contracted_on', 'TEXT'), ('review_on', 'TEXT')
+                ):
+                    if column not in vehicle_cols:
+                        con.execute(f"ALTER TABLE vehicles ADD COLUMN {column} {ddl}")
+                con.execute("""UPDATE fleets SET client_company_id=(
+                    SELECT cc.id FROM client_companies cc
+                    WHERE cc.client_id=fleets.client_id AND cc.archived=0
+                    ORDER BY cc.is_primary DESC,cc.created_at,cc.id LIMIT 1
+                ) WHERE client_company_id IS NULL""")
+                con.execute("""UPDATE vehicles SET contracted_on=COALESCE(contracted_on,(
+                    SELECT MIN(o.effective_from) FROM ownerships o WHERE o.vehicle_id=vehicles.id
+                ),substr(created_at,1,10)) WHERE contracted_on IS NULL OR contracted_on=''""")
+                con.execute("CREATE INDEX IF NOT EXISTS ix_fleets_company ON fleets(client_company_id,archived)")
+                con.execute("INSERT OR IGNORE INTO meta(key,value) VALUES('fleet_max_active','100')")
+            if current_version < 6:
+                # R04: catalog UI becomes Planos/Produtos while legacy physical columns remain compatible.
+                con.execute("UPDATE catalog SET category=CASE WHEN kind='PLAN' THEN 'MENSAL' ELSE 'AVULSA' END")
+                rows = con.execute('SELECT id,cost_cents,created_at,updated_at FROM catalog').fetchall()
+                for row in rows:
+                    exists = con.execute('SELECT 1 FROM catalog_cost_components WHERE catalog_id=? LIMIT 1',(row['id'],)).fetchone()
+                    if not exists:
+                        con.execute(
+                            'INSERT INTO catalog_cost_components(id,catalog_id,description,amount_cents,position,created_at,updated_at) VALUES(?,?,?,?,0,?,?)',
+                            (os.urandom(16).hex(),row['id'],None,int(row['cost_cents'] or 0),row['created_at'],row['updated_at'])
+                        )
+            if current_version < 7:
+                # R05 is additive: service coverage is distinct from monetary credits.
+                pass
+            if current_version < 8:
+                # R08 attachments are additive; SCHEMA_SQL creates the table and indexes.
+                pass
             con.execute("INSERT OR REPLACE INTO meta(key,value) VALUES('schema_version',?)", (str(SCHEMA_VERSION),))
+            con.commit()
 
     @contextmanager
     def transaction(self) -> Iterator:
@@ -220,9 +335,9 @@ class Database:
                 con.close()
 
     def query(self, sql: str, args=()):
-        with self.connect() as con:
+        with closing(self.connect()) as con:
             return con.execute(sql, args).fetchall()
 
     def one(self, sql: str, args=()):
-        with self.connect() as con:
+        with closing(self.connect()) as con:
             return con.execute(sql, args).fetchone()

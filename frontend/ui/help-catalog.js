@@ -15,9 +15,10 @@ export const HELP={
       public:'Exibir no catálogo público. Isso inclui o registro na projeção pública do UStracker; não publica o sistema na internet por si só.'
     }
   },
-  clients:{title:'Clientes',summary:'Pessoas ou empresas atendidas e vinculadas a frotas, veículos, assinaturas e financeiro.'},
-  fleets:{title:'Frotas',summary:'Agrupamentos de veículos pertencentes a um cliente, unidade ou setor.'},
-  vehicles:{title:'Veículos',summary:'Ativos rastreados vinculados a cliente/frota e, quando aplicável, a itens de assinatura.'},
+  clients:{title:'Clientes',summary:'Cadastro estruturado com documento obrigatório, contato, empresas vinculadas, foto, mobilidade, assinaturas e compras.'},
+  mobility:{title:'Frotas/Veículos',summary:'Gestão unificada de veículos particulares, frotas vinculadas às empresas do cliente e transferências de propriedade.'},
+  fleets:{title:'Frotas',summary:'Compatibilidade da área antiga. A gestão principal agora fica em Frotas/Veículos.'},
+  vehicles:{title:'Veículos',summary:'Compatibilidade da área antiga. A gestão principal agora fica em Frotas/Veículos.'},
   subscriptions:{title:'Assinaturas',summary:'Relação recorrente entre cliente e itens do catálogo, usada para geração de cobranças.',fields:{billing_cycle:'Periodicidade diária, mensal ou anual da assinatura; a cobrança continua por competência manual.'}},
   purchases:{title:'Compras Diretas',summary:'Registre uma compra avulsa do cliente, seus itens e a data em que o valor foi pago.'},
   charges:{title:'Cobranças',summary:'Valores gerados por competência e seus ajustes.'},

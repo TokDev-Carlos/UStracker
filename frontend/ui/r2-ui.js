@@ -63,27 +63,64 @@ export function formatSubscriptionRates(row = {}) {
 
 export function renderClientProfile(profile = {}) {
   const client = profile.client || {};
-  const thumb = media => media ? `<img class="r2-profile-thumb" src="/api/v1/media/${escapeHtml(encodeURIComponent(media.id))}/thumb" alt="Foto">` : '<p class="muted">Nenhuma foto.</p>';
-  const list = (items, render) => items?.length ? `<ul>${items.map(item => `<li>${render(item)}</li>`).join('')}</ul>` : '<p class="muted">Nenhum registro.</p>';
-  const card = (title, body, open = false) => `<details class="r2-profile-card" ${open ? 'open' : ''}><summary>${title}</summary><div class="r2-profile-card-body">${body}</div></details>`;
-  const vehicles = list(profile.vehicles, vehicle =>
-    `<div class="r2-profile-vehicle">${thumb(profile.vehicle_media?.[vehicle.id]?.[0])}<span>${escapeHtml(vehicle.plate)} · ${escapeHtml(vehicle.type)}</span></div>`);
-  const subscriptions = list(profile.subscriptions, subscription =>
-    `<strong>${escapeHtml(({ DAILY: 'Diária', MONTHLY: 'Mensal', ANNUAL: 'Anual' })[subscription.billing_cycle] || subscription.billing_cycle)}</strong>
-     ${list(subscription.subscription_items, item => `${escapeHtml(item.description)} · ${Number(item.quantity || 0)} unidade(s)`)}`);
-  const sales = list(profile.direct_sales, sale =>
-    `<strong>${escapeHtml(formatDateBR(sale.sold_on, false))} · ${escapeHtml(sale.status)} · ${escapeHtml(formatBRL(sale.total_cents))}</strong>
-     ${list(sale.direct_sale_items, item => `${escapeHtml(item.description)} · ${Number(item.quantity || 0)} unidade(s)`)}`);
+  const documents = profile.documents || [];
+  const companies = profile.companies || [];
+  const summary = profile.summary || {};
   const financial = profile.financial || {};
+  const subscriptions = profile.subscriptions || [];
+  const attachments = profile.attachments || [];
+  const thumb = media => media ? `<img class="r2-profile-thumb" src="/api/v1/media/${escapeHtml(encodeURIComponent(media.id))}/thumb" alt="Foto do Cliente">` : '<p class="muted">Nenhuma foto.</p>';
+  const list = (items, render, empty = 'Nenhum registro.') => items?.length ? `<ul>${items.map(item => `<li>${render(item)}</li>`).join('')}</ul>` : `<p class="muted">${escapeHtml(empty)}</p>`;
+  const card = (title, body, open = false) => `<details class="r2-profile-card" ${open ? 'open' : ''}><summary>${title}</summary><div class="r2-profile-card-body">${body}</div></details>`;
+
+  const document = documents[0] || { type: 'RG', number: client.document || '' };
+  const documentTypeOptions = ['CPF', 'RG', 'CNH'].map(type => `<option value="${type}" ${document.type === type ? 'selected' : ''}>${type}</option>`).join('');
+  const statusValue = client.status === 'BLOCKED' ? 'INACTIVE' : (client.status || 'ACTIVE');
+  const statusOptions = [['ACTIVE', 'ATIVO'], ['INACTIVE', 'INATIVO'], ['CANCELLED', 'CANCELADO']]
+    .map(([value, label]) => `<option value="${value}" ${statusValue === value ? 'selected' : ''}>${label}</option>`).join('');
+  const photo = `${thumb(profile.client_media?.[0])}<form id="clientPhotoForm"><div class="field"><label>Foto do Cliente</label><input name="file" type="file" accept="image/jpeg,image/png,image/webp" required></div><div class="actions"><button type="submit" class="ui-btn ui-btn-secondary">Atualizar foto</button></div></form>`;
+
+  const companyList = list(companies, company => {
+    const name = company.trade_name || company.legal_name || 'Empresa';
+    const cnpj = company.document ? ` · CNPJ ${escapeHtml(company.document)}` : '';
+    return `${escapeHtml(name)}${cnpj}${company.is_primary ? ' · Principal' : ''}`;
+  });
+
+  const pluralType = type => ({ 'Carro': 'Carros', 'Caminhão': 'Caminhões', 'Embarcação': 'Embarcações', 'Aeronave': 'Aeronaves' })[type] || type || 'Outros';
+  const typeOrder = new Map(['Carro', 'Caminhão', 'Embarcação', 'Aeronave'].map((type, index) => [type, index]));
+  const grouped = new Map();
+  for (const vehicle of profile.vehicles || []) {
+    const type = vehicle.type || 'Outros';
+    if (!grouped.has(type)) grouped.set(type, []);
+    grouped.get(type).push(vehicle);
+  }
+  const vehicleGroups = [...grouped.entries()]
+    .sort(([a], [b]) => (typeOrder.get(a) ?? 99) - (typeOrder.get(b) ?? 99) || String(a).localeCompare(String(b), 'pt-BR'))
+    .map(([type, vehicles]) => `<section class="r2-profile-vehicle-group"><h4>${escapeHtml(pluralType(type))}</h4>${list(vehicles, vehicle => {
+      const media = profile.vehicle_media?.[vehicle.id]?.[0];
+      const description = [vehicle.plate, vehicle.brand, vehicle.model].filter(Boolean).join(' · ');
+      return `<div class="r2-profile-vehicle">${media ? thumb(media) : ''}<span>${escapeHtml(description || vehicle.id)}</span></div>`;
+    })}</section>`).join('') || '<p class="muted">Nenhum veículo.</p>';
+
+  const signatureAttachments = attachments.filter(attachment => attachment.entity_type === 'subscription');
+  const signatureList = list(signatureAttachments, attachment => attachment.origin === 'LINK'
+    ? `<a href="${escapeHtml(attachment.url)}" target="_blank" rel="noopener">${escapeHtml(attachment.filename || 'Abrir assinatura')}</a>`
+    : `<a href="/api/v1/attachments/${escapeHtml(encodeURIComponent(attachment.id))}">${escapeHtml(attachment.filename || 'Baixar assinatura')}</a>`, 'Nenhuma assinatura eletrônica anexada.');
+  const signatureUpload = subscriptions.length ? `<form id="clientSignatureForm"><div class="row"><div class="field"><label>Assinatura</label><select name="subscription_id" required><option value="">Selecione</option>${subscriptions.map(subscription => `<option value="${escapeHtml(subscription.id)}">${escapeHtml(subscription.id)}</option>`).join('')}</select></div><div class="field"><label>Arquivo</label><input type="file" name="file" accept=".jpg,.jpeg,.png,.webp,.pdf" required></div></div><div class="actions"><button type="submit" class="ui-btn ui-btn-secondary">Anexar assinatura</button></div></form>` : '<p class="muted">Cadastre uma assinatura comercial antes de anexar o documento eletrônico.</p>';
+
   return `<div class="r2-profile">
-    ${card('Cliente', `<h3>${escapeHtml(client.legal_name)}</h3><p>${escapeHtml(client.public_name || client.trade_name || '')}</p>`, true)}
-    ${card('Empresa / Identificação', `<dl><dt>Nome comercial</dt><dd>${escapeHtml(client.trade_name || '—')}</dd><dt>Documento</dt><dd>${escapeHtml(client.document || '—')}</dd><dt>E-mail</dt><dd>${escapeHtml(client.email || '—')}</dd><dt>Telefone</dt><dd>${escapeHtml(client.phone || '—')}</dd></dl>`)}
-    ${card('Foto do Cliente', thumb(profile.client_media?.[0]))}
-    ${card('Frotas', list(profile.fleets, fleet => escapeHtml(fleet.name)))}
-    ${card('Veículos', vehicles)}
-    ${card('Assinaturas', subscriptions)}
-    ${card('Compras Diretas', sales)}
-    ${card('Resumo Financeiro', `<dl><dt>Assinaturas recebidas</dt><dd>${escapeHtml(formatBRL(financial.subscription_received_cents))}</dd><dt>Compras pagas</dt><dd>${escapeHtml(formatBRL(financial.direct_sales_paid_cents))}</dd><dt>Despesas pagas do cliente</dt><dd>${escapeHtml(formatBRL(financial.client_expenses_paid_cents))}</dd></dl>`)}
+    ${card('Dados Básicos', `<div class="r2-profile-basic-media">${photo}</div><form id="clientBasicsForm"><div class="row">
+      <div class="field"><label>Nome*</label><input name="legal_name" value="${escapeHtml(client.legal_name || '')}" required></div>
+      <div class="field"><label>E-mail</label><input name="email" type="email" value="${escapeHtml(client.email || '')}"></div>
+      <div class="field"><label>Telefone</label><input name="phone" value="${escapeHtml(client.phone || '')}"></div>
+      <div class="field"><label>Situação</label><select name="status">${statusOptions}</select></div>
+      <div class="field"><label>Documento</label><select name="document_type">${documentTypeOptions}</select></div>
+      <div class="field"><label>Número do documento*</label><input name="document" value="${escapeHtml(document.number || '')}" required><span class="muted">Ao salvar, substitui o documento atual; não cria acúmulo.</span></div>
+    </div><div class="actions"><button type="submit" class="ui-btn ui-btn-primary">Salvar dados</button></div></form>`, true)}
+    ${card('Empresas', `${companyList}<form id="clientCompanyForm"><div class="row"><div class="field"><label>Nome Fantasia ou Razão Social*</label><input name="legal_name" required></div><div class="field"><label>CNPJ <span class="muted">(não obrigatório)</span></label><input name="document"></div><label><input type="checkbox" name="is_primary" value="true"> Principal</label></div><div class="actions"><button type="submit" class="ui-btn ui-btn-secondary">Adicionar</button></div></form>`)}
+    ${card('Veículos', vehicleGroups)}
+    ${card('Financeiro', `<dl><dt>Quantidade de Veículos</dt><dd>${Number(summary.vehicles_count || 0)}</dd><dt>Valor Gerado Total</dt><dd>${escapeHtml(formatBRL(summary.generated_value_cents))}</dd><dt>Compras Pagas</dt><dd>${escapeHtml(formatBRL(financial.direct_sales_paid_cents))}</dd><dt>Despesas Geradas</dt><dd>${escapeHtml(formatBRL(financial.client_expenses_generated_cents))}</dd></dl>`)}
+    ${card('Assinaturas', `${signatureList}${signatureUpload}`)}
   </div>`;
 }
 

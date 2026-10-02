@@ -18,8 +18,13 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .auth import AuthService, Session
+from .attachments import list_attachments, load_attachment, store_attachment, store_link
 from .backup import create_backup, maybe_automatic_backup, prune_backups, restore_backup, verify_backup
 from .branding import asset_dir, store_brand_asset
+from .catalog import list_catalog
+from .commercial import commercial_snapshot, create_coverage
+from .finance import ensure_fiscal_expense, finance_snapshot
+from .overview import client_activity_overview
 from .db import Database
 from .extensions import (
     add_charge_adjustment,
@@ -33,6 +38,15 @@ from .extensions import (
     update_catalog,
     verify_audit_chain,
 )
+from .mobility import (
+    cancel_transfer_case,
+    complete_transfer_case,
+    create_transfer_case,
+    fleet_profile,
+    list_mobility,
+    list_transfer_cases,
+    update_fleet,
+)
 from .media import load as load_media, recover_media_journals, store as store_media
 from .public_projection import read as read_public, rebuild as rebuild_public
 from .recovery import export_recovery
@@ -41,7 +55,10 @@ from .services import (
     add_disbursement,
     apply_credit,
     create_catalog,
+    archive_clients,
     create_client,
+    create_client_company,
+    create_client_document,
     create_direct_sale,
     create_expense,
     create_fiscal,
@@ -51,6 +68,9 @@ from .services import (
     client_profile,
     dashboard,
     generate_charge,
+    list_client_companies,
+    list_client_documents,
+    list_clients,
     list_table,
     list_direct_sales,
     reverse_payment,
@@ -252,7 +272,7 @@ def create_app(root: Path | str) -> FastAPI:
 
     @app.get('/api/v1/clients')
     def clients(request: Request):
-        return {'items': list_table(get_db(session_required(request, True)), 'clients', limit=500)}
+        return {'items': list_clients(get_db(session_required(request, True)), limit=500)}
 
     @app.post('/api/v1/clients', status_code=201)
     def clients_create(request: Request, p: dict = Body(...)):
@@ -275,6 +295,70 @@ def create_app(root: Path | str) -> FastAPI:
     @app.get('/api/v1/clients/{cid}/profile')
     def clients_profile(cid: str, request: Request):
         return client_profile(get_db(session_required(request, True)), cid)
+
+
+    @app.get('/api/v1/clients/{cid}/documents')
+    def clients_documents(cid: str, request: Request):
+        return {'items': list_client_documents(get_db(session_required(request, True)), cid)}
+
+    @app.post('/api/v1/clients/{cid}/documents', status_code=201)
+    def clients_documents_create(cid: str, request: Request, p: dict = Body(...)):
+        session = session_required(request, True)
+        return mutation(request, session, f'POST /clients/{cid}/documents', p,
+                        lambda db: create_client_document(db, session.slot, cid, p))
+
+    @app.get('/api/v1/clients/{cid}/companies')
+    def clients_companies(cid: str, request: Request):
+        return {'items': list_client_companies(get_db(session_required(request, True)), cid)}
+
+    @app.post('/api/v1/clients/{cid}/companies', status_code=201)
+    def clients_companies_create(cid: str, request: Request, p: dict = Body(...)):
+        session = session_required(request, True)
+        return mutation(request, session, f'POST /clients/{cid}/companies', p,
+                        lambda db: create_client_company(db, session.slot, cid, p))
+
+    @app.post('/api/v1/clients/archive')
+    def clients_archive(request: Request, p: dict = Body(...)):
+        session = session_required(request, True)
+        client_ids = p.get('client_ids') or []
+        def action(db):
+            result = archive_clients(db, session.slot, client_ids)
+            if session.environment == 'production': rebuild_public(root, db)
+            return result
+        return mutation(request, session, 'POST /clients/archive', p, action)
+
+    @app.get('/api/v1/mobility')
+    def mobility(request: Request, client_id: str | None = None, fleet_id: str | None = None, plate: str | None = None):
+        db = get_db(session_required(request, True))
+        return list_mobility(db, client_id=client_id, fleet_id=fleet_id, plate=plate)
+
+    @app.get('/api/v1/fleets/{fid}/profile')
+    def fleet_profile_route(fid: str, request: Request):
+        return fleet_profile(get_db(session_required(request, True)), fid)
+
+    @app.patch('/api/v1/fleets/{fid}')
+    def fleet_update(fid: str, request: Request, p: dict = Body(...)):
+        session = session_required(request, True)
+        return mutation(request, session, f'PATCH /fleets/{fid}', p, lambda db: update_fleet(db, session.slot, fid, p))
+
+    @app.get('/api/v1/vehicles/{vid}/transfer-cases')
+    def vehicle_transfer_cases(vid: str, request: Request):
+        return {'items': list_transfer_cases(get_db(session_required(request, True)), vid)}
+
+    @app.post('/api/v1/vehicles/{vid}/transfer-cases', status_code=201)
+    def vehicle_transfer_case_create(vid: str, request: Request, p: dict = Body(...)):
+        session = session_required(request, True)
+        return mutation(request, session, f'POST /vehicles/{vid}/transfer-cases', p, lambda db: create_transfer_case(db, session.slot, vid, p))
+
+    @app.post('/api/v1/vehicle-transfer-cases/{case_id}/cancel')
+    def vehicle_transfer_case_cancel(case_id: str, request: Request):
+        session = session_required(request, True)
+        return mutation(request, session, f'POST /vehicle-transfer-cases/{case_id}/cancel', {}, lambda db: cancel_transfer_case(db, session.slot, case_id))
+
+    @app.post('/api/v1/vehicle-transfer-cases/{case_id}/complete')
+    def vehicle_transfer_case_complete(case_id: str, request: Request):
+        session = session_required(request, True)
+        return mutation(request, session, f'POST /vehicle-transfer-cases/{case_id}/complete', {}, lambda db: complete_transfer_case(db, session.slot, case_id))
 
     @app.get('/api/v1/fleets')
     def fleets(request: Request):
@@ -304,9 +388,28 @@ def create_app(root: Path | str) -> FastAPI:
         session = session_required(request, True)
         return mutation(request, session, f'POST /vehicles/{vid}/transfer', p, lambda db: transfer_vehicle(db, session.slot, vid, p))
 
+    @app.get('/api/v1/finance')
+    def finance(request: Request):
+        return finance_snapshot(get_db(session_required(request, True)))
+
+    @app.post('/api/v1/fiscal/{fiscal_id}/ensure-expense')
+    def fiscal_ensure_expense(fiscal_id: str, request: Request):
+        session = session_required(request, True); db = get_db(session)
+        payload = {'fiscal_id': fiscal_id}
+        return mutation(request, session, f'POST /fiscal/{fiscal_id}/ensure-expense', payload, lambda: ensure_fiscal_expense(db, session.slot, fiscal_id))
+
+    @app.get('/api/v1/commercial')
+    def commercial(request: Request):
+        return commercial_snapshot(get_db(session_required(request, True)))
+
+    @app.post('/api/v1/commercial/coverage', status_code=201)
+    def commercial_coverage(request: Request, p: dict = Body(...)):
+        session = session_required(request, True); db = get_db(session)
+        return mutation(request, session, 'POST /commercial/coverage', p, lambda: create_coverage(db, session.slot, p))
+
     @app.get('/api/v1/catalog')
     def catalog(request: Request):
-        return {'items': list_table(get_db(session_required(request, True)), 'catalog', limit=500)}
+        return {'items': list_catalog(get_db(session_required(request, True)))}
 
     @app.post('/api/v1/catalog', status_code=201)
     def catalog_create(request: Request, p: dict = Body(...)):
@@ -444,9 +547,9 @@ def create_app(root: Path | str) -> FastAPI:
         return mutation(request, session, 'POST /fiscal', p, lambda db: create_fiscal(db, session.slot, p))
 
     @app.get('/api/v1/dashboard')
-    def dashboard_get(request: Request):
+    def dashboard_get(request: Request, q: str = Query(default='')):
         db = get_db(session_required(request, True))
-        return {**dashboard(db), **dashboard_extended(db)}
+        return {**dashboard(db), **dashboard_extended(db), 'client_activity': client_activity_overview(db, q)}
 
     @app.get('/api/v1/search')
     def search_get(q: str, request: Request):
@@ -509,6 +612,30 @@ def create_app(root: Path | str) -> FastAPI:
         session = session_required(request, True)
         data, mime = load_media(root, get_db(session), session.media_key, mid, variant)
         return Response(data, media_type=mime, headers={'Cache-Control': 'no-store'})
+
+    @app.get('/api/v1/attachments')
+    def attachments_list(request: Request, entity_type: str | None = None, entity_id: str | None = None):
+        db = get_db(session_required(request, True))
+        return {'items': list_attachments(db, entity_type, entity_id)}
+
+    @app.post('/api/v1/attachments/{entity_type}/{entity_id}', status_code=201)
+    async def attachment_upload(entity_type: str, entity_id: str, request: Request, file: UploadFile = File(...)):
+        session = session_required(request, True)
+        db = authorize_file_mutation(request, session)
+        data = await file.read()
+        return store_attachment(root, db, session.slot, session.media_key, entity_type, entity_id, file.filename or 'attachment', file.content_type, data)
+
+    @app.post('/api/v1/attachments/link', status_code=201)
+    def attachment_link_create(request: Request, p: dict = Body(...)):
+        session = session_required(request, True)
+        return mutation(request, session, 'POST /attachments/link', p, lambda db: store_link(db, session.slot, p.get('entity_type'), p.get('entity_id'), p.get('url'), p.get('filename')))
+
+    @app.get('/api/v1/attachments/{attachment_id}')
+    def attachment_download(attachment_id: str, request: Request):
+        session = session_required(request, True)
+        data, mime, filename = load_attachment(root, get_db(session), session.media_key, attachment_id)
+        safe = Path(filename).name.replace('\"', '').replace('\r', '').replace('\n', '') or 'attachment'
+        return Response(data, media_type=mime, headers={'Cache-Control':'no-store','Content-Disposition':f'attachment; filename="{safe}"'})
 
     @app.get('/api/v1/reports/{name}.csv')
     def report_csv_get(name: str, request: Request):
@@ -609,7 +736,7 @@ def create_app(root: Path | str) -> FastAPI:
     def sandbox_reset(request: Request, p: dict = Body(...)):
         session = session_required(request, True); csrf_required(request, session)
         if session.environment != 'test' or p.get('confirm') != 'LIMPAR TESTES': raise ValueError('test session and exact confirmation required')
-        db = get_db(session); db.path.unlink(missing_ok=True); shutil.rmtree(root/'UserData'/'Media'/'test', ignore_errors=True); Database(root, 'test', session.db_key)
+        db = get_db(session); db.path.unlink(missing_ok=True); shutil.rmtree(root/'UserData'/'Media'/'test', ignore_errors=True); shutil.rmtree(root/'UserData'/'Attachments'/'test', ignore_errors=True); Database(root, 'test', session.db_key)
         return {'ok': True}
 
     @app.get('/api/v1/integrations')

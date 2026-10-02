@@ -1,7 +1,11 @@
 export const DATASETS={
+  mobility:{
+    title:'Frotas/Veículos',subtitle:'Gestão unificada de veículos particulares, frotas e transferências.',endpoint:'/mobility',createLabel:'Novo veículo',primaryField:'plate',
+    columns:['id','client_name','fleet_name','contracted_on','review_on','total_value_cents']
+  },
   clients:{
     title:'Clientes',subtitle:'Cadastros atendidos e seus vínculos operacionais.',endpoint:'/clients',createLabel:'Novo cliente',primaryField:'legal_name',
-    columns:['legal_name','trade_name','public_name','document','email','phone','status']
+    columns:['legal_name','primary_company','primary_contact','vehicles_count','generated_value_cents','status']
   },
   fleets:{
     title:'Frotas',subtitle:'Agrupamentos de veículos por cliente, unidade ou setor.',endpoint:'/fleets',createLabel:'Nova frota',primaryField:'name',

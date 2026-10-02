@@ -16,10 +16,12 @@ MAX_BYTES = 20 * 1024 * 1024
 MAX_PIXELS = 40_000_000
 
 
-def _encode(data: bytes, max_px: int, quality: int) -> tuple[bytes, int, int]:
+def _encode(data: bytes, max_px: int, quality: int, *, allowed_formats: set[str] | None = None) -> tuple[bytes, int, int]:
     if len(data) > MAX_BYTES:
         raise ValueError('image exceeds 20 MiB')
     with Image.open(io.BytesIO(data)) as im:
+        if allowed_formats is not None and (im.format or '').upper() not in allowed_formats:
+            raise ValueError('client photos must be JPEG, PNG or WebP')
         if getattr(im, 'n_frames', 1) != 1:
             raise ValueError('animated images are not supported')
         if im.width * im.height > MAX_PIXELS:
@@ -82,8 +84,9 @@ def recover_media_journals(root: Path | str, db: Database) -> dict:
 
 
 def store(root: Path, db: Database, actor: int, media_key: bytes, entity_type: str, entity_id: str, data: bytes, retain_original: bool = False) -> dict:
-    operational, w, h = _encode(data, 1920, 82)
-    thumb, _, _ = _encode(data, 320, 75)
+    allowed_formats = {'JPEG','PNG','WEBP'} if entity_type == 'client' else None
+    operational, w, h = _encode(data, 1920, 82, allowed_formats=allowed_formats)
+    thumb, _, _ = _encode(data, 320, 75, allowed_formats=allowed_formats)
     mid = uid()
     root = Path(root)
     base = root / 'UserData' / 'Media' / db.environment
