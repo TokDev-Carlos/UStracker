@@ -63,7 +63,9 @@ def commercial_snapshot(db:Database)->dict:
         'credits':[dict(r) for r in db.query('SELECT * FROM credits ORDER BY created_at DESC')],
         'coverage_periods':coverages,
         'catalog_avulsa':[dict(r) for r in db.query("SELECT * FROM catalog WHERE active=1 AND category='AVULSA' ORDER BY name")],
+        'catalog_mensal':[dict(r) for r in db.query("SELECT * FROM catalog WHERE active=1 AND category='MENSAL' ORDER BY name")],
         'clients':[dict(r) for r in db.query('SELECT id,legal_name FROM clients WHERE archived=0 ORDER BY legal_name')],
         'payments':[dict(r) for r in db.query('SELECT * FROM payments WHERE reversed_at IS NULL ORDER BY paid_on DESC,created_at DESC')],
         'vehicles':[dict(r) for r in db.query('SELECT id,client_id,plate,fleet_id FROM vehicles WHERE archived=0 ORDER BY plate')],
+        'fleets':[dict(r) for r in db.query('SELECT id,client_id,client_company_id,name FROM fleets WHERE archived=0 ORDER BY name')],
     }

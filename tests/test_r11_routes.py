@@ -109,6 +109,8 @@ class R11SubscriptionRouteTests(unittest.TestCase):
         status, commercial = asgi_request(self.app, 'GET', '/api/v1/commercial', self.session)
         self.assertEqual(status, 200)
         self.assertTrue(all(row['items'] and row['targets'] for row in commercial['subscriptions']))
+        self.assertEqual([row['id'] for row in commercial['catalog_mensal']], [self.plan['id']])
+        self.assertEqual([row['id'] for row in commercial['fleets']], [self.fleet['id']])
         client_read = next(row for row in commercial['subscriptions'] if row['id'] == client_created['id'])
         self.assertEqual(client_read['vehicles'][0]['fleet_id'], self.fleet['id'])
 

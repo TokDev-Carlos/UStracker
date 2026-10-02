@@ -120,7 +120,7 @@ export function renderClientProfile(profile = {}) {
     ${card('Empresas', `${companyList}<form id="clientCompanyForm"><div class="row"><div class="field"><label>Nome Fantasia ou Razão Social*</label><input name="legal_name" required></div><div class="field"><label>CNPJ <span class="muted">(não obrigatório)</span></label><input name="document"></div><label><input type="checkbox" name="is_primary" value="true"> Principal</label></div><div class="actions"><button type="submit" class="ui-btn ui-btn-secondary">Adicionar</button></div></form>`)}
     ${card('Veículos', vehicleGroups)}
     ${card('Financeiro', `<dl><dt>Quantidade de Veículos</dt><dd>${Number(summary.vehicles_count || 0)}</dd><dt>Valor Gerado Total</dt><dd>${escapeHtml(formatBRL(summary.generated_value_cents))}</dd><dt>Compras Pagas</dt><dd>${escapeHtml(formatBRL(financial.direct_sales_paid_cents))}</dd><dt>Despesas Geradas</dt><dd>${escapeHtml(formatBRL(financial.client_expenses_generated_cents))}</dd></dl>`)}
-    ${card('Assinaturas', `${signatureList}${signatureUpload}`)}
+    ${card('Assinaturas', `<div class="actions"><button type="button" class="ui-btn ui-btn-primary" data-client-new-subscription>Nova Assinatura</button></div>${signatureList}${signatureUpload}`)}
   </div>`;
 }
 
