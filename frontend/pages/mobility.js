@@ -19,6 +19,10 @@ const options = (items, valueKey = 'id', labelKey = 'legal_name', includeBlank =
   return rows.join('');
 };
 
+const subscriptionSummaries = items => (items || []).length ? `<div class="mobility-subscriptions">${items.map(item =>
+  `<div class="mobility-subscription"><strong>${esc(item.plan_names || 'Plano')}</strong><span>${esc(item.client_name || '—')} · ${esc(item.company_name || '—')}</span><span>${esc(formatDateBR(item.start_on, false))} · ${esc(formatBRL(Number(item.effective_total_cents || 0)))}</span></div>`
+).join('')}</div>` : '<span class="muted">Sem assinatura ativa</span>';
+
 export function buildVehiclePayload(flat = {}) {
   const payload = { ...flat };
   payload.type = flat.type === '__custom__' ? String(flat.custom_type || '').trim() : String(flat.type || '').trim();
@@ -51,10 +55,11 @@ function mobilityTable(rows = [], fleetMode = false) {
     <td>${esc(formatDateBR(row.contracted_on, false) || '—')}</td>
     <td>${esc(formatDateBR(row.review_on, false) || '—')}</td>
     <td>${esc(formatBRL(Number(row.total_value_cents || 0)))}</td>
+    <td>${subscriptionSummaries(row.subscriptions)}</td>
     <td>${fleetMode ? `<button type="button" class="ui-btn ui-btn-secondary" data-open-fleet="${esc(row.id)}">Abrir Ficha</button>` : `<button type="button" class="ui-btn ui-btn-secondary" data-open-vehicle-transfer="${esc(row.id)}">Transferir</button>`}</td>
-  </tr>`).join('') : '<tr><td colspan="7" class="muted">Nenhum registro encontrado.</td></tr>';
+  </tr>`).join('') : '<tr><td colspan="8" class="muted">Nenhum registro encontrado.</td></tr>';
   return `<div class="table-wrap"><table class="ui-table mobility-table"><thead><tr>
-    <th>ID</th><th>Cliente</th><th>Frota(s)</th><th>Data Contratação</th><th>Data Revisão</th><th>Valor Total</th><th>Ação</th>
+    <th>ID</th><th>Cliente</th><th>Frota(s)</th><th>Data Contratação</th><th>Data Revisão</th><th>Valor Total</th><th>Assinaturas</th><th>Ação</th>
   </tr></thead><tbody>${body}</tbody></table></div>`;
 }
 
@@ -104,17 +109,18 @@ export function renderFleetProfile(profile = {}, context = {}) {
   const summary = profile.summary || {};
   const companies = context.companies || [];
   const vehicleRows = vehicles.length ? vehicles.map(vehicle => `<tr>
-      <td>${esc(vehicle.plate)}</td><td>${esc(vehicle.type)}</td><td>${esc(vehicle.brand || '—')}</td><td>${esc(vehicle.model || '—')}</td><td>${esc(vehicle.year || '—')}</td><td>${esc(formatBRL(Number(vehicle.total_value_cents || 0)))}</td><td><button type="button" class="ui-btn ui-btn-secondary" data-open-vehicle-transfer="${esc(vehicle.id)}">Transferir</button></td>
-    </tr>`).join('') : '<tr><td colspan="7">Nenhum veículo.</td></tr>';
+      <td>${esc(vehicle.plate)}</td><td>${esc(vehicle.type)}</td><td>${esc(vehicle.brand || '—')}</td><td>${esc(vehicle.model || '—')}</td><td>${esc(vehicle.year || '—')}</td><td>${esc(formatBRL(Number(vehicle.total_value_cents || 0)))}</td><td>${subscriptionSummaries(vehicle.subscriptions)}</td><td><button type="button" class="ui-btn ui-btn-secondary" data-open-vehicle-transfer="${esc(vehicle.id)}">Transferir</button></td>
+    </tr>`).join('') : '<tr><td colspan="8">Nenhum veículo.</td></tr>';
   return `<div class="fleet-profile">
     <div class="fleet-profile-summary"><h3>${esc(fleet.name || 'Frota')}</h3><p class="muted">${esc(company.legal_name || 'Empresa não vinculada')}</p><dl><dt>Veículos ativos</dt><dd>${Number(summary.active_vehicles || 0)} / ${Number(summary.vehicle_limit || 100)}</dd><dt>Valor Total</dt><dd>${esc(formatBRL(Number(summary.total_value_cents || 0)))}</dd></dl></div>
+    <section class="panel"><h4>Assinaturas ativas da frota</h4>${subscriptionSummaries(profile.subscriptions)}</section>
     <form id="fleetEditForm"><input type="hidden" name="expected_revision" value="${esc(fleet.revision || 0)}"><div class="row">
       <div class="field"><label>Empresa*</label><select name="client_company_id" required>${options(companies, 'id', 'legal_name', false, fleet.client_company_id)}</select></div>
       <div class="field"><label>Nome*</label><input name="name" value="${esc(fleet.name || '')}" required></div>
       <div class="field"><label>Setor/Unidade</label><input name="sector_or_unit" value="${esc(fleet.sector_or_unit || '')}"></div>
     </div><div class="actions"><button type="submit" class="ui-btn ui-btn-primary">Salvar frota</button></div></form>
     <div class="actions"><button type="button" class="ui-btn ui-btn-secondary" data-add-vehicle-fleet="${esc(fleet.id)}">Adicionar veículo</button><button type="button" class="ui-btn ui-btn-secondary" data-upload-fleet-photo="${esc(fleet.id)}">Adicionar foto</button></div>
-    <div class="table-wrap"><table class="ui-table"><thead><tr><th>Placa</th><th>Tipo</th><th>Marca</th><th>Modelo</th><th>Ano</th><th>Valor</th><th>Ação</th></tr></thead><tbody>${vehicleRows}</tbody></table></div>
+    <div class="table-wrap"><table class="ui-table"><thead><tr><th>Placa</th><th>Tipo</th><th>Marca</th><th>Modelo</th><th>Ano</th><th>Valor</th><th>Assinaturas</th><th>Ação</th></tr></thead><tbody>${vehicleRows}</tbody></table></div>
   </div>`;
 }
 

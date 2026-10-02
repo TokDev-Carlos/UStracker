@@ -85,3 +85,31 @@ test('Ficha e Comercial acionam o mesmo workflow e a mesma rota', () => {
   assert.match(commercial, /data-new-subscription/);
   assert.match(help, /alvos|veículo|frota/i);
 });
+
+test('Mobilidade e ficha exibem resumos de assinatura sem joins no navegador', async () => {
+  const { renderFleetProfile, renderMobilityPage } = await import('../frontend/pages/mobility.js');
+  const { renderClientProfile } = await import('../frontend/ui/r2-ui.js');
+  const subscription = {
+    id: 's1', client_name: 'Cliente Um', company_name: 'Empresa Um', plan_names: 'Plano Mensal',
+    effective_total_cents: 12500, start_on: '2026-10-01', lifecycle_status: 'ACTIVE',
+  };
+  const page = renderMobilityPage({ particulars: [], fleets: [{
+    id: 'f1', client_name: 'Cliente Um', company_name: 'Empresa Um', name: 'Frota Um', subscriptions: [subscription],
+  }] });
+  const fleet = renderFleetProfile({
+    fleet: { id: 'f1', name: 'Frota Um' }, company: { legal_name: 'Empresa Um' }, subscriptions: [subscription],
+    vehicles: [{ id: 'v1', plate: 'AAA1A11', subscriptions: [subscription] }], summary: {},
+  });
+  const client = renderClientProfile({
+    client: { id: 'c1', legal_name: 'Cliente Um' }, subscriptions: [{
+      ...subscription, items: [{ plan_name: 'Plano Mensal' }], targets: [],
+    }],
+  });
+  for (const html of [page, fleet, client]) {
+    assert.match(html, /Plano Mensal/);
+    assert.match(html, /R\$ 125,00/);
+    assert.match(html, /01\/10\/2026/);
+  }
+  assert.match(page, /Cliente Um/);
+  assert.match(page, /Empresa Um/);
+});

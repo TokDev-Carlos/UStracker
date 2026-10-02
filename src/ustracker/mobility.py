@@ -200,6 +200,74 @@ def _vehicle_value_sql() -> str:
                           WHERE di.vehicle_id=v.id AND ds.status<>'CANCELLED'),0)'''
 
 
+def _active_subscription_summaries(
+    db: Database, *, vehicle_id: str | None = None, fleet_id: str | None = None
+) -> list[dict]:
+    if not vehicle_id and not fleet_id:
+        return []
+    context_company_name = None
+    if vehicle_id:
+        vehicle = db.one('''SELECT v.fleet_id,cc.legal_name AS company_name FROM vehicles v
+                            LEFT JOIN fleets f ON f.id=v.fleet_id
+                            LEFT JOIN client_companies cc ON cc.id=f.client_company_id
+                            WHERE v.id=?''', (vehicle_id,))
+        vehicle_fleet_id = vehicle['fleet_id'] if vehicle else None
+        context_company_name = vehicle['company_name'] if vehicle else None
+        rows = db.query('''SELECT DISTINCT s.*,c.legal_name AS client_name,
+            (SELECT cc.legal_name FROM client_companies cc WHERE cc.client_id=s.client_id AND cc.archived=0
+             ORDER BY cc.is_primary DESC,cc.created_at,cc.id LIMIT 1) AS company_name
+            FROM subscriptions s JOIN clients c ON c.id=s.client_id
+            WHERE s.lifecycle_status='ACTIVE' AND (
+              EXISTS(SELECT 1 FROM subscription_targets st WHERE st.subscription_id=s.id AND st.vehicle_id=?)
+              OR (? IS NOT NULL AND EXISTS(SELECT 1 FROM subscription_targets st WHERE st.subscription_id=s.id AND st.fleet_id=?))
+              OR EXISTS(SELECT 1 FROM subscription_items si WHERE si.subscription_id=s.id AND si.vehicle_id=?)
+            ) ORDER BY s.start_on DESC,s.created_at DESC''',
+            (vehicle_id, vehicle_fleet_id, vehicle_fleet_id, vehicle_id))
+    else:
+        vehicle_fleet_id = fleet_id
+        company = db.one('''SELECT cc.legal_name FROM fleets f LEFT JOIN client_companies cc
+                            ON cc.id=f.client_company_id WHERE f.id=?''',(fleet_id,))
+        context_company_name = company['legal_name'] if company else None
+        rows = db.query('''SELECT DISTINCT s.*,c.legal_name AS client_name,
+            (SELECT cc.legal_name FROM client_companies cc WHERE cc.client_id=s.client_id AND cc.archived=0
+             ORDER BY cc.is_primary DESC,cc.created_at,cc.id LIMIT 1) AS company_name
+            FROM subscriptions s JOIN clients c ON c.id=s.client_id
+            WHERE s.lifecycle_status='ACTIVE' AND (
+              EXISTS(SELECT 1 FROM subscription_targets st WHERE st.subscription_id=s.id AND st.fleet_id=?)
+              OR EXISTS(SELECT 1 FROM subscription_targets st JOIN vehicles v ON v.id=st.vehicle_id
+                        WHERE st.subscription_id=s.id AND v.fleet_id=? AND v.archived=0)
+              OR EXISTS(SELECT 1 FROM subscription_items si JOIN vehicles v ON v.id=si.vehicle_id
+                        WHERE si.subscription_id=s.id AND v.fleet_id=? AND v.archived=0)
+            ) ORDER BY s.start_on DESC,s.created_at DESC''', (fleet_id, fleet_id, fleet_id))
+    summaries=[]
+    for row in rows:
+        rec=dict(row)
+        items=[dict(item) for item in db.query('''SELECT si.quantity,si.unit_price_cents,si.description,c.name AS plan_name
+                                                   FROM subscription_items si LEFT JOIN catalog c ON c.id=si.catalog_id
+                                                   WHERE si.subscription_id=? ORDER BY si.rowid''',(rec['id'],))]
+        names=[]
+        for item in items:
+            name=item.get('plan_name') or item.get('description')
+            if name and name not in names: names.append(name)
+        direct = bool(vehicle_id and (db.one('''SELECT 1 FROM subscription_targets WHERE subscription_id=? AND vehicle_id=?
+                                                UNION SELECT 1 FROM subscription_items WHERE subscription_id=? AND vehicle_id=? LIMIT 1''',
+                                             (rec['id'],vehicle_id,rec['id'],vehicle_id))))
+        fleet_target = bool(vehicle_fleet_id and db.one(
+            'SELECT 1 FROM subscription_targets WHERE subscription_id=? AND fleet_id=? LIMIT 1',
+            (rec['id'],vehicle_fleet_id)))
+        if direct and fleet_target: scope='DIRECT_AND_FLEET'
+        elif direct: scope='DIRECT'
+        elif fleet_target: scope='FLEET'
+        else: scope='FLEET_VEHICLE'
+        summaries.append({
+            'id':rec['id'],'client_id':rec['client_id'],'client_name':rec['client_name'],
+            'company_name':context_company_name or rec['company_name'],'plan_names':', '.join(names),
+            'effective_total_cents':sum(int(item['quantity'])*int(item['unit_price_cents']) for item in items),
+            'start_on':rec['start_on'],'lifecycle_status':rec['lifecycle_status'],'target_scope':scope,
+        })
+    return summaries
+
+
 def list_mobility(db: Database, *, client_id: str | None = None, fleet_id: str | None = None, plate: str | None = None) -> dict:
     where = ['v.archived=0']
     args: list[Any] = []
@@ -216,6 +284,8 @@ def list_mobility(db: Database, *, client_id: str | None = None, fleet_id: str |
             FROM vehicles v JOIN clients c ON c.id=v.client_id
             LEFT JOIN fleets f ON f.id=v.fleet_id
             WHERE {predicate} ORDER BY c.legal_name,v.plate''', tuple(args))]
+    for row in rows:
+        row['subscriptions'] = _active_subscription_summaries(db,vehicle_id=row['id'])
     particulars = [row for row in rows if not row.get('fleet_id')]
     fleet_where = ['f.archived=0']
     fleet_args: list[Any] = []
@@ -242,6 +312,7 @@ def list_mobility(db: Database, *, client_id: str | None = None, fleet_id: str |
         rec['contracted_on'] = min((v.get('contracted_on') for v in all_vehicle_rows if v.get('contracted_on')), default=None)
         rec['review_on'] = max((v.get('review_on') for v in all_vehicle_rows if v.get('review_on')), default=None)
         rec['total_value_cents'] = sum(int(v.get('total_value_cents') or 0) for v in all_vehicle_rows)
+        rec['subscriptions'] = _active_subscription_summaries(db,fleet_id=rec['id'])
         fleets.append(rec)
     with closing(db.connect()) as con:
         limit = _fleet_limit(con)
@@ -259,6 +330,8 @@ def fleet_profile(db: Database, fleet_id: str) -> dict:
     value_sql = _vehicle_value_sql()
     vehicles = [dict(r) for r in db.query(f'''SELECT v.*,{value_sql} AS total_value_cents
                                               FROM vehicles v WHERE v.fleet_id=? AND v.archived=0 ORDER BY v.plate''', (fleet_id,))]
+    for vehicle in vehicles:
+        vehicle['subscriptions'] = _active_subscription_summaries(db,vehicle_id=vehicle['id'])
     media = [dict(r) for r in db.query("SELECT id,entity_type,entity_id,mime,width,height,sha256,created_at FROM media WHERE entity_type='fleet' AND entity_id=? ORDER BY created_at DESC", (fleet_id,))]
     company = dict(db.one('SELECT * FROM client_companies WHERE id=?', (fleet['client_company_id'],))) if fleet.get('client_company_id') and db.one('SELECT * FROM client_companies WHERE id=?', (fleet['client_company_id'],)) else None
     with closing(db.connect()) as con:
@@ -267,6 +340,7 @@ def fleet_profile(db: Database, fleet_id: str) -> dict:
         'fleet': fleet,
         'company': company,
         'vehicles': vehicles,
+        'subscriptions': _active_subscription_summaries(db,fleet_id=fleet_id),
         'media': media,
         'summary': {
             'active_vehicles': len(vehicles),

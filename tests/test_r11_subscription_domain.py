@@ -10,7 +10,7 @@ sys.path.insert(0, str(ROOT / 'src'))
 os.environ['USTRACKER_DEV_PLAINTEXT'] = '1'
 
 from ustracker.db import Database
-from ustracker.mobility import create_fleet, create_vehicle
+from ustracker.mobility import create_fleet, create_vehicle, fleet_profile, list_mobility
 from ustracker.services import (
     create_catalog,
     create_client,
@@ -90,14 +90,29 @@ class R11SubscriptionDomainTests(unittest.TestCase):
 
         with self.db.transaction() as con:
             con.execute('UPDATE catalog SET price_cents=99999 WHERE id=?', (self.plan['id'],))
+        create_client_company(self.db, 1, self.client['id'], {
+            'legal_name': 'Empresa Principal Nova', 'is_primary': True,
+        })
         reloaded = get_subscription(self.db, created['id'])
         listed = list_subscriptions(self.db, client_id=self.client['id'])
         profile = client_profile(self.db, self.client['id'])
+        mobility = list_mobility(self.db, client_id=self.client['id'])
+        fleet_read = fleet_profile(self.db, self.fleet['id'])
         self.assertEqual((reloaded['items'][0]['unit_price_cents'], reloaded['effective_total_cents']), (15000, 30000))
         self.assertEqual([row['id'] for row in listed], [created['id']])
         self.assertEqual(list_subscriptions(self.db, client_id=self.other_client['id']), [])
         self.assertEqual(profile['subscriptions'][0]['effective_total_cents'], 30000)
         self.assertEqual(len(profile['subscriptions'][0]['targets']), 2)
+        self.assertEqual(profile['subscriptions'][0]['company_name'], 'Empresa Principal Nova')
+        fleet_subscription = mobility['fleets'][0]['subscriptions'][0]
+        self.assertEqual(
+            (fleet_subscription['client_name'], fleet_subscription['company_name'], fleet_subscription['plan_names'],
+             fleet_subscription['effective_total_cents'], fleet_subscription['start_on']),
+            ('Cliente A', 'Empresa A', 'Plano Mensal R11', 30000, '2026-10-01'),
+        )
+        self.assertEqual(fleet_read['subscriptions'][0]['id'], created['id'])
+        vehicle_subscription = fleet_read['vehicles'][0]['subscriptions'][0]
+        self.assertEqual((vehicle_subscription['id'], vehicle_subscription['target_scope']), (created['id'], 'DIRECT_AND_FLEET'))
 
     def test_legacy_vehicle_item_becomes_a_target_without_multiplying_value(self):
         created = create_subscription(self.db, 1, self._payload(
