@@ -642,7 +642,7 @@ def create_fiscal(db:Database, actor:int, p:dict)->dict:
     from .finance import create_fiscal_obligation
     return create_fiscal_obligation(db,actor,p)
 
-def dashboard(db:Database, as_of:date|None=None)->dict:
+def dashboard(db:Database, as_of:date|None=None, year:int|None=None)->dict:
     q=lambda sql,args=(): db.one(sql,args)[0]
     today=as_of or date.today()
     month_start=today.replace(day=1)
@@ -686,6 +686,22 @@ def dashboard(db:Database, as_of:date|None=None)->dict:
     payment_total=q('SELECT COALESCE(SUM(amount_cents),0) FROM payments WHERE reversed_at IS NULL')
     expense_total=q('SELECT COALESCE(SUM(expected_amount_cents),0) FROM expenses')
     disb_total=q('SELECT COALESCE(SUM(amount_cents),0) FROM disbursements WHERE reversed_at IS NULL')
+    if year is not None and not (2000 <= int(year) <= 2100):
+        raise ValueError('year must be between 2000 and 2100')
+    period_start = date(int(year), 1, 1) if year is not None else None
+    period_end = date(int(year) + 1, 1, 1) if year is not None else None
+    if period_start:
+        period_revenue = realized(period_start, period_end)
+        period_expenses = spent(period_start, period_end)
+    else:
+        period_revenue = int(payment_total) + int(q("SELECT COALESCE(SUM(total_cents),0) FROM direct_sales WHERE status='PAID'"))
+        period_expenses = int(disb_total)
+    available_years = sorted({
+        int(row['year']) for row in db.query("""SELECT substr(paid_on,1,4) AS year FROM payments WHERE reversed_at IS NULL
+        UNION SELECT substr(paid_on,1,4) FROM direct_sales WHERE status='PAID' AND paid_on IS NOT NULL
+        UNION SELECT substr(paid_on,1,4) FROM disbursements WHERE reversed_at IS NULL""")
+        if str(row['year'] or '').isdigit()
+    }, reverse=True)
     overdue=q("SELECT COUNT(*) FROM charges c WHERE c.status<>'VOID' AND c.due_on<date('now') AND (c.amount_cents+c.adjustment_cents) > (SELECT COALESCE(SUM(pa.amount_cents),0) FROM payment_allocations pa WHERE pa.charge_id=c.id AND pa.active=1)+(SELECT COALESCE(SUM(ca.amount_cents),0) FROM credit_allocations ca WHERE ca.charge_id=c.id AND ca.active=1)")
     return {'active_clients':active_clients,'active_vehicles':active_vehicles,'active_subscriptions':active_subscriptions,
             'clients_count':clients_count,'products_count':products_count,'vehicles_count':vehicles_count,
@@ -694,6 +710,9 @@ def dashboard(db:Database, as_of:date|None=None)->dict:
             'real_profit_cents':monthly_value-monthly_spent,'client_overview':list(overview.values()),
             'revenue_expected_cents':charge_total,'revenue_received_cents':payment_total,'expenses_expected_cents':expense_total,
             'expenses_paid_cents':disb_total,'cash_result_cents':payment_total-disb_total,'overdue_charges':overdue,
+            'period':{'year':year,'label':str(year) if year is not None else 'Geral','revenue_cents':period_revenue,
+                      'expenses_cents':period_expenses,'result_cents':period_revenue-period_expenses},
+            'available_years':available_years,
             'integrations':{'drive':'PREPARED_DISABLED','tracking':'PREPARED_DISABLED','fiscal_official':'PREPARED_DISABLED'}}
 
 def search(db:Database, query:str)->list[dict]:

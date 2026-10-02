@@ -25,7 +25,7 @@ from .catalog import list_catalog
 from .commercial import commercial_snapshot, create_coverage
 from .finance import ensure_fiscal_expense, finance_snapshot
 from .overview import client_activity_overview
-from .db import Database
+from .db import Database, SCHEMA_VERSION
 from .extensions import (
     add_charge_adjustment,
     create_fleet,
@@ -47,8 +47,10 @@ from .mobility import (
     list_transfer_cases,
     update_fleet,
 )
-from .media import load as load_media, recover_media_journals, store as store_media
+from .media import load as load_media, recover_media_journals, remove as remove_media, store as store_media
+from .paths import ProductPaths
 from .public_projection import read as read_public, rebuild as rebuild_public
+from .repository import LocalRepository
 from .recovery import export_recovery
 from .reports import REPORTS, report_csv, report_xlsx
 from .services import (
@@ -93,8 +95,11 @@ from .versioning import read_version
 
 
 def create_app(root: Path | str) -> FastAPI:
-    root = Path(root).resolve()
+    paths = ProductPaths.from_root(root)
+    root = paths.app_root
     root.mkdir(parents=True, exist_ok=True)
+    paths.ensure_runtime_directories()
+    repository = LocalRepository(root)
     product_version = read_version(root)
     auth = AuthService(root)
     app = FastAPI(title='UStracker', version=product_version, docs_url=None, redoc_url=None, openapi_url=None)
@@ -104,7 +109,7 @@ def create_app(root: Path | str) -> FastAPI:
     read_public(root)
 
     def get_db(session: Session) -> Database:
-        return Database(root, session.environment, session.db_key)
+        return repository.database(session.environment, session.db_key)
 
     @app.middleware('http')
     async def security_headers(request: Request, call_next):
@@ -559,9 +564,9 @@ def create_app(root: Path | str) -> FastAPI:
         return mutation(request, session, 'POST /fiscal', p, lambda db: create_fiscal(db, session.slot, p))
 
     @app.get('/api/v1/dashboard')
-    def dashboard_get(request: Request, q: str = Query(default='')):
+    def dashboard_get(request: Request, q: str = Query(default=''), year: int | None = Query(default=None)):
         db = get_db(session_required(request, True))
-        return {**dashboard(db), **dashboard_extended(db), 'client_activity': client_activity_overview(db, q)}
+        return {**dashboard(db, year=year), **dashboard_extended(db), 'client_activity': client_activity_overview(db, q)}
 
     @app.get('/api/v1/search')
     def search_get(q: str, request: Request):
@@ -624,6 +629,11 @@ def create_app(root: Path | str) -> FastAPI:
         session = session_required(request, True)
         data, mime = load_media(root, get_db(session), session.media_key, mid, variant)
         return Response(data, media_type=mime, headers={'Cache-Control': 'no-store'})
+
+    @app.delete('/api/v1/media/{mid}')
+    def media_delete(mid: str, request: Request):
+        session = session_required(request, True)
+        return mutation(request, session, f'DELETE /media/{mid}', {'id': mid}, lambda db: remove_media(root, db, session.slot, mid))
 
     @app.get('/api/v1/attachments')
     def attachments_list(request: Request, entity_type: str | None = None, entity_id: str | None = None):
@@ -756,6 +766,28 @@ def create_app(root: Path | str) -> FastAPI:
         session_required(request, True)
         return {'drive':{'enabled':False,'implemented':False},'tracking':{'enabled':False,'implemented':False},'fiscal_official':{'enabled':False,'implemented':False}}
 
+    @app.get('/api/v1/system/runtime')
+    def runtime_status(request: Request):
+        session = session_required(request, True)
+        journal_path = paths.state_root / 'update_journal.json'
+        journal = None
+        if journal_path.exists():
+            try:
+                journal = json.loads(journal_path.read_text(encoding='utf-8'))
+            except (OSError, ValueError):
+                journal = {'state': 'UNREADABLE'}
+        return {
+            'version': product_version,
+            'schema_version': SCHEMA_VERSION,
+            'app_root': str(paths.app_root),
+            'data_root': str(paths.data_root),
+            'cache_root': str(paths.cache_root),
+            'backup_root': str(paths.backup_root),
+            'log_root': str(paths.log_root),
+            'environment': session.environment,
+            'update': journal,
+        }
+
     @app.post('/api/v1/integrations/{provider}/{action}')
     def integration_disabled(provider: str, action: str, request: Request):
         session = session_required(request, True); csrf_required(request, session)
@@ -785,7 +817,7 @@ def create_app(root: Path | str) -> FastAPI:
 
 
 def run(root: Path | str):
-    root = Path(root).resolve(); state_dir = root/'UserData'/'State'; state_dir.mkdir(parents=True, exist_ok=True); port_file = state_dir/'backend.json'
+    paths = ProductPaths.from_root(root); paths.ensure_runtime_directories(); root = paths.app_root; state_dir = paths.state_root; port_file = state_dir/'backend.json'
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM); sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1); sock.bind(('127.0.0.1', 0)); sock.listen(2048); port = sock.getsockname()[1]
     app = create_app(root); config = uvicorn.Config(app, host='127.0.0.1', port=port, log_level='info', access_log=False, log_config=None); server = uvicorn.Server(config); app.state.server = server
     tmp = port_file.with_suffix('.tmp'); tmp.write_text(json.dumps({'port':port,'pid':os.getpid(),'version':app.version}), encoding='utf-8'); tmp.replace(port_file)

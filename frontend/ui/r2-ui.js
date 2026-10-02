@@ -78,7 +78,7 @@ export function renderClientProfile(profile = {}) {
   const statusValue = client.status === 'BLOCKED' ? 'INACTIVE' : (client.status || 'ACTIVE');
   const statusOptions = [['ACTIVE', 'ATIVO'], ['INACTIVE', 'INATIVO'], ['CANCELLED', 'CANCELADO']]
     .map(([value, label]) => `<option value="${value}" ${statusValue === value ? 'selected' : ''}>${label}</option>`).join('');
-  const photo = `${thumb(profile.client_media?.[0])}<form id="clientPhotoForm"><div class="field"><label>Foto do Cliente</label><input name="file" type="file" accept="image/jpeg,image/png,image/webp" required></div><div class="actions"><button type="submit" class="ui-btn ui-btn-secondary">Atualizar foto</button></div></form>`;
+  const photo = `${thumb(profile.client_media?.[0])}<form id="clientPhotoForm" data-auto-upload><div class="actions"><label class="ui-btn ui-btn-secondary ui-file-action">Escolher e atualizar foto<input name="file" type="file" accept="image/jpeg,image/png,image/webp" required></label></div></form>`;
 
   const companyList = list(companies, company => {
     const name = company.trade_name || company.legal_name || 'Empresa';
@@ -106,7 +106,7 @@ export function renderClientProfile(profile = {}) {
   const signatureList = list(signatureAttachments, attachment => attachment.origin === 'LINK'
     ? `<a href="${escapeHtml(attachment.url)}" target="_blank" rel="noopener">${escapeHtml(attachment.filename || 'Abrir assinatura')}</a>`
     : `<a href="/api/v1/attachments/${escapeHtml(encodeURIComponent(attachment.id))}">${escapeHtml(attachment.filename || 'Baixar assinatura')}</a>`, 'Nenhuma assinatura eletrônica anexada.');
-  const signatureUpload = subscriptions.length ? `<form id="clientSignatureForm"><div class="row"><div class="field"><label>Assinatura</label><select name="subscription_id" required><option value="">Selecione</option>${subscriptions.map(subscription => `<option value="${escapeHtml(subscription.id)}">${escapeHtml(subscription.id)}</option>`).join('')}</select></div><div class="field"><label>Arquivo</label><input type="file" name="file" accept=".jpg,.jpeg,.png,.webp,.pdf" required></div></div><div class="actions"><button type="submit" class="ui-btn ui-btn-secondary">Anexar assinatura</button></div></form>` : '<p class="muted">Cadastre uma assinatura comercial antes de anexar o documento eletrônico.</p>';
+  const signatureUpload = subscriptions.length ? `<form id="clientSignatureForm" data-auto-upload><div class="row"><div class="field"><label>Assinatura</label><select name="subscription_id" required><option value="">Selecione</option>${subscriptions.map(subscription => `<option value="${escapeHtml(subscription.id)}">${escapeHtml(subscription.id)}</option>`).join('')}</select></div></div><div class="actions"><label class="ui-btn ui-btn-secondary ui-file-action">Escolher e anexar arquivo<input type="file" name="file" accept=".jpg,.jpeg,.png,.webp,.pdf" required></label></div></form>` : '<p class="muted">Cadastre uma assinatura comercial antes de anexar o documento eletrônico.</p>';
   const subscriptionList = list(subscriptions, subscription => {
     const plans = (subscription.items || subscription.subscription_items || []).map(item => item.plan_name || item.description).filter(Boolean).join(', ') || 'Plano';
     return `<strong>${escapeHtml(plans)}</strong> · ${escapeHtml(formatDateBR(subscription.start_on, false))} · ${escapeHtml(formatBRL(subscription.effective_total_cents || 0))} · ${escapeHtml(subscription.lifecycle_status || '')}`;

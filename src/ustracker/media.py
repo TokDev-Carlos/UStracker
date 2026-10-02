@@ -148,3 +148,19 @@ def load(root: Path, db: Database, media_key: bytes, mid: str, variant: str = 'o
         raise KeyError('variant not found')
     raw = (Path(root) / row[col]).read_bytes()
     return _open(media_key, raw, f'{mid}:{variant}:v1'.encode()), ('image/webp' if variant != 'original' else 'application/octet-stream')
+
+
+def remove(root: Path | str, db: Database, actor: int, mid: str) -> dict:
+    root = Path(root)
+    row = db.one('SELECT * FROM media WHERE id=?', (mid,))
+    if not row:
+        raise KeyError('media not found')
+    public = {key: row[key] for key in ('id', 'entity_type', 'entity_id', 'mime', 'width', 'height', 'sha256', 'created_at')}
+    with db.transaction() as con:
+        con.execute('DELETE FROM media WHERE id=?', (mid,))
+        audit(con, actor, 'MEDIA_DELETE', 'media', mid, public, None)
+    for column in ('variant_path', 'thumb_path', 'original_path'):
+        relative = row[column]
+        if relative:
+            (root / relative).unlink(missing_ok=True)
+    return {'id': mid, 'removed': True}
