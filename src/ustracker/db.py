@@ -3,11 +3,17 @@ from __future__ import annotations
 import os
 import sqlite3
 import threading
+import unicodedata
 from contextlib import closing, contextmanager
 from pathlib import Path
 from typing import Iterator
 
 SCHEMA_VERSION = 9
+
+
+def fold_text(value) -> str:
+    text=unicodedata.normalize('NFKD',str(value or ''))
+    return ''.join(character for character in text if not unicodedata.combining(character)).casefold()
 
 SCHEMA_SQL = r'''
 CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -229,6 +235,10 @@ class Database:
             con.row_factory = dbapi.Row
         except Exception:
             pass
+        try:
+            con.create_function('fold_text',1,fold_text,deterministic=True)
+        except TypeError:
+            con.create_function('fold_text',1,fold_text)
         if cipher:
             con.execute(f"PRAGMA key=\"x'{self.key.hex()}'\"")
             row = con.execute('PRAGMA cipher_version').fetchone()

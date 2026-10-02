@@ -8,7 +8,7 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from .db import Database
+from .db import Database, fold_text
 from .money import due_date, parse_money_api
 from .clients import companies_from_payload, documents_from_payload, has_contact, infer_document_type, normalize_document_number, validate_document
 
@@ -217,6 +217,30 @@ def list_clients(db:Database, *, include_archived:bool=False, limit:int=500)->li
         (SELECT COALESCE(SUM(p.amount_cents),0) FROM payments p WHERE p.client_id=c.id AND p.reversed_at IS NULL)
         +(SELECT COALESCE(SUM(ds.total_cents),0) FROM direct_sales ds WHERE ds.client_id=c.id AND ds.status='PAID') AS generated_value_cents
         FROM clients c {where} ORDER BY c.archived,c.legal_name LIMIT ?''',(limit,))
+    return [dict(row) for row in rows]
+
+
+def search_client_entities(db:Database, query:str, *, limit:int=20)->list[dict]:
+    needle=fold_text(query).strip()
+    if not needle: return []
+    bounded=max(1,min(int(limit),30))
+    like=f'%{needle}%'
+    normalized_document=normalize_document_number(query)
+    document_like=f'%{fold_text(normalized_document)}%'
+    rows=db.query('''SELECT c.id,c.legal_name AS display_name,c.phone,c.email,c.status,
+        COALESCE((SELECT cd.number FROM client_documents cd WHERE cd.client_id=c.id AND cd.archived=0
+                  ORDER BY cd.is_primary DESC,cd.created_at,cd.id LIMIT 1),c.document,'') AS primary_document,
+        COALESCE((SELECT cc.legal_name FROM client_companies cc WHERE cc.client_id=c.id AND cc.archived=0
+                  ORDER BY cc.is_primary DESC,cc.created_at,cc.id LIMIT 1),c.trade_name,'') AS primary_company
+        FROM clients c WHERE c.archived=0 AND (
+          fold_text(c.legal_name) LIKE ? OR fold_text(c.trade_name) LIKE ? OR fold_text(c.public_name) LIKE ?
+          OR fold_text(c.phone) LIKE ? OR fold_text(c.email) LIKE ?
+          OR EXISTS(SELECT 1 FROM client_documents cd WHERE cd.client_id=c.id AND cd.archived=0
+                    AND (fold_text(cd.number) LIKE ? OR fold_text(cd.normalized_number) LIKE ?))
+          OR EXISTS(SELECT 1 FROM client_companies cc WHERE cc.client_id=c.id AND cc.archived=0
+                    AND (fold_text(cc.legal_name) LIKE ? OR fold_text(cc.trade_name) LIKE ? OR fold_text(cc.document) LIKE ?))
+        ) ORDER BY fold_text(c.legal_name),c.id LIMIT ?''',
+        (like,like,like,like,like,like,document_like,like,like,like,bounded))
     return [dict(row) for row in rows]
 
 
