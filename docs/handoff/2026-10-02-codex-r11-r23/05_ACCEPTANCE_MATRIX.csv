@@ -5,9 +5,9 @@ R11-03,R11,Subscription links eligible client vehicle/fleet,Domain integrity tes
 R11-04,R11,Commercial new subscription uses real-time client search,E2E/frontend+API test,PASS
 R11-05,R11,Both creation entrypoints use one domain operation,Code inspection+tests,PASS
 R11-06,R11,Payment updates finance/overview without double counting,Integration test,PASS
-R12-01,R12,Client autocomplete handles 1000+ without rendering all,Frontend/API performance fixture,NOT_STARTED
-R12-02,R12,Search is accent/case insensitive,Search test,NOT_STARTED
-R12-03,R12,Debounce and stale response protection,Frontend async test,NOT_STARTED
+R12-01,R12,Client autocomplete handles 1000+ without rendering all,Frontend/API performance fixture,PASS
+R12-02,R12,Search is accent/case insensitive,Search test,PASS
+R12-03,R12,Debounce and stale response protection,Frontend async test,PASS
 R13-01,R13,Mutation does not require F5,Frontend integration smoke,NOT_STARTED
 R13-02,R13,Double click does not double write,Idempotency/UI test,NOT_STARTED
 R13-03,R13,API error preserves old state and displays error,Frontend integration test,NOT_STARTED
