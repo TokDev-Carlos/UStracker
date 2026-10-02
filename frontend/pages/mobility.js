@@ -1,4 +1,5 @@
 import { formatBRL, formatDateBR } from '../ui/formatters.js';
+import { renderEntityAutocomplete } from '../ui/entity-autocomplete.js';
 
 export const MOBILITY_TYPES = ['Carro', 'Caminhão', 'Embarcação', 'Aeronave'];
 
@@ -64,14 +65,14 @@ function mobilityTable(rows = [], fleetMode = false) {
 }
 
 export function renderMobilityPage(data = {}, context = {}) {
-  const clients = context.clients || [];
-  const fleets = context.fleets || [];
+  const fleets = (context.fleets || []).slice(0, 100);
   const filters = context.filters || {};
+  const selectedClient = context.selectedClient || (filters.client_id ? { id: filters.client_id, display_name: filters.client_name || filters.client_id } : null);
   const typeOptions = MOBILITY_TYPES.map(type => `<option value="${esc(type)}">${esc(type)}</option>`).join('') + '<option value="__custom__">Novo tipo…</option>';
   return `<section class="mobility-page">
     <div class="page-header"><div><h2>Frotas/Veículos</h2><p class="muted">Gestão unificada de veículos particulares, frotas e transferências.</p></div></div>
     <div class="panel mobility-filters"><form id="mobilityFilter"><div class="row">
-      <div class="field"><label>Cliente</label><select name="client_id">${options(clients, 'id', 'legal_name', true, filters.client_id)}</select></div>
+      ${renderEntityAutocomplete({name:'client_id',label:'Cliente',selected:selectedClient})}
       <div class="field"><label>Frota</label><select name="fleet_id">${options(fleets, 'id', 'name', true, filters.fleet_id)}</select></div>
       <div class="field"><label>Placa</label><input name="plate" value="${esc(filters.plate || '')}"></div>
     </div><div class="actions"><button class="ui-btn ui-btn-primary" type="submit">Pesquisar</button><button class="ui-btn ui-btn-secondary" type="button" id="mobilityClear">Limpar</button></div></form></div>
@@ -80,8 +81,8 @@ export function renderMobilityPage(data = {}, context = {}) {
     <section data-mobility-panel="particulares">${mobilityTable(data.particulars || [], false)}</section>
     <section data-mobility-panel="frotas" hidden>${mobilityTable(data.fleets || [], true)}</section>
     <template id="vehicleFormTemplate"><form id="vehicleForm"><div class="row">
-      <div class="field"><label>Cliente*</label><select name="client_id" required>${options(clients)}</select></div>
-      <div class="field"><label>Frota</label><select name="fleet_id">${options(fleets, 'id', 'name', true)}</select></div>
+      ${renderEntityAutocomplete({name:'client_id',label:'Cliente',required:true})}
+      <div class="field"><label>Frota</label><select name="fleet_id" disabled><option value="">Selecione o cliente primeiro</option></select></div>
       <div class="field"><label>Tipo*</label><select name="type" required>${typeOptions}</select></div>
       <div class="field custom-type-field" hidden><label>Novo tipo*</label><input name="custom_type"></div>
       <div class="field"><label>Marca*</label><input name="brand" required></div>
@@ -94,7 +95,7 @@ export function renderMobilityPage(data = {}, context = {}) {
       <div class="field"><label>Serial/IMEI</label><input name="tracker_serial_imei"></div>
     </div><div class="actions"><button class="ui-btn ui-btn-primary" type="submit">Salvar veículo</button></div></form></template>
     <template id="fleetFormTemplate"><form id="fleetForm"><div class="row">
-      <div class="field"><label>Cliente*</label><select name="client_id" required>${options(clients)}</select></div>
+      ${renderEntityAutocomplete({name:'client_id',label:'Cliente',required:true})}
       <div class="field"><label>Empresa*</label><select name="client_company_id" required><option value="">Selecione o cliente primeiro</option></select></div>
       <div class="field"><label>Nome da frota*</label><input name="name" required></div>
       <div class="field"><label>Setor/Unidade</label><input name="sector_or_unit"></div>
@@ -125,16 +126,14 @@ export function renderFleetProfile(profile = {}, context = {}) {
 }
 
 export function renderTransferCaseForm(vehicle = {}, context = {}) {
-  const clients = context.clients || [];
-  const fleets = context.fleets || [];
   const cases = context.cases || [];
   const pending = cases.find(item => item.status === 'PENDING');
   if (pending) {
     return `<div class="notice mobility-transfer-pending"><strong>Transferência pendente.</strong><p>A propriedade vigente permanece inalterada até a conclusão.</p><div class="actions"><button type="button" class="ui-btn ui-btn-primary" data-complete-transfer="${esc(pending.id)}">Concluir</button><button type="button" class="ui-btn ui-btn-secondary" data-cancel-transfer="${esc(pending.id)}">Cancelar</button></div></div>`;
   }
   return `<form id="transferCaseForm"><input type="hidden" name="expected_revision" value="${esc(vehicle.revision || 0)}"><div class="row">
-    <div class="field"><label>Novo cliente*</label><select name="client_id" required>${options(clients)}</select></div>
-    <div class="field"><label>Nova frota</label><select name="fleet_id">${options(fleets, 'id', 'name', true)}</select></div>
+    ${renderEntityAutocomplete({name:'client_id',label:'Novo cliente',required:true})}
+    <div class="field"><label>Nova frota</label><select name="fleet_id" disabled><option value="">Selecione o cliente primeiro</option></select></div>
     <div class="field"><label>Vigência</label><input type="date" name="effective_from"></div>
   </div><p class="muted">A criação deste caso não altera a propriedade atual. A mudança ocorre somente ao concluir.</p><div class="actions"><button class="ui-btn ui-btn-primary" type="submit">Criar transferência pendente</button></div></form>`;
 }

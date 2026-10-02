@@ -369,8 +369,12 @@ def create_app(root: Path | str) -> FastAPI:
         return mutation(request, session, f'POST /vehicle-transfer-cases/{case_id}/complete', {}, lambda db: complete_transfer_case(db, session.slot, case_id))
 
     @app.get('/api/v1/fleets')
-    def fleets(request: Request):
-        return {'items': list_table(get_db(session_required(request, True)), 'fleets', limit=500)}
+    def fleets(request: Request, client_id: str | None = None, limit: int = 100):
+        db = get_db(session_required(request, True))
+        bounded = max(1, min(int(limit or 100), 100))
+        if client_id:
+            return {'items': list_table(db, 'fleets', 'client_id=? AND archived=0', (client_id,), 'name ASC', bounded)}
+        return {'items': list_table(db, 'fleets', 'archived=0', (), 'name ASC', bounded)}
 
     @app.post('/api/v1/fleets', status_code=201)
     def fleets_create(request: Request, p: dict = Body(...)):

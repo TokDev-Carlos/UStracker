@@ -13,6 +13,7 @@ sys.path.insert(0, str(ROOT / 'src'))
 os.environ['USTRACKER_DEV_PLAINTEXT'] = '1'
 
 from ustracker.db import Database
+from ustracker.mobility import create_fleet
 from ustracker.server import create_app
 from ustracker.services import create_client, create_client_company
 
@@ -60,7 +61,8 @@ class R12ClientEntityRouteTests(unittest.TestCase):
                 'documents': [{'type': 'RG', 'number': f'R12ROUTE{index:04d}', 'is_primary': True}],
             })
             if index == 0:
-                create_client_company(self.db, 1, client['id'], {'legal_name': 'Órbita Logística', 'is_primary': True})
+                self.primary_client_id = client['id']
+                self.primary_company = create_client_company(self.db, 1, client['id'], {'legal_name': 'Órbita Logística', 'is_primary': True})
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -91,6 +93,19 @@ class R12ClientEntityRouteTests(unittest.TestCase):
         self.assertEqual(set(capped['items'][0]), {
             'id', 'display_name', 'phone', 'email', 'status', 'primary_document', 'primary_company',
         })
+
+    def test_fleets_route_filters_by_client_and_caps_at_one_hundred(self):
+        for index in range(105):
+            create_fleet(self.db, 1, {
+                'client_id': self.primary_client_id,
+                'client_company_id': self.primary_company['id'],
+                'name': f'Frota {index:03d}',
+            })
+        params = urllib.parse.urlencode({'client_id': self.primary_client_id, 'limit': 1000})
+        status, body = asgi_get(self.app, '/api/v1/fleets?' + params, self.session)
+        self.assertEqual(status, 200)
+        self.assertEqual(len(body['items']), 100)
+        self.assertTrue(all(row['client_id'] == self.primary_client_id for row in body['items']))
 
 
 if __name__ == '__main__':

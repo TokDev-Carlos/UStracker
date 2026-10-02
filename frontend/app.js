@@ -99,39 +99,42 @@ async function clientsPage(){
   archiveButton.onclick=async()=>{const ids=controller.view().selectedIds;if(!ids.length)return;if(!confirm(`Arquivar ${ids.length} cliente(s) selecionado(s)?`))return;const result=await api('/clients/archive',{method:'POST',body:JSON.stringify({client_ids:ids})});const blocked=(result.blocked||[]).map(item=>{const row=d.items.find(client=>client.id===item.id);return `${row?.legal_name||item.id}: ${(item.reasons||[]).join(', ')}`});const message=`${result.archived_ids?.length||0} cliente(s) arquivado(s).${blocked.length?' Bloqueados: '+blocked.join(' | '):''}`;toast({type:blocked.length?'error':'success',message});await show('clients')};
 }
 async function mobilityPage(filters={}){
-  const [clients,fleets,data]=await Promise.all([
-    api('/clients'),
-    api('/fleets'),
-    api('/mobility'+buildMobilityQuery(filters))
+  const [data,initialFleets]=await Promise.all([
+    api('/mobility'+buildMobilityQuery(filters)),
+    filters.client_id?api('/fleets?client_id='+encodeURIComponent(filters.client_id)+'&limit=100'):Promise.resolve({items:[]})
   ]);
-  const activeClients=(clients.items||[]).filter(row=>!row.archived);
-  const activeFleets=(fleets.items||[]).filter(row=>!row.archived);
-  content(renderMobilityPage(data,{clients:activeClients,fleets:activeFleets,filters}));
+  content(renderMobilityPage(data,{fleets:initialFleets.items||[],filters}));
 
   const filterForm=document.querySelector('#mobilityFilter');
-  filterForm.onsubmit=async event=>{event.preventDefault();await mobilityPage(formData(event.target))};
   document.querySelector('#mobilityClear').onclick=()=>mobilityPage({});
   document.querySelectorAll('[data-mobility-tab]').forEach(button=>button.onclick=()=>{
     document.querySelectorAll('[data-mobility-tab]').forEach(item=>item.classList.toggle('active',item===button));
     document.querySelectorAll('[data-mobility-panel]').forEach(panel=>panel.hidden=panel.dataset.mobilityPanel!==button.dataset.mobilityTab);
   });
 
-  const fleetsForClient=clientId=>activeFleets.filter(row=>row.client_id===clientId&&row.client_company_id);
-  const setFleetOptions=(selectEl,clientId,selected='')=>{
-    const rows=fleetsForClient(clientId);
+  const loadFleets=async(selectEl,clientId,selected='')=>{
+    if(!clientId){selectEl.innerHTML='<option value="">Selecione o cliente primeiro</option>';selectEl.disabled=true;return []}
+    const result=await api('/fleets?client_id='+encodeURIComponent(clientId)+'&limit=100');
+    const rows=result.items||[];
     selectEl.innerHTML='<option value="">—</option>'+rows.map(row=>`<option value="${esc(row.id)}" ${row.id===selected?'selected':''}>${esc(row.name)}</option>`).join('');
+    selectEl.disabled=false;
+    return rows;
   };
+
+  const filterFleet=filterForm.querySelector('[name=fleet_id]');
+  let filterClientName=filters.client_name||'';
+  bindEntityAutocomplete(filterForm,{search:searchClientEntities,onSelection:client=>{filterClientName=client?.display_name||'';loadFleets(filterFleet,client?.id||'').catch(error=>toast({type:'error',message:error.message}))}});
+  filterForm.onsubmit=async event=>{event.preventDefault();const payload=formData(event.target);if(filterClientName)payload.client_name=filterClientName;await mobilityPage(payload)};
 
   const openVehicleDrawer=async(prefill={})=>{
     const template=document.querySelector('#vehicleFormTemplate');
     const drawer=openDrawer({title:'Novo veículo',subtitle:prefill.fleet_id?'Adicionar à frota':'Veículo particular ou de frota',content:template.innerHTML,actions:'<button type="button" class="ui-btn ui-btn-secondary" data-close-overlay>Cancelar</button><button type="submit" form="vehicleForm" class="ui-btn ui-btn-primary">Salvar</button>'});
     drawer.querySelectorAll('[data-close-overlay]').forEach(button=>button.onclick=()=>closeOverlay());
     const form=drawer.querySelector('#vehicleForm');
-    const clientSelect=form.querySelector('[name=client_id]');
     const fleetSelect=form.querySelector('[name=fleet_id]');
-    if(prefill.client_id)clientSelect.value=prefill.client_id;
-    setFleetOptions(fleetSelect,clientSelect.value,prefill.fleet_id||'');
-    clientSelect.onchange=()=>setFleetOptions(fleetSelect,clientSelect.value,'');
+    if(prefill.client_id){form.querySelector('[name=client_id]').value=prefill.client_id;form.querySelector('[data-entity-query]').value=prefill.client_name||prefill.client_id}
+    bindEntityAutocomplete(form,{search:searchClientEntities,onSelection:client=>loadFleets(fleetSelect,client?.id||'').catch(error=>toast({type:'error',message:error.message}))});
+    await loadFleets(fleetSelect,prefill.client_id||'',prefill.fleet_id||'');
     const typeSelect=form.querySelector('[name=type]');
     const customField=form.querySelector('.custom-type-field');
     typeSelect.onchange=()=>{customField.hidden=typeSelect.value!=='__custom__';customField.querySelector('input').required=!customField.hidden};
@@ -152,23 +155,20 @@ async function mobilityPage(filters={}){
     const drawer=openDrawer({title:'Nova frota',subtitle:'A frota precisa estar vinculada a uma empresa do cliente.',content:template.innerHTML,actions:'<button type="button" class="ui-btn ui-btn-secondary" data-close-overlay>Cancelar</button><button type="submit" form="fleetForm" class="ui-btn ui-btn-primary">Salvar</button>'});
     drawer.querySelectorAll('[data-close-overlay]').forEach(button=>button.onclick=()=>closeOverlay());
     const form=drawer.querySelector('#fleetForm');
-    const clientSelect=form.querySelector('[name=client_id]');
     const companySelect=form.querySelector('[name=client_company_id]');
     const submitButton=drawer.querySelector('[form=fleetForm]');
-    const sync=()=>loadCompanies(clientSelect.value,companySelect,submitButton).catch(error=>toast({type:'error',message:error.message}));
-    clientSelect.onchange=sync;sync();
+    bindEntityAutocomplete(form,{search:searchClientEntities,onSelection:client=>loadCompanies(client?.id||'',companySelect,submitButton).catch(error=>toast({type:'error',message:error.message}))});
+    loadCompanies('',companySelect,submitButton);
     form.onsubmit=async event=>{event.preventDefault();await api('/fleets',{method:'POST',body:JSON.stringify(formData(form))});closeOverlay();toast({message:'Frota cadastrada.'});await mobilityPage(filters)};
   };
 
   const openTransfer=async vehicle=>{
     const cases=await api(`/vehicles/${encodeURIComponent(vehicle.id)}/transfer-cases`);
-    const drawer=openDrawer({title:'Transferência de propriedade',subtitle:vehicle.plate||vehicle.id,content:renderTransferCaseForm(vehicle,{clients:activeClients,fleets:activeFleets,cases:cases.items||[]})});
+    const drawer=openDrawer({title:'Transferência de propriedade',subtitle:vehicle.plate||vehicle.id,content:renderTransferCaseForm(vehicle,{cases:cases.items||[]})});
     const form=drawer.querySelector('#transferCaseForm');
     if(form){
-      const clientSelect=form.querySelector('[name=client_id]');
       const fleetSelect=form.querySelector('[name=fleet_id]');
-      const sync=()=>setFleetOptions(fleetSelect,clientSelect.value,'');
-      clientSelect.onchange=sync;sync();
+      bindEntityAutocomplete(form,{search:searchClientEntities,onSelection:client=>loadFleets(fleetSelect,client?.id||'').catch(error=>toast({type:'error',message:error.message}))});
       form.onsubmit=async event=>{event.preventDefault();const payload=formData(form);payload.expected_revision=Number(payload.expected_revision);if(!payload.fleet_id)delete payload.fleet_id;if(!payload.effective_from)delete payload.effective_from;await api(`/vehicles/${vehicle.id}/transfer-cases`,{method:'POST',body:JSON.stringify(payload)});closeOverlay();toast({message:'Transferência criada como pendente.'});await mobilityPage(filters)};
     }
     const complete=drawer.querySelector('[data-complete-transfer]');
@@ -185,7 +185,7 @@ async function mobilityPage(filters={}){
     const edit=drawer.querySelector('#fleetEditForm');
     edit.onsubmit=async event=>{event.preventDefault();const payload=formData(edit);payload.expected_revision=Number(payload.expected_revision);await api('/fleets/'+encodeURIComponent(fleetId),{method:'PATCH',body:JSON.stringify(payload)});closeOverlay();toast({message:'Frota atualizada.'});await mobilityPage(filters)};
     const addVehicle=drawer.querySelector('[data-add-vehicle-fleet]');
-    if(addVehicle)addVehicle.onclick=()=>{closeOverlay();openVehicleDrawer({client_id:profile.fleet.client_id,fleet_id:fleetId})};
+    if(addVehicle)addVehicle.onclick=()=>{closeOverlay();openVehicleDrawer({client_id:profile.fleet.client_id,client_name:profile.fleet.client_name||profile.company?.legal_name,fleet_id:fleetId})};
     const upload=drawer.querySelector('[data-upload-fleet-photo]');
     if(upload)upload.onclick=()=>{
       const photoDrawer=openDrawer({title:'Foto da Frota',subtitle:profile.fleet.name||'',content:'<form id="fleetPhotoForm"><div class="field"><label>Imagem</label><input name="file" type="file" accept="image/*" required></div><div class="actions"><button class="ui-btn ui-btn-primary">Enviar</button></div></form>'});
