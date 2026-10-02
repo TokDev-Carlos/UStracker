@@ -76,6 +76,7 @@ from .services import (
     list_direct_sales,
     reverse_payment,
     search,
+    search_client_entities,
     set_direct_sale_status,
     update_client,
 )
@@ -274,6 +275,12 @@ def create_app(root: Path | str) -> FastAPI:
     @app.get('/api/v1/clients')
     def clients(request: Request):
         return {'items': list_clients(get_db(session_required(request, True)), limit=500)}
+
+    @app.get('/api/v1/entities/clients')
+    def client_entities(request: Request, q: str = Query(default=''), limit: int = Query(default=20)):
+        session=session_required(request, True)
+        bounded=max(1,min(int(limit),30))
+        return {'items':search_client_entities(get_db(session),q,limit=bounded),'query':q,'limit':bounded}
 
     @app.post('/api/v1/clients', status_code=201)
     def clients_create(request: Request, p: dict = Body(...)):
