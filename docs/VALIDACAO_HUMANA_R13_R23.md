@@ -20,3 +20,9 @@ Estado: **IMPLEMENTADO, NÃO VALIDADO**. A versão oficial permanece `1.003` at�
 - Nenhum arquivo foi promovido para `C:\UStracker\System` e nenhum dado real foi alterado.
 - `version.md`, `VERSION.json` e `current.json` não foram promovidos.
 - Atualização transacional, backup/restore e operação Production devem voltar ao fluxo normal de verificação depois desta validação básica.
+
+## Ajustes já identificados durante a validação
+
+Os requisitos de Receita Geral/Previsão do Mês, detalhamento de veículos, integração completa
+Cliente–Comercial e identificadores lógicos compactos foram adicionados ao fluxo oficial em
+`docs/FLUXO_AJUSTES_POS_VALIDACAO.md`. Eles não fazem parte do binário deste candidato.
