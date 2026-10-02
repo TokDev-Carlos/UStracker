@@ -60,7 +60,10 @@ export function runDomAction({
   key, scope, action, refresh, successMessage, notify = () => {}, runner = defaultRunner,
 } = {}) {
   if (domInFlight.has(key)) return domInFlight.get(key);
-  const controls = [...(scope?.querySelectorAll?.('button, input[type="submit"]') || [])];
+  const controls = [
+    ...(scope?.matches?.('button, input[type="submit"]') ? [scope] : []),
+    ...(scope?.querySelectorAll?.('button, input[type="submit"]') || []),
+  ];
   const disabledBefore = controls.map(control => control.disabled);
   controls.forEach(control => { control.disabled = true; });
   scope?.setAttribute?.('aria-busy', 'true');

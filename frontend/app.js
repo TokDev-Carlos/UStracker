@@ -11,6 +11,7 @@ import { formatBRL, formatDateBR } from './ui/formatters.js';
 import { bindMoneyInputs, renderMoneyInput } from './ui/money-input.js';
 import { bindSubscriptionWorkflow, renderSubscriptionWorkflow } from './ui/subscription-workflow.js';
 import { bindEntityAutocomplete } from './ui/entity-autocomplete.js';
+import { bindActionButton, bindActionForm, runDomAction } from './ui/action-state.js';
 import { buildClientCreatePayload, clientTableDefinition, renderClientEditor } from './pages/clients.js';
 import { buildMobilityQuery, buildVehiclePayload, renderFleetProfile, renderMobilityPage, renderTransferCaseForm } from './pages/mobility.js';
 import { catalogPayload, renderCatalogEditForm, renderCatalogPage } from './pages/catalog.js';
@@ -63,13 +64,13 @@ async function openClientProfile(clientId){
   drawer.querySelector('.ui-drawer').classList.add('r2-profile-wide');
   const refresh=async()=>{closeOverlay();await openClientProfile(clientId)};
   const basics=drawer.querySelector('#clientBasicsForm');
-  if(basics)basics.onsubmit=async event=>{event.preventDefault();const payload=formData(event.target);payload.expected_revision=profile.client.revision;await api('/clients/'+encodeURIComponent(clientId),{method:'PATCH',body:JSON.stringify(payload)});toast({message:'Dados do cliente atualizados.'});await refresh()};
+  bindActionForm(basics,{key:`client-basics:${clientId}`,action:async()=>{const payload=formData(basics);payload.expected_revision=profile.client.revision;await api('/clients/'+encodeURIComponent(clientId),{method:'PATCH',body:JSON.stringify(payload)})},refresh,successMessage:'Dados do cliente atualizados.',notify:toast});
   const companyForm=drawer.querySelector('#clientCompanyForm');
-  if(companyForm)companyForm.onsubmit=async event=>{event.preventDefault();const payload=formData(event.target);payload.is_primary=payload.is_primary==='true';await api('/clients/'+encodeURIComponent(clientId)+'/companies',{method:'POST',body:JSON.stringify(payload)});toast({message:'Empresa adicionada.'});await refresh()};
+  bindActionForm(companyForm,{key:`client-company:${clientId}`,action:async()=>{const payload=formData(companyForm);payload.is_primary=payload.is_primary==='true';await api('/clients/'+encodeURIComponent(clientId)+'/companies',{method:'POST',body:JSON.stringify(payload)})},refresh,successMessage:'Empresa adicionada.',notify:toast});
   const photoForm=drawer.querySelector('#clientPhotoForm');
-  if(photoForm)photoForm.onsubmit=async event=>{event.preventDefault();const input=event.target.querySelector('[name=file]');if(!input.files?.[0])return;const body=new FormData();body.append('file',input.files[0]);await apiForm('/media/client/'+encodeURIComponent(clientId),body);toast({message:'Foto do cliente atualizada.'});await refresh()};
+  bindActionForm(photoForm,{key:`client-photo:${clientId}`,action:async()=>{const input=photoForm.querySelector('[name=file]');if(!input.files?.[0])throw new Error('Selecione uma imagem.');const body=new FormData();body.append('file',input.files[0]);await apiForm('/media/client/'+encodeURIComponent(clientId),body)},refresh,successMessage:'Foto do cliente atualizada.',notify:toast});
   const signatureForm=drawer.querySelector('#clientSignatureForm');
-  if(signatureForm)signatureForm.onsubmit=async event=>{event.preventDefault();const input=event.target.querySelector('[name=file]');const subscriptionId=event.target.querySelector('[name=subscription_id]')?.value;if(!subscriptionId||!input.files?.[0])return;const body=new FormData();body.append('file',input.files[0]);await apiForm('/attachments/subscription/'+encodeURIComponent(subscriptionId),body);toast({message:'Assinatura anexada.'});await refresh()};
+  bindActionForm(signatureForm,{key:`client-signature:${clientId}`,action:async()=>{const input=signatureForm.querySelector('[name=file]');const subscriptionId=signatureForm.querySelector('[name=subscription_id]')?.value;if(!subscriptionId||!input.files?.[0])throw new Error('Selecione a assinatura e o arquivo.');const body=new FormData();body.append('file',input.files[0]);await apiForm('/attachments/subscription/'+encodeURIComponent(subscriptionId),body)},refresh,successMessage:'Assinatura anexada.',notify:toast});
   const newSubscription=drawer.querySelector('[data-client-new-subscription]');
   if(newSubscription)newSubscription.onclick=async()=>{const catalog=await api('/catalog');openSubscriptionWorkflow({context:'CLIENT_PROFILE',clientId,clients:[profile.client],catalog:catalog.items||[],vehicles:profile.vehicles||[],fleets:profile.fleets||[]},{onSuccess:()=>openClientProfile(clientId),onCancel:()=>openClientProfile(clientId)})};
   return drawer;
@@ -90,13 +91,14 @@ async function clientsPage(){
   newButton.onclick=()=>{
     const drawer=openDrawer({title:'Novo cliente',subtitle:'Cadastre documento e ao menos um contato.',content:renderClientEditor(),actions:'<button type="button" class="ui-btn ui-btn-secondary" data-close-overlay>Cancelar</button><button type="submit" form="clientDrawerForm" class="ui-btn ui-btn-primary">Salvar</button>'});
     drawer.querySelectorAll('[data-close-overlay]').forEach(button=>button.onclick=()=>closeOverlay());
-    drawer.querySelector('#clientDrawerForm').onsubmit=async event=>{event.preventDefault();const flat=formData(event.target);if(!flat.email?.trim()&&!flat.phone?.trim())return toast({type:'error',message:'Informe ao menos e-mail ou telefone.'});const payload=buildClientCreatePayload(flat);await api('/clients',{method:'POST',body:JSON.stringify(payload)});closeOverlay();toast({message:'Cliente cadastrado.'});await show('clients')};
+    const createForm=drawer.querySelector('#clientDrawerForm');
+    bindActionForm(createForm,{key:'client-create',action:async()=>{const flat=formData(createForm);if(!flat.email?.trim()&&!flat.phone?.trim())throw new Error('Informe ao menos e-mail ou telefone.');const payload=buildClientCreatePayload(flat);await api('/clients',{method:'POST',body:JSON.stringify(payload)});closeOverlay()},refresh:()=>show('clients'),successMessage:'Cliente cadastrado.',notify:toast});
   };
   const definition=clientTableDefinition(row=>openClientProfile(row.id).catch(error=>toast({type:'error',message:error.message})));
   const controller=createTableController({...definition,rows:d.items});
   const updateSelection=ids=>{archiveButton.disabled=!ids.length;archiveButton.textContent=ids.length?`Excluir selecionados (${ids.length})`:'Excluir selecionados'};
   mountTableController(document.querySelector('#clientsCentralTable'),controller,{onSelectionChange:updateSelection});
-  archiveButton.onclick=async()=>{const ids=controller.view().selectedIds;if(!ids.length)return;if(!confirm(`Arquivar ${ids.length} cliente(s) selecionado(s)?`))return;const result=await api('/clients/archive',{method:'POST',body:JSON.stringify({client_ids:ids})});const blocked=(result.blocked||[]).map(item=>{const row=d.items.find(client=>client.id===item.id);return `${row?.legal_name||item.id}: ${(item.reasons||[]).join(', ')}`});const message=`${result.archived_ids?.length||0} cliente(s) arquivado(s).${blocked.length?' Bloqueados: '+blocked.join(' | '):''}`;toast({type:blocked.length?'error':'success',message});await show('clients')};
+  archiveButton.onclick=()=>{const ids=controller.view().selectedIds;if(!ids.length||!confirm(`Arquivar ${ids.length} cliente(s) selecionado(s)?`))return;return runDomAction({key:'client-archive',scope:archiveButton,action:()=>api('/clients/archive',{method:'POST',body:JSON.stringify({client_ids:ids})}),refresh:async result=>{const blocked=(result.blocked||[]).map(item=>{const row=d.items.find(client=>client.id===item.id);return `${row?.legal_name||item.id}: ${(item.reasons||[]).join(', ')}`});toast({type:blocked.length?'error':'success',message:`${result.archived_ids?.length||0} cliente(s) arquivado(s).${blocked.length?' Bloqueados: '+blocked.join(' | '):''}`});await show('clients')},notify:toast})};
 }
 async function mobilityPage(filters={}){
   const [data,initialFleets]=await Promise.all([
@@ -138,7 +140,7 @@ async function mobilityPage(filters={}){
     const typeSelect=form.querySelector('[name=type]');
     const customField=form.querySelector('.custom-type-field');
     typeSelect.onchange=()=>{customField.hidden=typeSelect.value!=='__custom__';customField.querySelector('input').required=!customField.hidden};
-    form.onsubmit=async event=>{event.preventDefault();const payload=buildVehiclePayload(formData(form));await api('/vehicles',{method:'POST',body:JSON.stringify(payload)});closeOverlay();toast({message:'Veículo cadastrado.'});await mobilityPage(filters)};
+    bindActionForm(form,{key:'vehicle-create',action:async()=>{const payload=buildVehiclePayload(formData(form));await api('/vehicles',{method:'POST',body:JSON.stringify(payload)});closeOverlay()},refresh:()=>mobilityPage(filters),successMessage:'Veículo cadastrado.',notify:toast});
   };
 
   const loadCompanies=async(clientId,companySelect,submitButton,selected='')=>{
@@ -159,7 +161,7 @@ async function mobilityPage(filters={}){
     const submitButton=drawer.querySelector('[form=fleetForm]');
     bindEntityAutocomplete(form,{search:searchClientEntities,onSelection:client=>loadCompanies(client?.id||'',companySelect,submitButton).catch(error=>toast({type:'error',message:error.message}))});
     loadCompanies('',companySelect,submitButton);
-    form.onsubmit=async event=>{event.preventDefault();await api('/fleets',{method:'POST',body:JSON.stringify(formData(form))});closeOverlay();toast({message:'Frota cadastrada.'});await mobilityPage(filters)};
+    bindActionForm(form,{key:'fleet-create',action:async()=>{await api('/fleets',{method:'POST',body:JSON.stringify(formData(form))});closeOverlay()},refresh:()=>mobilityPage(filters),successMessage:'Frota cadastrada.',notify:toast});
   };
 
   const openTransfer=async vehicle=>{
@@ -169,12 +171,12 @@ async function mobilityPage(filters={}){
     if(form){
       const fleetSelect=form.querySelector('[name=fleet_id]');
       bindEntityAutocomplete(form,{search:searchClientEntities,onSelection:client=>loadFleets(fleetSelect,client?.id||'').catch(error=>toast({type:'error',message:error.message}))});
-      form.onsubmit=async event=>{event.preventDefault();const payload=formData(form);payload.expected_revision=Number(payload.expected_revision);if(!payload.fleet_id)delete payload.fleet_id;if(!payload.effective_from)delete payload.effective_from;await api(`/vehicles/${vehicle.id}/transfer-cases`,{method:'POST',body:JSON.stringify(payload)});closeOverlay();toast({message:'Transferência criada como pendente.'});await mobilityPage(filters)};
+      bindActionForm(form,{key:`transfer-create:${vehicle.id}`,action:async()=>{const payload=formData(form);payload.expected_revision=Number(payload.expected_revision);if(!payload.fleet_id)delete payload.fleet_id;if(!payload.effective_from)delete payload.effective_from;await api(`/vehicles/${vehicle.id}/transfer-cases`,{method:'POST',body:JSON.stringify(payload)});closeOverlay()},refresh:()=>mobilityPage(filters),successMessage:'Transferência criada como pendente.',notify:toast});
     }
     const complete=drawer.querySelector('[data-complete-transfer]');
-    if(complete)complete.onclick=async()=>{await api(`/vehicle-transfer-cases/${complete.dataset.completeTransfer}/complete`,{method:'POST',body:'{}'});closeOverlay();toast({message:'Transferência concluída.'});await mobilityPage(filters)};
+    bindActionButton(complete,{key:`transfer-complete:${complete?.dataset.completeTransfer||''}`,action:async()=>{await api(`/vehicle-transfer-cases/${complete.dataset.completeTransfer}/complete`,{method:'POST',body:'{}'});closeOverlay()},refresh:()=>mobilityPage(filters),successMessage:'Transferência concluída.',notify:toast});
     const cancel=drawer.querySelector('[data-cancel-transfer]');
-    if(cancel)cancel.onclick=async()=>{await api(`/vehicle-transfer-cases/${cancel.dataset.cancelTransfer}/cancel`,{method:'POST',body:'{}'});closeOverlay();toast({message:'Transferência cancelada.'});await mobilityPage(filters)};
+    bindActionButton(cancel,{key:`transfer-cancel:${cancel?.dataset.cancelTransfer||''}`,action:async()=>{await api(`/vehicle-transfer-cases/${cancel.dataset.cancelTransfer}/cancel`,{method:'POST',body:'{}'});closeOverlay()},refresh:()=>mobilityPage(filters),successMessage:'Transferência cancelada.',notify:toast});
   };
 
   const openFleetProfile=async fleetId=>{
@@ -183,13 +185,14 @@ async function mobilityPage(filters={}){
     const drawer=openDrawer({title:'Ficha da Frota',subtitle:profile.fleet.name||'',content:renderFleetProfile(profile,{companies:companies.items||[]})});
     drawer.querySelector('.ui-drawer').classList.add('r2-profile-wide');
     const edit=drawer.querySelector('#fleetEditForm');
-    edit.onsubmit=async event=>{event.preventDefault();const payload=formData(edit);payload.expected_revision=Number(payload.expected_revision);await api('/fleets/'+encodeURIComponent(fleetId),{method:'PATCH',body:JSON.stringify(payload)});closeOverlay();toast({message:'Frota atualizada.'});await mobilityPage(filters)};
+    bindActionForm(edit,{key:`fleet-edit:${fleetId}`,action:async()=>{const payload=formData(edit);payload.expected_revision=Number(payload.expected_revision);await api('/fleets/'+encodeURIComponent(fleetId),{method:'PATCH',body:JSON.stringify(payload)});closeOverlay()},refresh:()=>mobilityPage(filters),successMessage:'Frota atualizada.',notify:toast});
     const addVehicle=drawer.querySelector('[data-add-vehicle-fleet]');
     if(addVehicle)addVehicle.onclick=()=>{closeOverlay();openVehicleDrawer({client_id:profile.fleet.client_id,client_name:profile.fleet.client_name||profile.company?.legal_name,fleet_id:fleetId})};
     const upload=drawer.querySelector('[data-upload-fleet-photo]');
     if(upload)upload.onclick=()=>{
       const photoDrawer=openDrawer({title:'Foto da Frota',subtitle:profile.fleet.name||'',content:'<form id="fleetPhotoForm"><div class="field"><label>Imagem</label><input name="file" type="file" accept="image/*" required></div><div class="actions"><button class="ui-btn ui-btn-primary">Enviar</button></div></form>'});
-      photoDrawer.querySelector('#fleetPhotoForm').onsubmit=async event=>{event.preventDefault();const body=new FormData();body.append('file',new FormData(event.target).get('file'));await apiForm(`/media/fleet/${encodeURIComponent(fleetId)}`,body);closeOverlay();toast({message:'Foto da frota adicionada.'});await mobilityPage(filters)};
+      const fleetPhotoForm=photoDrawer.querySelector('#fleetPhotoForm');
+      bindActionForm(fleetPhotoForm,{key:`fleet-photo:${fleetId}`,action:async()=>{const body=new FormData();body.append('file',new FormData(fleetPhotoForm).get('file'));await apiForm(`/media/fleet/${encodeURIComponent(fleetId)}`,body);closeOverlay()},refresh:()=>mobilityPage(filters),successMessage:'Foto da frota adicionada.',notify:toast});
     };
     drawer.querySelectorAll('[data-open-vehicle-transfer]').forEach(button=>button.onclick=()=>{const vehicle=profile.vehicles.find(row=>row.id===button.dataset.openVehicleTransfer);if(vehicle)openTransfer(vehicle)});
   };
