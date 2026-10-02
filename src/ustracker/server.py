@@ -71,6 +71,7 @@ from .services import (
     list_client_companies,
     list_client_documents,
     list_clients,
+    list_subscriptions,
     list_table,
     list_direct_sales,
     reverse_payment,
@@ -436,7 +437,7 @@ def create_app(root: Path | str) -> FastAPI:
 
     @app.get('/api/v1/subscriptions')
     def subscriptions(request: Request):
-        return {'items': list_table(get_db(session_required(request, True)), 'subscriptions', limit=500)}
+        return {'items': list_subscriptions(get_db(session_required(request, True)), limit=500)}
 
     @app.post('/api/v1/subscriptions', status_code=201)
     def subscriptions_create(request: Request, p: dict = Body(...)):

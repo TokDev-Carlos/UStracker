@@ -280,7 +280,7 @@ def _hydrate_subscription(con, row)->dict:
     targets=[]
     for target in con.execute('''SELECT st.*,
         CASE WHEN st.vehicle_id IS NOT NULL THEN 'VEHICLE' ELSE 'FLEET' END AS target_type,
-        v.plate AS vehicle_plate,v.brand AS vehicle_brand,v.model AS vehicle_model,
+        v.plate AS vehicle_plate,v.brand AS vehicle_brand,v.model AS vehicle_model,v.fleet_id AS vehicle_fleet_id,
         f.name AS fleet_name,cc.legal_name AS fleet_company_name
         FROM subscription_targets st
         LEFT JOIN vehicles v ON v.id=st.vehicle_id

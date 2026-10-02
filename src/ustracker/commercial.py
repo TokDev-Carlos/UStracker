@@ -5,7 +5,7 @@ from datetime import date
 
 from .db import Database
 from .money import parse_money_api
-from .services import audit, now, uid, list_direct_sales
+from .services import audit, now, uid, list_direct_sales, list_subscriptions
 
 
 def add_months(value:date, months:int)->date:
@@ -45,16 +45,16 @@ def create_coverage(db:Database,actor:int,p:dict)->dict:
 
 
 def commercial_snapshot(db:Database)->dict:
-    subscriptions=[]
-    for row in db.query('''SELECT s.*,c.legal_name AS client_name FROM subscriptions s JOIN clients c ON c.id=s.client_id
-                           ORDER BY s.created_at DESC'''):
-        rec=dict(row)
-        rec['total_cents']=sum(int(x['quantity'])*int(x['unit_price_cents']) for x in db.query('SELECT quantity,unit_price_cents FROM subscription_items WHERE subscription_id=?',(row['id'],)))
-        vehicles=[dict(v) for v in db.query('''SELECT DISTINCT v.id,v.plate,v.fleet_id FROM subscription_items si
-                                                JOIN vehicles v ON v.id=si.vehicle_id WHERE si.subscription_id=?''',(row['id'],))]
-        rec['vehicles']=vehicles
-        rec['plans']=[dict(x) for x in db.query('''SELECT c.id,c.name,c.code,si.quantity,si.unit_price_cents FROM subscription_items si LEFT JOIN catalog c ON c.id=si.catalog_id WHERE si.subscription_id=?''',(row['id'],))]
-        subscriptions.append(rec)
+    subscriptions=list_subscriptions(db)
+    for rec in subscriptions:
+        rec['total_cents']=rec['effective_total_cents']
+        rec['vehicles']=[{
+            'id':target['vehicle_id'],'plate':target['vehicle_plate'],'fleet_id':target['vehicle_fleet_id'],
+        } for target in rec['targets'] if target['target_type']=='VEHICLE']
+        rec['plans']=[{
+            'id':item['catalog_id'],'name':item['plan_name'],'code':item['plan_code'],
+            'quantity':item['quantity'],'unit_price_cents':item['unit_price_cents'],
+        } for item in rec['items']]
     coverages=[dict(r) for r in db.query('''SELECT sc.*,c.legal_name AS client_name FROM service_coverage_periods sc
                                             JOIN clients c ON c.id=sc.client_id ORDER BY sc.end_on DESC,sc.created_at DESC''')]
     return {

@@ -52,8 +52,18 @@ def ensure_fiscal_expense(db:Database,actor:int,fiscal_id:str)->dict:
 
 
 def finance_snapshot(db:Database)->dict:
+    payments=[dict(r) for r in db.query('SELECT * FROM payments ORDER BY paid_on DESC,created_at DESC')]
+    active_payments=[payment for payment in payments if not payment.get('reversed_at')]
+    realized_received=sum(int(payment['amount_cents']) for payment in active_payments)
+    realized_expenses=int(db.one(
+        'SELECT COALESCE(SUM(amount_cents),0) FROM disbursements WHERE reversed_at IS NULL'
+    )[0])
     return {
-        'payments':[dict(r) for r in db.query('SELECT * FROM payments ORDER BY paid_on DESC,created_at DESC')],
+        'payments':payments,
+        'active_payments':active_payments,
+        'realized_received_cents':realized_received,
+        'realized_expenses_cents':realized_expenses,
+        'cash_result_cents':realized_received-realized_expenses,
         'expenses':[dict(r) for r in db.query('SELECT * FROM expenses ORDER BY competence DESC,created_at DESC')],
         'fiscal':[dict(r) for r in db.query('SELECT * FROM fiscal_obligations ORDER BY competence DESC,created_at DESC')],
         'clients':[dict(r) for r in db.query('SELECT id,legal_name FROM clients WHERE archived=0 ORDER BY legal_name')],
