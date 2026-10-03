@@ -773,7 +773,7 @@ def create_app(root: Path | str) -> FastAPI:
     def sandbox_reset(request: Request, p: dict = Body(...)):
         session = session_required(request, True); csrf_required(request, session)
         if session.environment != 'test' or p.get('confirm') != 'LIMPAR TESTES': raise ValueError('test session and exact confirmation required')
-        db = get_db(session); db.path.unlink(missing_ok=True); shutil.rmtree(root/'UserData'/'Media'/'test', ignore_errors=True); shutil.rmtree(root/'UserData'/'Attachments'/'test', ignore_errors=True); Database(root, 'test', session.db_key)
+        db = get_db(session); db.path.unlink(missing_ok=True); shutil.rmtree(root/'UserData'/'Media'/'test', ignore_errors=True); shutil.rmtree(root/'UserData'/'Attachments'/'test', ignore_errors=True); repository.database('test', session.db_key)
         return {'ok': True}
 
     @app.get('/api/v1/integrations')
