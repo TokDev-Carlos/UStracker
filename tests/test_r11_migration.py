@@ -58,7 +58,7 @@ class R11MigrationTests(unittest.TestCase):
         first = Database(self.root, 'test', b'0' * 32)
         second = Database(self.root, 'test', b'0' * 32)
 
-        self.assertEqual(second.one("SELECT value FROM meta WHERE key='schema_version'")[0], '11')
+        self.assertEqual(second.one("SELECT value FROM meta WHERE key='schema_version'")[0], '12')
         self.assertIsNotNone(second.one("SELECT name FROM sqlite_master WHERE type='table' AND name='subscription_targets'"))
         self.assertEqual(second.one('SELECT id FROM subscriptions WHERE id=?', (subscription['id'],))[0], subscription['id'])
         self.assertEqual(first.one('SELECT COUNT(*) FROM subscription_targets')[0], 0)

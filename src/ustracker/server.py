@@ -22,7 +22,9 @@ from .attachments import list_attachments, load_attachment, store_attachment, st
 from .codes import resolve_entity_ref
 from .backup import create_backup, maybe_automatic_backup, prune_backups, restore_backup, verify_backup
 from .branding import asset_dir, store_brand_asset
+from .billing import client_payment_options, register_subscription_payment, subscription_payment_status
 from .catalog import list_catalog
+from .expenses import convert_expense_to_sale, create_company_expense, delete_expense, pay_expense, run_recurring_expenses, stop_recurring_expense
 from .commercial import commercial_snapshot, create_coverage
 from .finance import ensure_fiscal_expense, finance_snapshot
 from .overview import client_activity_overview
@@ -421,7 +423,7 @@ def create_app(root: Path | str) -> FastAPI:
     def fiscal_ensure_expense(fiscal_id: str, request: Request):
         session = session_required(request, True); db = get_db(session)
         payload = {'fiscal_id': fiscal_id}
-        return mutation(request, session, f'POST /fiscal/{fiscal_id}/ensure-expense', payload, lambda: ensure_fiscal_expense(db, session.slot, fiscal_id))
+        return mutation(request, session, f'POST /fiscal/{fiscal_id}/ensure-expense', payload, lambda db: ensure_fiscal_expense(db, session.slot, fiscal_id))
 
     @app.get('/api/v1/commercial')
     def commercial(request: Request):
@@ -430,7 +432,7 @@ def create_app(root: Path | str) -> FastAPI:
     @app.post('/api/v1/commercial/coverage', status_code=201)
     def commercial_coverage(request: Request, p: dict = Body(...)):
         session = session_required(request, True); db = get_db(session)
-        return mutation(request, session, 'POST /commercial/coverage', p, lambda: create_coverage(db, session.slot, p))
+        return mutation(request, session, 'POST /commercial/coverage', p, lambda db: create_coverage(db, session.slot, p))
 
     @app.get('/api/v1/catalog')
     def catalog(request: Request):
@@ -518,6 +520,20 @@ def create_app(root: Path | str) -> FastAPI:
         session = session_required(request, True)
         return mutation(request, session, 'POST /payments', p, lambda db: create_payment(db, session.slot, p))
 
+    # AJ-12 — one-click subscription payment
+    @app.get('/api/v1/billing/clients/{client_id}')
+    def billing_client(client_id: str, request: Request):
+        return client_payment_options(get_db(session_required(request, True)), client_id)
+
+    @app.get('/api/v1/billing/subscriptions/{sid}')
+    def billing_subscription(sid: str, request: Request):
+        return subscription_payment_status(get_db(session_required(request, True)), sid)
+
+    @app.post('/api/v1/billing/payments', status_code=201)
+    def billing_payment(request: Request, p: dict = Body(...)):
+        session = session_required(request, True)
+        return mutation(request, session, 'POST /billing/payments', p, lambda db: register_subscription_payment(db, session.slot, p))
+
     @app.post('/api/v1/payments/{pid}/reverse')
     def payments_reverse(pid: str, request: Request, p: dict = Body(default={})):
         session = session_required(request, True)
@@ -539,7 +555,35 @@ def create_app(root: Path | str) -> FastAPI:
     @app.post('/api/v1/expenses', status_code=201)
     def expenses_create(request: Request, p: dict = Body(...)):
         session = session_required(request, True)
+        # AJ-13: the simple form (repeat + amount) creates a company expense; the legacy contract is kept.
+        if 'repeat' in p or 'amount' in p:
+            return mutation(request, session, 'POST /expenses', p, lambda db: create_company_expense(db, session.slot, p))
         return mutation(request, session, 'POST /expenses', p, lambda db: create_expense(db, session.slot, p))
+
+    @app.post('/api/v1/expenses/recurring/run')
+    def expenses_recurring_run(request: Request):
+        session = session_required(request, True)
+        return mutation(request, session, 'POST /expenses/recurring/run', {}, lambda db: run_recurring_expenses(db, session.slot))
+
+    @app.post('/api/v1/expenses/{eid}/pay')
+    def expenses_pay(eid: str, request: Request, p: dict = Body(default={})):
+        session = session_required(request, True)
+        return mutation(request, session, f'POST /expenses/{eid}/pay', p, lambda db: pay_expense(db, session.slot, eid, p))
+
+    @app.post('/api/v1/expenses/{eid}/stop-repeat')
+    def expenses_stop(eid: str, request: Request):
+        session = session_required(request, True)
+        return mutation(request, session, f'POST /expenses/{eid}/stop-repeat', {'id': eid}, lambda db: stop_recurring_expense(db, session.slot, eid))
+
+    @app.post('/api/v1/expenses/{eid}/convert-sale', status_code=201)
+    def expenses_convert(eid: str, request: Request, p: dict = Body(...)):
+        session = session_required(request, True)
+        return mutation(request, session, f'POST /expenses/{eid}/convert-sale', p, lambda db: convert_expense_to_sale(db, session.slot, eid, p))
+
+    @app.delete('/api/v1/expenses/{eid}')
+    def expenses_delete(eid: str, request: Request):
+        session = session_required(request, True)
+        return mutation(request, session, f'DELETE /expenses/{eid}', {'id': eid}, lambda db: delete_expense(db, session.slot, eid))
 
     @app.get('/api/v1/expenses/{eid}/disbursements')
     def expense_disbursements(eid: str, request: Request):

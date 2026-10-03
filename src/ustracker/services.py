@@ -638,6 +638,13 @@ def reverse_payment(db:Database, actor:int, payment_id:str)->dict:
             affected.update(r[0] for r in con.execute('SELECT charge_id FROM credit_allocations WHERE credit_id=? AND active=1',(c['id'],)).fetchall())
             con.execute('UPDATE credit_allocations SET active=0,reversed_on=? WHERE credit_id=? AND active=1',(date.today().isoformat(),c['id']))
             con.execute("UPDATE credits SET balance_cents=0,status='REVERSED' WHERE id=?",(c['id'],))
+        # AJ-12: a discount granted together with this payment is undone with it.
+        for adj in con.execute('SELECT * FROM charge_adjustments WHERE reason=?',(f'Desconto no pagamento {payment_id}',)).fetchall():
+            back=-int(adj['amount_cents'])
+            con.execute('INSERT INTO charge_adjustments(id,charge_id,kind,amount_cents,reason,effective_on,created_at) VALUES(?,?,?,?,?,?,?)',
+                        (uid(),adj['charge_id'],'OTHER',back,f'Estorno do desconto {payment_id}',date.today().isoformat(),ts))
+            con.execute('UPDATE charges SET adjustment_cents=adjustment_cents+?,revision=revision+1,updated_at=? WHERE id=?',(back,ts,adj['charge_id']))
+            affected.add(adj['charge_id'])
         for charge_id in affected: _refresh_charge_status(con,charge_id)
         rec={'id':payment_id,'reversed_at':ts}; audit(con,actor,'PAYMENT_REVERSE','payment',payment_id,dict(payment),rec); return rec
 

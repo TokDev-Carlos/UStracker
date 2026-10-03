@@ -3,6 +3,7 @@ from __future__ import annotations
 from .db import Database
 from .money import parse_money_api
 from .services import audit, now, uid
+from .expenses import EXPENSE_CATEGORIES, REPEAT_LABELS, expense_rows, pending_recurring_count
 
 
 def _insert_fiscal_expense(con, fiscal, actor:int):
@@ -14,7 +15,7 @@ def _insert_fiscal_expense(con, fiscal, actor:int):
         return dict(existing)
     eid=uid(); ts=now()
     rec={
-        'id':eid,'category':'FISCAL','description':fiscal['description'],'competence':fiscal['competence'],
+        'id':eid,'category':'Impostos e taxas','description':fiscal['description'],'competence':fiscal['competence'],
         'due_on':fiscal['due_on'],'expected_amount_cents':int(fiscal['amount_cents']),'supplier':None,
         'client_id':None,'vehicle_id':None,'subscription_id':None,'catalog_id':None,
         'recurrence_id':None,'status':'OPEN','revision':1,'created_at':ts,'updated_at':ts,
@@ -64,7 +65,10 @@ def finance_snapshot(db:Database)->dict:
         'realized_received_cents':realized_received,
         'realized_expenses_cents':realized_expenses,
         'cash_result_cents':realized_received-realized_expenses,
-        'expenses':[dict(r) for r in db.query('SELECT * FROM expenses ORDER BY competence DESC,created_at DESC')],
+        'expenses':expense_rows(db),
+        'expense_categories':list(EXPENSE_CATEGORIES),
+        'expense_repeat':REPEAT_LABELS,
+        'recurring_pending':pending_recurring_count(db),
         'fiscal':[dict(r) for r in db.query('SELECT * FROM fiscal_obligations ORDER BY competence DESC,created_at DESC')],
         'charges':[dict(r) for r in db.query("SELECT ch.*,s.code||'/'||substr(ch.competence,1,7) AS code FROM charges ch LEFT JOIN subscriptions s ON s.id=ch.subscription_id WHERE ch.status<>'VOID' ORDER BY ch.due_on DESC,ch.created_at DESC")],
         'disbursements':[dict(r) for r in db.query('SELECT * FROM disbursements ORDER BY paid_on DESC,created_at DESC')],

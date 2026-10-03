@@ -140,7 +140,7 @@ export function renderClientProfile(profile = {}, options = {}) {
   // Assinaturas e compras
   const subRows = subscriptions.map(sub => {
     const plans = (sub.items || sub.subscription_items || []).map(item => item.plan_name || item.description).filter(Boolean).join(', ') || 'Plano';
-    return `<tr><td>${codeTag(sub.code) || '—'}</td><td>${esc(plans)}</td><td class="money">${formatBRL(sub.effective_total_cents || 0)}</td><td>${esc(formatDateBR(sub.start_on, false) || '—')}</td><td>${esc(SUB_STATUS[sub.lifecycle_status] || sub.lifecycle_status || '')}</td><td><button type="button" class="ui-btn ui-btn-subtle" data-open-commercial="subscriptions" data-code="${esc(sub.code || '')}">Abrir no Comercial</button></td></tr>`;
+    return `<tr><td>${codeTag(sub.code) || '—'}</td><td>${esc(plans)}</td><td class="money">${formatBRL(sub.effective_total_cents || 0)}</td><td>${esc(formatDateBR(sub.start_on, false) || '—')}</td><td>${esc(SUB_STATUS[sub.lifecycle_status] || sub.lifecycle_status || '')}</td><td><div class="row-actions">${sub.lifecycle_status === 'ACTIVE' ? `<button type="button" class="ui-btn ui-btn-primary ui-btn-sm" data-client-payment data-subscription-id="${esc(sub.id)}">Pagar</button>` : ''}<button type="button" class="ui-btn ui-btn-subtle ui-btn-sm" data-open-commercial="subscriptions" data-code="${esc(sub.code || '')}">Abrir no Comercial</button></div></td></tr>`;
   });
   const saleRows = directSales.map(sale => {
     const items = (sale.direct_sale_items || []).map(item => item.description).filter(Boolean).join(', ') || 'Compra direta';
@@ -159,7 +159,7 @@ export function renderClientProfile(profile = {}, options = {}) {
      <h4 class="cp-sub">Compras diretas</h4>${table(['Código', 'Itens', 'Total', 'Data', 'Situação', ''], saleRows, 'Nenhuma compra direta.')}`);
 
   // Financeiro
-  const financeiro = panel('financeiro', 'Financeiro', '', `<dl class="cp-dl cp-dl-wide"><dt>Valor contratado ativo (mês)</dt><dd>${formatBRL(summary.contracted_active_cents || 0)}</dd><dt>Receita realizada</dt><dd>${formatBRL(summary.realized_revenue_cents || 0)}</dd><dt>Compras em aberto</dt><dd>${formatBRL(summary.open_purchases_cents || 0)}</dd><dt>Compras pagas</dt><dd>${formatBRL(financial.direct_sales_paid_cents || 0)}</dd><dt>Despesas geradas</dt><dd>${formatBRL(financial.client_expenses_generated_cents || 0)}</dd><dt>Resultado do cliente</dt><dd>${formatBRL(summary.generated_value_cents || 0)}</dd></dl>`);
+  const financeiro = panel('financeiro', 'Financeiro', subscriptions.length ? '<button type="button" class="ui-btn ui-btn-primary" data-client-payment>Registrar pagamento</button>' : '', `<dl class="cp-dl cp-dl-wide"><dt>Valor contratado ativo (mês)</dt><dd>${formatBRL(summary.contracted_active_cents || 0)}</dd><dt>Receita realizada</dt><dd>${formatBRL(summary.realized_revenue_cents || 0)}</dd><dt>Compras em aberto</dt><dd>${formatBRL(summary.open_purchases_cents || 0)}</dd><dt>Compras pagas</dt><dd>${formatBRL(financial.direct_sales_paid_cents || 0)}</dd><dt>Despesas geradas</dt><dd>${formatBRL(financial.client_expenses_generated_cents || 0)}</dd><dt>Resultado do cliente</dt><dd>${formatBRL(summary.generated_value_cents || 0)}</dd></dl>`);
 
   // Arquivos
   const fileRows = attachments.map(attachment => `<tr><td>${attachment.origin === 'LINK'

@@ -18,7 +18,8 @@ import { buildClientCreatePayload, clientTableDefinition, renderClientEditor } f
 import { buildMobilityQuery, buildVehiclePayload, renderFleetProfile, renderMobilityPage, renderTransferCaseForm } from './pages/mobility.js';
 import { catalogPayload, renderCatalogEditForm, renderCatalogPage } from './pages/catalog.js';
 import { renderCommercialPage } from './pages/commercial.js';
-import { renderFinancePage } from './pages/finance.js';
+import { renderFinancePage, renderSellExpenseForm } from './pages/finance.js';
+import { openPaymentDialog } from './ui/payment-dialog.js';
 import { renderOverviewDrilldown, renderOverviewPage } from './pages/dashboard.js';
 import { entityChoices, renderFilesPage } from './pages/files.js';
 
@@ -128,6 +129,8 @@ async function openClientProfile(clientId,options={}){
   const journeySubscription=drawer.querySelector('[data-journey-subscription]');
   if(journeySubscription&&newSubscription)journeySubscription.onclick=()=>newSubscription.click();
   if(newSubscription)newSubscription.onclick=async()=>{const catalog=await api('/catalog');openSubscriptionWorkflow({context:'CLIENT_PROFILE',clientId,clients:[profile.client],catalog:catalog.items||[],vehicles:profile.vehicles||[],fleets:profile.fleets||[]},{onSuccess:()=>openClientProfile(clientId,{focus:'commercial'}),onCancel:()=>openClientProfile(clientId)})};
+  // AJ-12 — pay from the profile (client and, from a row, the subscription come pre-selected).
+  drawer.querySelectorAll('[data-client-payment]').forEach(button=>button.onclick=()=>{const tab=drawer.querySelector('.cp')?.dataset.cpActive;openPaymentDialog({api,search:searchClientEntities,client:{id:clientId,display_name:profile.client?.legal_name},subscriptionId:button.dataset.subscriptionId||'',notify:toast,onSuccess:()=>openClientProfile(clientId,{tab})})});
   return drawer;
 }
 async function show(page){if(page==='fleets'||page==='vehicles')page='mobility';const lease=++navigationSequence;pageReload=()=>show(page);systemNavigationLease=page==='system'?lease:null;current=page;tableStore.clear();document.querySelectorAll('[data-page]').forEach(b=>b.classList.toggle('active',b.dataset.page===page));try{const fn={dashboard:()=>dashboardPage('',lease),clients:()=>clientsPage(lease),mobility:()=>mobilityPage({},lease),catalog:()=>catalogPage(lease),commercial:()=>commercialPage(lease),subscriptions:()=>commercialPage(lease),purchases:()=>commercialPage(lease),charges:()=>commercialPage(lease),credits:()=>commercialPage(lease),finance:()=>financePage(lease),payments:()=>financePage(lease),expenses:()=>financePage(lease),fiscal:()=>financePage(lease),files:()=>filesPage(lease),media:()=>filesPage(lease),reports:()=>reportsPage(lease),system:()=>systemPage(lease)}[page];if(fn)await fn()}catch(e){content(`<div class="error">${esc(e.message)}</div>`,lease)}}
@@ -303,20 +306,36 @@ async function commercialPage(lease=null){
   }; draw();
 }
 async function financePage(lease=null){
-  const data=await api('/finance');
+  let data=await api('/finance');
+  // AJ-13: recurring expenses due up to this month are issued once, without triggering a reload loop.
+  if(Number(data.recurring_pending||0)>0){try{await apiClient.request('/expenses/recurring/run',{method:'POST',body:'{}'});data=await api('/finance')}catch{}}
   const legacyTab=current==='expenses'?'expenses':current==='fiscal'?'fiscal':'payments';
   let active=(location.hash.match(/^#finance\/(payments|expenses|fiscal)$/)?.[1])||legacyTab;
   current='finance';document.querySelectorAll('[data-page]').forEach(b=>b.classList.toggle('active',b.dataset.page==='finance'));
+  const reload=()=>show('finance');
   const draw=()=>{
     if(!content(renderFinancePage(data,active),lease))return;
     document.querySelectorAll('[data-finance-tab]').forEach(button=>button.onclick=()=>{active=button.dataset.financeTab;history.replaceState(null,'','#finance/'+active);draw()});
+    const openPay=document.querySelector('[data-open-payment]');if(openPay)openPay.onclick=()=>openPaymentDialog({api,search:searchClientEntities,notify:toast,onSuccess:reload});
+    document.querySelectorAll('[data-reverse-payment]').forEach(button=>bindActionButton(button,{key:'payment-reverse:'+button.dataset.reversePayment,confirm:'Estornar este recebimento? As mensalidades cobertas voltam a ficar em aberto.',action:()=>api('/payments/'+encodeURIComponent(button.dataset.reversePayment)+'/reverse',{method:'POST',body:'{}'}),refresh:reload,successMessage:'Recebimento estornado.',notify:toast}));
     const payment=document.querySelector('#financePaymentForm');if(payment){
       const chargeSelect=payment.querySelector('[name=charge_id]');
       bindEntityAutocomplete(payment,{search:searchClientEntities,onSelection:client=>{const clientId=client?.id||'';chargeSelect.disabled=!clientId;for(const option of [...chargeSelect.options].slice(1))option.hidden=option.dataset.client!==clientId;if(chargeSelect.selectedOptions[0]?.hidden)chargeSelect.value=''}});
-      bindActionForm(payment,{key:'payment-create',action:async()=>{const p=formData(payment);p.create_credit=p.create_credit==='true';p.allocations=[];if(p.charge_id&&p.allocation_amount&&p.allocation_amount!=='R$ 0,00')p.allocations.push({charge_id:p.charge_id,amount:p.allocation_amount});delete p.charge_id;delete p.allocation_amount;if(!p.paid_on)delete p.paid_on;await api('/payments',{method:'POST',body:JSON.stringify(p)})},refresh:()=>show('finance'),successMessage:'Recebimento registrado.',notify:toast});
+      bindActionForm(payment,{key:'payment-create',action:async()=>{const p=formData(payment);p.create_credit=p.create_credit==='true';p.allocations=[];if(p.charge_id&&p.allocation_amount&&p.allocation_amount!=='R$ 0,00')p.allocations.push({charge_id:p.charge_id,amount:p.allocation_amount});delete p.charge_id;delete p.allocation_amount;if(!p.paid_on)delete p.paid_on;await api('/payments',{method:'POST',body:JSON.stringify(p)})},refresh:reload,successMessage:'Recebimento registrado.',notify:toast});
     }
-    const expense=document.querySelector('#financeExpenseForm');bindActionForm(expense,{key:'expense-create',action:async()=>{const p=formData(expense);if(!p.due_on)delete p.due_on;await api('/expenses',{method:'POST',body:JSON.stringify(p)})},refresh:()=>show('finance'),successMessage:'Despesa registrada.',notify:toast});
-    const fiscal=document.querySelector('#financeFiscalForm');bindActionForm(fiscal,{key:'fiscal-create',action:async()=>{const p=formData(fiscal);if(!p.amount)delete p.amount;if(!p.due_on)delete p.due_on;if(!p.external_ref)delete p.external_ref;await api('/fiscal',{method:'POST',body:JSON.stringify(p)})},refresh:()=>show('finance'),successMessage:'Obrigação fiscal registrada.',notify:toast});
+    const expense=document.querySelector('#financeExpenseForm');
+    if(expense){bindMoneyInputs(expense);bindActionForm(expense,{key:'expense-create',action:async()=>{const p=formData(expense);p.paid=p.paid==='true';if(!p.supplier)delete p.supplier;await api('/expenses',{method:'POST',body:JSON.stringify(p)})},refresh:()=>{active='expenses';return reload()},successMessage:'Despesa registrada.',notify:toast});}
+    const byId=id=>(data.expenses||[]).find(row=>row.id===id);
+    document.querySelectorAll('[data-expense-pay]').forEach(button=>bindActionButton(button,{key:'expense-pay:'+button.dataset.expensePay,action:()=>api('/expenses/'+encodeURIComponent(button.dataset.expensePay)+'/pay',{method:'POST',body:'{}'}),refresh:reload,successMessage:'Despesa paga hoje.',notify:toast}));
+    document.querySelectorAll('[data-expense-stop]').forEach(button=>bindActionButton(button,{key:'expense-stop:'+button.dataset.expenseStop,confirm:'Parar a repetição desta despesa? As já lançadas continuam.',action:()=>api('/expenses/'+encodeURIComponent(button.dataset.expenseStop)+'/stop-repeat',{method:'POST',body:'{}'}),refresh:reload,successMessage:'Repetição encerrada.',notify:toast}));
+    document.querySelectorAll('[data-expense-delete]').forEach(button=>bindActionButton(button,{key:'expense-delete:'+button.dataset.expenseDelete,confirm:'Excluir esta despesa? Esta ação não pode ser desfeita.',action:()=>api('/expenses/'+encodeURIComponent(button.dataset.expenseDelete),{method:'DELETE'}),refresh:reload,successMessage:'Despesa excluída.',notify:toast}));
+    document.querySelectorAll('[data-expense-sell]').forEach(button=>button.onclick=()=>{
+      const row=byId(button.dataset.expenseSell);if(!row)return;
+      const drawer=openDrawer({title:'Vender ao cliente',subtitle:'Transforma este custo em uma Compra Direta.',content:renderSellExpenseForm(row)});
+      const form=drawer.querySelector('#sellExpenseForm');bindMoneyInputs(form);bindEntityAutocomplete(form,{search:searchClientEntities});
+      bindActionForm(form,{key:'expense-sell:'+row.id,action:async()=>{const p=formData(form);await api('/expenses/'+encodeURIComponent(row.id)+'/convert-sale',{method:'POST',body:JSON.stringify({client_id:p.client_id,price:p.price})});closeOverlay()},refresh:reload,successMessage:'Compra direta criada.',notify:toast});
+    });
+    const fiscal=document.querySelector('#financeFiscalForm');bindActionForm(fiscal,{key:'fiscal-create',action:async()=>{const p=formData(fiscal);if(!p.amount)delete p.amount;if(!p.due_on)delete p.due_on;if(!p.external_ref)delete p.external_ref;await api('/fiscal',{method:'POST',body:JSON.stringify(p)})},refresh:reload,successMessage:'Obrigação fiscal registrada.',notify:toast});
   };draw();
 }
 async function filesPage(lease=null){
