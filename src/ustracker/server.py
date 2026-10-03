@@ -50,6 +50,7 @@ from .mobility import (
     list_mobility,
     mobility_subscription_detail,
     list_transfer_cases,
+    move_vehicle,
     update_fleet,
 )
 from .media import load as load_media, recover_media_journals, remove as remove_media, store as store_media
@@ -410,6 +411,11 @@ def create_app(root: Path | str) -> FastAPI:
     def vehicle_ownerships(vid: str, request: Request):
         db = get_db(session_required(request, True))
         return {'items': [dict(r) for r in db.query('SELECT * FROM ownerships WHERE vehicle_id=? ORDER BY effective_from DESC', (vid,))]}
+
+    @app.post('/api/v1/vehicles/{vid}/move')
+    def vehicle_move(vid: str, request: Request, p: dict = Body(...)):
+        session = session_required(request, True)
+        return mutation(request, session, f'POST /vehicles/{vid}/move', p, lambda db: move_vehicle(db, session.slot, vid, p))
 
     @app.post('/api/v1/vehicles/{vid}/transfer')
     def vehicle_transfer(vid: str, request: Request, p: dict = Body(...)):

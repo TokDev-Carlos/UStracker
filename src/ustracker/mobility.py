@@ -584,3 +584,64 @@ def complete_transfer_case(db: Database, actor: int, case_id: str) -> dict:
 def transfer_vehicle_compat(db: Database, actor: int, vehicle_id: str, p: dict) -> dict:
     case = create_transfer_case(db, actor, vehicle_id, p)
     return complete_transfer_case(db, actor, case['id'])['vehicle']
+
+
+def move_vehicle(db: Database, actor: int, vehicle_id: str, p: dict, as_of: date | None = None) -> dict:
+    """AJ-08 — simple and atomic "Mover veículo".
+
+    Destination: a client (default: the current one) and a fleet of that client or ``Particular``
+    (``fleet_id`` empty). Effective today by default; a past date is allowed, a future date is not.
+    In ONE transaction: closes the current ownership, opens the new one, updates the vehicle
+    (the logical code is reissued by trigger when the client changes), removes the vehicle from
+    subscriptions of the previous client, cancels any pending legacy transfer case and records a
+    COMPLETED transfer case for history.
+    """
+    today = as_of or date.today()
+    effective = str(p.get('effective_from') or today.isoformat())[:10]
+    try:
+        effective_day = date.fromisoformat(effective)
+    except ValueError as exc:
+        raise ValueError('invalid effective_from') from exc
+    if effective_day > today:
+        raise ValueError('move date cannot be in the future')
+    with db.transaction() as con:
+        vehicle = con.execute('SELECT * FROM vehicles WHERE id=? AND archived=0', (vehicle_id,)).fetchone()
+        if not vehicle:
+            raise KeyError('vehicle not found')
+        if p.get('expected_revision') not in (None, '', 0, '0') and int(p['expected_revision']) != int(vehicle['revision']):
+            raise ValueError(f"revision conflict: current={vehicle['revision']}")
+        target_client = str(p.get('client_id') or vehicle['client_id']).strip()
+        target_fleet = str(p.get('fleet_id') or '').strip() or None
+        if target_client == vehicle['client_id'] and target_fleet == vehicle['fleet_id']:
+            raise ValueError('vehicle is already there')
+        if not con.execute('SELECT id FROM clients WHERE id=? AND archived=0', (target_client,)).fetchone():
+            raise ValueError('target client not found')
+        if target_fleet:
+            _validate_fleet_for_client(con, target_fleet, target_client, require_company=False, vehicle_type=vehicle['type'])
+            active = int(con.execute('SELECT COUNT(*) FROM vehicles WHERE fleet_id=? AND archived=0 AND id<>?', (target_fleet, vehicle_id)).fetchone()[0])
+            if active >= _fleet_limit(con):
+                raise ValueError('fleet active vehicle limit reached')
+        ts = now()
+        owner = con.execute('SELECT * FROM ownerships WHERE vehicle_id=? AND effective_to IS NULL ORDER BY effective_from DESC LIMIT 1', (vehicle_id,)).fetchone()
+        if owner:
+            if effective < str(owner['effective_from'])[:10]:
+                raise ValueError('transfer date cannot precede current ownership start date')
+            con.execute('UPDATE ownerships SET effective_to=? WHERE id=?', (effective, owner['id']))
+        con.execute('INSERT INTO ownerships(id,vehicle_id,client_id,fleet_id,effective_from,created_at) VALUES(?,?,?,?,?,?)',
+                    (uid(), vehicle_id, target_client, target_fleet, effective, ts))
+        removed = []
+        if target_client != vehicle['client_id']:
+            for row in con.execute('''SELECT st.id,s.code FROM subscription_targets st JOIN subscriptions s ON s.id=st.subscription_id
+                                      WHERE st.vehicle_id=? AND s.client_id<>?''', (vehicle_id, target_client)).fetchall():
+                removed.append(row['code'])
+                con.execute('DELETE FROM subscription_targets WHERE id=?', (row['id'],))
+        for case in con.execute("SELECT id FROM vehicle_transfer_cases WHERE vehicle_id=? AND status='PENDING'", (vehicle_id,)).fetchall():
+            con.execute("UPDATE vehicle_transfer_cases SET status='CANCELLED',cancelled_at=?,updated_at=? WHERE id=?", (ts, ts, case['id']))
+        before = dict(vehicle)
+        con.execute('UPDATE vehicles SET client_id=?,fleet_id=?,revision=revision+1,updated_at=? WHERE id=?', (target_client, target_fleet, ts, vehicle_id))
+        con.execute('''INSERT INTO vehicle_transfer_cases(id,vehicle_id,from_client_id,from_fleet_id,to_client_id,to_fleet_id,effective_from,status,source_revision,created_at,updated_at,completed_at,cancelled_at)
+                       VALUES(?,?,?,?,?,?,?,'COMPLETED',?,?,?,?,NULL)''',
+                    (uid(), vehicle_id, vehicle['client_id'], vehicle['fleet_id'], target_client, target_fleet, effective, int(vehicle['revision']), ts, ts, ts))
+        after = dict(con.execute('SELECT * FROM vehicles WHERE id=?', (vehicle_id,)).fetchone())
+        audit(con, actor, 'VEHICLE_MOVE', 'vehicle', vehicle_id, before, {**after, 'removed_from_subscriptions': removed})
+        return {'vehicle': after, 'removed_from_subscriptions': removed, 'client_changed': target_client != vehicle['client_id']}

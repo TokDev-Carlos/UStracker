@@ -76,7 +76,7 @@ function mobilityTable(rows = [], fleetMode = false) {
     <td>${esc(formatDateBR(row.review_on, false) || '—')}</td>
     <td class="money">${esc(formatBRL(Number(row.total_value_cents || 0)))}</td>
     <td class="subs-cell">${subscriptionCountCell(row.subscriptions_count, { vehicleId: row.id, label: row.plate })}</td>
-    <td><button type="button" class="ui-btn ui-btn-secondary" data-open-vehicle-transfer="${esc(row.id)}">Transferir</button></td>
+    <td><button type="button" class="ui-btn ui-btn-secondary" data-open-vehicle-transfer="${esc(row.id)}">Mover</button></td>
   </tr>`).join('') : `<tr><td colspan="${cols}" class="muted">Nenhum registro encontrado.</td></tr>`;
   return `<div class="table-wrap"><table class="ui-table mobility-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
 }
@@ -99,7 +99,7 @@ export function renderMobilityPage(data = {}, context = {}) {
   const selectedClient = context.selectedClient || (filters.client_id ? { id: filters.client_id, display_name: filters.client_name || filters.client_id } : null);
   const typeOptions = MOBILITY_TYPES.map(type => `<option value="${esc(type)}">${esc(type)}</option>`).join('') + '<option value="__custom__">Novo tipo…</option>';
   return `<section class="mobility-page">
-    <div class="page-header"><div><h2>Frotas/Veículos</h2><p class="muted">Gestão unificada de veículos particulares, frotas e transferências.</p></div></div>
+    <div class="page-header"><div><h2>Frotas/Veículos</h2><p class="muted">Veículos particulares e frotas. Use “Mover” para trocar de frota ou de cliente.</p></div></div>
     <div class="panel mobility-filters"><form id="mobilityFilter"><div class="row">
       ${renderEntityAutocomplete({name:'client_id',label:'Cliente',selected:selectedClient})}
       <div class="field"><label>Empresa</label><select name="company_id">${options(context.companies || [], 'id', 'legal_name', true, filters.company_id)}</select></div>
@@ -144,7 +144,7 @@ export function renderFleetProfile(profile = {}, context = {}) {
   const summary = profile.summary || {};
   const companies = context.companies || [];
   const vehicleRows = vehicles.length ? vehicles.map(vehicle => `<tr>
-      <td>${vehicleCell(vehicle)}</td><td>${esc(vehicle.plate)}</td><td>${esc(vehicle.brand || '—')}</td><td>${esc(vehicle.model || '—')}</td><td>${esc(vehicle.year || '—')}</td><td class="money">${esc(formatBRL(Number(vehicle.total_value_cents || 0)))}</td><td class="subs-cell">${subscriptionCountCell(vehicle.subscriptions_count, { vehicleId: vehicle.id, label: vehicle.plate })}</td><td><button type="button" class="ui-btn ui-btn-secondary" data-open-vehicle-transfer="${esc(vehicle.id)}">Transferir</button></td>
+      <td>${vehicleCell(vehicle)}</td><td>${esc(vehicle.plate)}</td><td>${esc(vehicle.brand || '—')}</td><td>${esc(vehicle.model || '—')}</td><td>${esc(vehicle.year || '—')}</td><td class="money">${esc(formatBRL(Number(vehicle.total_value_cents || 0)))}</td><td class="subs-cell">${subscriptionCountCell(vehicle.subscriptions_count, { vehicleId: vehicle.id, label: vehicle.plate })}</td><td><button type="button" class="ui-btn ui-btn-secondary" data-open-vehicle-transfer="${esc(vehicle.id)}">Mover</button></td>
     </tr>`).join('') : '<tr><td colspan="8">Nenhum veículo.</td></tr>';
   return `<div class="fleet-profile">
     <div class="fleet-profile-summary"><h3>${esc(fleet.name || 'Frota')} ${groupBadge(fleet.vehicle_group, fleet.vehicle_group_label)}</h3><p class="muted">${esc(company.legal_name || 'Empresa não vinculada')}</p><dl><dt>Veículos ativos</dt><dd>${Number(summary.active_vehicles || 0)} / ${Number(summary.vehicle_limit || 100)}</dd><dt>Valor Total</dt><dd>${esc(formatBRL(Number(summary.total_value_cents || 0)))}</dd></dl></div>
@@ -161,15 +161,21 @@ export function renderFleetProfile(profile = {}, context = {}) {
   </div>`;
 }
 
+/** AJ-08 — "Mover veículo": one simple form, effective immediately (date today by default). */
+export function renderMoveVehicleForm(vehicle = {}, context = {}) {
+  const client = context.client || (vehicle.client_id ? { id: vehicle.client_id, display_name: vehicle.client_name || 'Cliente atual' } : null);
+  const today = context.today || '';
+  const where = vehicle.fleet_id ? `Frota ${esc(vehicle.fleet_name || '')}` : 'Particular';
+  return `<form id="moveVehicleForm" class="move-form">
+    <p class="move-from">Agora: <strong>${esc(vehicle.client_name || client?.display_name || '—')}</strong> · ${where}</p>
+    <div class="row">${renderEntityAutocomplete({ name: 'client_id', label: 'Cliente de destino', required: true, selected: client })}
+    <div class="field"><label>Destino</label><select name="fleet_id" ${client ? '' : 'disabled'}><option value="">Particular (sem frota)</option></select></div>
+    <div class="field"><label>A partir de</label><input type="date" name="effective_from" value="${esc(today)}" ${today ? `max="${esc(today)}"` : ''}></div></div>
+    <p class="notice" data-move-warning hidden>Ao mudar de cliente, o veículo sai das assinaturas do cliente atual e recebe um novo código.</p>
+    <div class="actions"><button class="ui-btn ui-btn-primary" type="submit">Mover agora</button></div></form>`;
+}
+
+/** Kept for compatibility with older callers: the pending-case flow was replaced by the simple move. */
 export function renderTransferCaseForm(vehicle = {}, context = {}) {
-  const cases = context.cases || [];
-  const pending = cases.find(item => item.status === 'PENDING');
-  if (pending) {
-    return `<div class="notice mobility-transfer-pending"><strong>Transferência pendente.</strong><p>A propriedade vigente permanece inalterada até a conclusão.</p><div class="actions"><button type="button" class="ui-btn ui-btn-primary" data-complete-transfer="${esc(pending.id)}">Concluir</button><button type="button" class="ui-btn ui-btn-secondary" data-cancel-transfer="${esc(pending.id)}">Cancelar</button></div></div>`;
-  }
-  return `<form id="transferCaseForm"><input type="hidden" name="expected_revision" value="${esc(vehicle.revision || 0)}"><div class="row">
-    ${renderEntityAutocomplete({name:'client_id',label:'Novo cliente',required:true})}
-    <div class="field"><label>Nova frota</label><select name="fleet_id" disabled><option value="">Selecione o cliente primeiro</option></select></div>
-    <div class="field"><label>Vigência</label><input type="date" name="effective_from"></div>
-  </div><p class="muted">A criação deste caso não altera a propriedade atual. A mudança ocorre somente ao concluir.</p><div class="actions"><button class="ui-btn ui-btn-primary" type="submit">Criar transferência pendente</button></div></form>`;
+  return renderMoveVehicleForm(vehicle, { ...context, client: null });
 }

@@ -126,7 +126,7 @@ export function renderClientProfile(profile = {}, options = {}) {
     const place = fleet ? `${esc(company?.trade_name || company?.legal_name || '—')} › ${esc(fleet.name)}` : '<span class="muted">Particular</span>';
     const thumb = profile.vehicle_media?.[vehicle.id]?.[0];
     const photo = `<span class="cp-photo-actions"><label class="cp-photo-btn" title="${thumb ? 'Trocar foto' : 'Adicionar foto'}" aria-label="${thumb ? 'Trocar foto do veículo' : 'Adicionar foto do veículo'}">${thumb ? `<img class="cp-thumb" src="/api/v1/media/${esc(encodeURIComponent(thumb.id))}/thumb" alt="">` : '<span class="cp-photo-plus">+ Foto</span>'}<input type="file" accept="image/jpeg,image/png,image/webp" data-vehicle-photo="${esc(vehicle.id)}"></label>${thumb ? `<button type="button" class="cp-photo-remove" data-remove-photo="${esc(thumb.id)}" aria-label="Remover foto do veículo" title="Remover foto">×</button>` : ''}</span>`;
-    return `<tr><td>${photo}${vehicleCell(vehicle)}</td><td>${esc(vehicleDetail(vehicle) || '—')}</td><td>${place}</td><td class="subs-cell">${subscriptionCountCell(vehicle.subscriptions_count, { vehicleId: vehicle.id, label: vehicle.plate })}</td></tr>`;
+    return `<tr><td>${photo}${vehicleCell(vehicle)}</td><td>${esc(vehicleDetail(vehicle) || '—')}</td><td>${place}</td><td class="subs-cell">${subscriptionCountCell(vehicle.subscriptions_count, { vehicleId: vehicle.id, label: vehicle.plate })}</td><td><button type="button" class="ui-btn ui-btn-subtle ui-btn-sm" data-open-vehicle-transfer="${esc(vehicle.id)}" data-cp-select-vehicle="${esc(vehicle.id)}">Mover</button></td></tr>`;
   });
   const fleetRows = fleets.map(fleet => {
     const company = companyById.get(fleet.client_company_id);
@@ -134,7 +134,7 @@ export function renderClientProfile(profile = {}, options = {}) {
   });
   const veiculos = panel('veiculos', 'Veículos e Frotas', addButton('clientVehicleForm', 'Veículo') + addButton('clientFleetForm', 'Frota'),
     `${vehicleForm}${fleetForm}${renderVehicleBreakdown(summary.vehicle_breakdown || {}, { title: 'Veículos', compact: true })}
-     <h4 class="cp-sub">Veículos</h4>${table(['Veículo', 'Marca/Modelo · Placa', 'Empresa › Frota', 'Assinaturas'], vehicleRows, 'Nenhum veículo cadastrado.')}
+     <h4 class="cp-sub">Veículos</h4>${table(['Veículo', 'Marca/Modelo · Placa', 'Empresa › Frota', 'Assinaturas', ''], vehicleRows, 'Nenhum veículo cadastrado.')}
      <h4 class="cp-sub">Frotas</h4>${table(['Frota', 'Empresa', 'Grupo', 'Veículos', 'Assinaturas'], fleetRows, 'Nenhuma frota cadastrada.')}`);
 
   // Assinaturas e compras

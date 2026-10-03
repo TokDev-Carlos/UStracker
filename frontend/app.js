@@ -15,7 +15,7 @@ import { closeSubscriptionPopover, openSubscriptionPopover } from './ui/subscrip
 import { bindClientProfileUi } from './ui/client-profile.js';
 import { bindActionButton, bindActionForm, runDomAction } from './ui/action-state.js';
 import { buildClientCreatePayload, clientTableDefinition, renderClientEditor } from './pages/clients.js';
-import { buildMobilityQuery, buildVehiclePayload, renderFleetProfile, renderMobilityPage, renderTransferCaseForm } from './pages/mobility.js';
+import { buildMobilityQuery, buildVehiclePayload, renderFleetProfile, renderMobilityPage, renderMoveVehicleForm } from './pages/mobility.js';
 import { bindCatalogForm, catalogPayload, renderCatalogEditForm, renderCatalogPage } from './pages/catalog.js';
 import { renderCommercialPage, renderSubscriptionAmendForm, subscriptionMenuItems } from './pages/commercial.js';
 import { openActionMenu } from './ui/action-menu.js';
@@ -110,6 +110,26 @@ function bindClientJourney(drawer,profile,clientId){
     bindActionForm(purchaseForm,{key:`client-purchase:${clientId}`,action:async()=>{const p=formData(purchaseForm);if(!p.catalog_id)throw new Error('Selecione o produto avulso.');await api('/direct-sales',{method:'POST',body:JSON.stringify({client_id:clientId,sold_on:p.sold_on||localToday(),items:[{catalog_id:p.catalog_id,vehicle_id:p.vehicle_id||null,quantity:Number(p.quantity||1)}]})})},refresh:reopen('commercial'),successMessage:'Compra direta registrada.',notify:toast});
   }
 }
+// AJ-08 — one simple "Mover veículo" dialog used by Mobilidade, Ficha da Frota and Ficha do Cliente.
+function openMoveVehicle(vehicle,{onDone=()=>{}}={}){
+  const today=localToday();
+  const drawer=openDrawer({title:'Mover veículo',subtitle:[vehicle.code,vehicle.plate].filter(Boolean).join(' · ')||'Veículo',content:renderMoveVehicleForm(vehicle,{today})});
+  const form=drawer.querySelector('#moveVehicleForm');const fleetSelect=form.querySelector('[name=fleet_id]');const warning=form.querySelector('[data-move-warning]');
+  const groupName={CAR:'Carros',TRUCK:'Caminhões',BOAT:'Embarcações',AIRCRAFT:'Aeronaves',OTHER:'Outros',MIXED:'Misto'};
+  let clientId=vehicle.client_id||'';
+  const load=async id=>{
+    clientId=id||'';warning.hidden=!clientId||clientId===vehicle.client_id;
+    if(!clientId){fleetSelect.innerHTML='<option value="">Selecione o cliente</option>';fleetSelect.disabled=true;return}
+    const rows=(await api('/fleets?client_id='+encodeURIComponent(clientId)+'&limit=100')).items||[];
+    fleetSelect.innerHTML='<option value="">Particular (sem frota)</option>'+rows.filter(row=>row.id!==vehicle.fleet_id||clientId!==vehicle.client_id).map(row=>`<option value="${esc(row.id)}">${esc(row.name)} · ${esc(groupName[row.vehicle_group||'MIXED'])}</option>`).join('');
+    fleetSelect.disabled=false;
+    if(clientId===vehicle.client_id&&!vehicle.fleet_id&&rows.length)fleetSelect.selectedIndex=1;
+  };
+  bindEntityAutocomplete(form,{search:searchClientEntities,onSelection:client=>load(client?.id||'').catch(error=>toast({type:'error',message:error.message}))});
+  load(clientId).catch(error=>toast({type:'error',message:error.message}));
+  bindActionForm(form,{key:`vehicle-move:${vehicle.id}`,action:async()=>{if(!clientId)throw new Error('Selecione o cliente de destino.');const result=await api('/vehicles/'+encodeURIComponent(vehicle.id)+'/move',{method:'POST',body:JSON.stringify({client_id:clientId,fleet_id:fleetSelect.value||'',effective_from:form.effective_from.value||today})});closeOverlay();if(result.removed_from_subscriptions?.length)toast({type:'info',message:'Removido das assinaturas: '+result.removed_from_subscriptions.join(', ')});return result},refresh:onDone,successMessage:'Veículo movido.',notify:toast});
+  return drawer;
+}
 async function openClientProfile(clientId,options={}){
   const profile=await api('/clients/'+encodeURIComponent(clientId)+'/profile');
   const drawer=openDrawer({title:'Ficha do Cliente',subtitle:[profile.client?.legal_name,profile.client?.code].filter(Boolean).join(' · '),content:renderClientProfile(profile,options)});
@@ -130,6 +150,7 @@ async function openClientProfile(clientId,options={}){
   const journeySubscription=drawer.querySelector('[data-journey-subscription]');
   if(journeySubscription&&newSubscription)journeySubscription.onclick=()=>newSubscription.click();
   if(newSubscription)newSubscription.onclick=async()=>{const catalog=await api('/catalog');openSubscriptionWorkflow({context:'CLIENT_PROFILE',clientId,clients:[profile.client],catalog:catalog.items||[],vehicles:profile.vehicles||[],fleets:profile.fleets||[]},{onSuccess:()=>openClientProfile(clientId,{focus:'commercial'}),onCancel:()=>openClientProfile(clientId)})};
+  drawer.querySelectorAll('.cp [data-open-vehicle-transfer]').forEach(button=>button.onclick=()=>{const vehicle=(profile.vehicles||[]).find(row=>row.id===button.dataset.openVehicleTransfer);if(!vehicle)return;const fleet=(profile.fleets||[]).find(row=>row.id===vehicle.fleet_id);const tab=drawer.querySelector('.cp')?.dataset.cpActive;openMoveVehicle({...vehicle,client_id:clientId,client_name:profile.client?.legal_name,fleet_name:fleet?.name},{onDone:()=>openClientProfile(clientId,{tab})})});
   // AJ-12 — pay from the profile (client and, from a row, the subscription come pre-selected).
   drawer.querySelectorAll('[data-client-payment]').forEach(button=>button.onclick=()=>{const tab=drawer.querySelector('.cp')?.dataset.cpActive;openPaymentDialog({api,search:searchClientEntities,client:{id:clientId,display_name:profile.client?.legal_name},subscriptionId:button.dataset.subscriptionId||'',notify:toast,onSuccess:()=>openClientProfile(clientId,{tab})})});
   return drawer;
@@ -232,20 +253,7 @@ async function mobilityPage(filters={},lease=null){
     bindActionForm(form,{key:'fleet-create',action:async()=>{await api('/fleets',{method:'POST',body:JSON.stringify(formData(form))});closeOverlay()},refresh:()=>mobilityPage(filters),successMessage:'Frota cadastrada.',notify:toast});
   };
 
-  const openTransfer=async vehicle=>{
-    const cases=await api(`/vehicles/${encodeURIComponent(vehicle.id)}/transfer-cases`);
-    const drawer=openDrawer({title:'Transferência de propriedade',subtitle:[vehicle.code,vehicle.plate].filter(Boolean).join(' · ')||'Veículo',content:renderTransferCaseForm(vehicle,{cases:cases.items||[]})});
-    const form=drawer.querySelector('#transferCaseForm');
-    if(form){
-      const fleetSelect=form.querySelector('[name=fleet_id]');
-      bindEntityAutocomplete(form,{search:searchClientEntities,onSelection:client=>loadFleets(fleetSelect,client?.id||'').catch(error=>toast({type:'error',message:error.message}))});
-      bindActionForm(form,{key:`transfer-create:${vehicle.id}`,action:async()=>{const payload=formData(form);payload.expected_revision=Number(payload.expected_revision);if(!payload.fleet_id)delete payload.fleet_id;if(!payload.effective_from)delete payload.effective_from;await api(`/vehicles/${vehicle.id}/transfer-cases`,{method:'POST',body:JSON.stringify(payload)});closeOverlay()},refresh:()=>mobilityPage(filters),successMessage:'Transferência criada como pendente.',notify:toast});
-    }
-    const complete=drawer.querySelector('[data-complete-transfer]');
-    bindActionButton(complete,{key:`transfer-complete:${complete?.dataset.completeTransfer||''}`,action:async()=>{await api(`/vehicle-transfer-cases/${complete.dataset.completeTransfer}/complete`,{method:'POST',body:'{}'});closeOverlay()},refresh:()=>mobilityPage(filters),successMessage:'Transferência concluída.',notify:toast});
-    const cancel=drawer.querySelector('[data-cancel-transfer]');
-    bindActionButton(cancel,{key:`transfer-cancel:${cancel?.dataset.cancelTransfer||''}`,action:async()=>{await api(`/vehicle-transfer-cases/${cancel.dataset.cancelTransfer}/cancel`,{method:'POST',body:'{}'});closeOverlay()},refresh:()=>mobilityPage(filters),successMessage:'Transferência cancelada.',notify:toast});
-  };
+  const openTransfer=vehicle=>openMoveVehicle(vehicle,{onDone:()=>mobilityPage(filters)});
 
   const openFleetProfile=async fleetId=>{
     const profile=await api('/fleets/'+encodeURIComponent(fleetId)+'/profile');
@@ -256,13 +264,13 @@ async function mobilityPage(filters={},lease=null){
     bindActionForm(edit,{key:`fleet-edit:${fleetId}`,action:async()=>{const payload=formData(edit);payload.expected_revision=Number(payload.expected_revision);await api('/fleets/'+encodeURIComponent(fleetId),{method:'PATCH',body:JSON.stringify(payload)});closeOverlay()},refresh:()=>mobilityPage(filters),successMessage:'Frota atualizada.',notify:toast});
     const addVehicle=drawer.querySelector('[data-add-vehicle-fleet]');
     if(addVehicle)addVehicle.onclick=()=>{closeOverlay();openVehicleDrawer({client_id:profile.fleet.client_id,client_name:profile.fleet.client_name||profile.company?.legal_name,fleet_id:fleetId})};
-    drawer.querySelectorAll('[data-open-vehicle-transfer]').forEach(button=>button.onclick=()=>{const vehicle=profile.vehicles.find(row=>row.id===button.dataset.openVehicleTransfer);if(vehicle)openTransfer(vehicle)});
+    drawer.querySelectorAll('[data-open-vehicle-transfer]').forEach(button=>button.onclick=()=>{const vehicle=profile.vehicles.find(row=>row.id===button.dataset.openVehicleTransfer);if(vehicle)openTransfer({...vehicle,client_id:vehicle.client_id||profile.fleet.client_id,client_name:vehicle.client_name||profile.fleet.client_name,fleet_id:fleetId,fleet_name:profile.fleet.name})});
   };
 
   document.querySelector('#newVehicle').onclick=()=>openVehicleDrawer();
   document.querySelector('#newFleet').onclick=openFleetDrawer;
   document.querySelectorAll('[data-open-fleet]').forEach(button=>button.onclick=()=>openFleetProfile(button.dataset.openFleet).catch(error=>toast({type:'error',message:error.message})));
-  document.querySelectorAll('[data-open-vehicle-transfer]').forEach(button=>button.onclick=()=>{const vehicle=(data.particulars||[]).find(row=>row.id===button.dataset.openVehicleTransfer);if(vehicle)openTransfer(vehicle).catch(error=>toast({type:'error',message:error.message}))});
+  document.querySelectorAll('[data-open-vehicle-transfer]').forEach(button=>button.onclick=()=>{const vehicle=(data.particulars||[]).find(row=>row.id===button.dataset.openVehicleTransfer);if(vehicle)openTransfer(vehicle)});
 }
 
 async function catalogPage(lease=null){

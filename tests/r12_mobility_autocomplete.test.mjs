@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
-import { renderMobilityPage, renderTransferCaseForm } from '../frontend/pages/mobility.js';
+import { renderMobilityPage, renderMoveVehicleForm, renderTransferCaseForm } from '../frontend/pages/mobility.js';
 
 const clients = Array.from({ length: 1005 }, (_, index) => ({ id: `c${index}`, legal_name: `Cliente ${index}` }));
 const fleets = Array.from({ length: 1005 }, (_, index) => ({ id: `f${index}`, client_id: `c${index}`, name: `Frota ${index}` }));
@@ -23,6 +23,14 @@ test('transferência usa cliente incremental e frota dependente vazia', () => {
   assert.match(html, /type="hidden" name="client_id"/);
   assert.doesNotMatch(html, /<select name="client_id"|Cliente 1000|Frota 1000/);
   assert.match(html, /name="fleet_id"[^>]*disabled/);
+});
+
+test('AJ-08: mover veículo já vem com o cliente atual e data de hoje', () => {
+  const html = renderMoveVehicleForm({ id: 'v1', client_id: 'c1', client_name: 'Alfa' }, { today: '2026-10-03' });
+  assert.match(html, /id="moveVehicleForm"/);
+  assert.match(html, /value="c1"/);
+  assert.match(html, /name="effective_from" value="2026-10-03" max="2026-10-03"/);
+  assert.match(html, /Particular \(sem frota\)/);
 });
 
 test('fluxo de mobilidade não carrega listas globais e busca dependências por cliente', async () => {
