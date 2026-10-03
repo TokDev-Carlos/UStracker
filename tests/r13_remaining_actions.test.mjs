@@ -22,6 +22,7 @@ test('administração usa ciclo compartilhado nas mutações operacionais', () =
 
 test('navegação entrega conteúdo somente para a requisição mais recente', () => {
   assert.match(source, /navigationSequence/);
-  assert.match(source, /content\([^)]*,\s*lease\)/);
+  // Fixed in R13 revalidation: arguments contain nested calls, so match up to the lease argument on the same line.
+  assert.match(source, /content\(.+?,\s*lease\)/);
   assert.match(source, /lease\s*!==\s*navigationSequence/);
 });

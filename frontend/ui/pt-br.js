@@ -1,3 +1,4 @@
+import { ERROR_MESSAGES } from './pt-br-errors.js';
 const TERMS = Object.freeze({
   Dashboard: 'Visão geral', ACTIVE: 'ATIVO', INACTIVE: 'INATIVO', BLOCKED: 'BLOQUEADO',
   CANCELLED: 'CANCELADO', PAUSED: 'PAUSADA', ENDED: 'ENCERRADA', OPEN: 'ABERTO', CLOSED: 'FECHADO',
@@ -96,6 +97,9 @@ export const valuePtBR = value => TERMS[String(value ?? '')] || String(value ?? 
 export function messagePtBR(value) {
   const message = String(value ?? '');
   if (MESSAGES[message]) return MESSAGES[message];
+  if (ERROR_MESSAGES[message]) return ERROR_MESSAGES[message];
+  const fleetLimit = message.match(/^fleet active vehicle limit reached \((\d+)\)$/);
+  if (fleetLimit) return `A frota atingiu o limite de ${fleetLimit[1]} veículos ativos.`;
   if (message.startsWith('Backup automático: ')) return `Cópia de segurança automática: ${messagePtBR(message.slice(19))}`;
   const lock = message.match(/^login temporarily locked; try again in (\d+) seconds$/);
   if (lock) return `Acesso temporariamente bloqueado; tente novamente em ${lock[1]} segundo(s).`;

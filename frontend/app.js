@@ -73,7 +73,6 @@ function openSubscriptionWorkflow(model,{onSuccess,onCancel}={}){
 async function boot(){const state=await session.bootstrap();const pub=state.publicData,st=state.setupStatus;applyBrand(pub);if(state.state==='setup')return setupScreen();if(state.state==='login')return loginScreen(st,pub);renderShell();await show('dashboard')}
 function setupScreen(){app.innerHTML=`<section class="auth"><h1>UStracker — Configuração inicial</h1><p>Crie o Administrador 1. Serão emitidos dois tickets de uso único para os Administradores 2 e 3.</p><form id="setup"><div class="row">${field('Nome','name')}${field('Senha (10+ caracteres)','password','password')}</div><div class="actions"><button>Iniciar configuração</button></div></form><div id="setupOut"></div></section>`;document.querySelector('#setup').onsubmit=async e=>{e.preventDefault();try{await getCsrf();const r=await api('/auth/bootstrap',{method:'POST',body:JSON.stringify(formData(e.target))});enrollmentScreen(r.tickets)}catch(err){document.querySelector('#setupOut').innerHTML=msg(err.message,'error')}}}
 function enrollmentScreen(tickets){app.innerHTML=`<section class="auth"><h1>Concluir três administradores</h1><div class="notice">Os tickets expiram em 15 minutos.</div>${tickets.map((t,i)=>`<form class="enroll" data-ticket="${esc(t)}"><h3>Administrador ${i+2}</h3><div class="ticket">${esc(t)}</div><div class="row">${field('Nome','name')}${field('Senha','password','password')}</div><div class="actions"><button>Registrar Admin ${i+2}</button></div><div class="out"></div></form>`).join('')}<button id="goLogin" class="secondary">Ir para login</button></section>`;document.querySelectorAll('.enroll').forEach(f=>f.onsubmit=async e=>{e.preventDefault();try{await getCsrf();const p=formData(f);p.ticket=f.dataset.ticket;await api('/auth/enroll',{method:'POST',body:JSON.stringify(p)});f.querySelector('.out').innerHTML=msg('Administrador registrado.')}catch(err){f.querySelector('.out').innerHTML=msg(err.message,'error')}});document.querySelector('#goLogin').onclick=()=>boot()}
-function publicCard(p){const b=p.brand||{};return `<div class="public-card">${b.assets?.logo?`<img src="${esc(b.assets.logo)}" class="public-logo">`:''}<h2>${esc(b.company_display_name||'UStracker')}</h2><p>${esc(b.contact_phone||'')} ${esc(b.contact_email||'')}</p><h3>Planos e serviços</h3>${p.catalog?.length?`<div class="public-grid">${p.catalog.map(x=>`<div class="card"><strong>${esc(x.name)}</strong><div>${esc(x.category)}</div><div class="value">${formatBRL(x.price_cents)}</div></div>`).join('')}</div>`:'<p class="muted">Nenhum item público.</p>'}</div>`}
 function loginScreen(st,pub){app.innerHTML=renderLoginScreen(st,pub);document.querySelector('#login').onsubmit=async e=>{e.preventDefault();try{await getCsrf();const r=await api('/auth/login',{method:'POST',body:JSON.stringify(formData(e.target))});csrf=r.csrf;me=r;renderShell();await show('dashboard');if(r.backup_warning)alert('Backup automático: '+r.backup_warning)}catch(err){document.querySelector('#loginOut').innerHTML=msg(err.message,'error')}}}
 const nav=[['dashboard','Visão geral'],['clients','Clientes'],['mobility','Frotas/Veículos'],['catalog','Planos/Produtos'],['commercial','Comercial'],['finance','Financeiro'],['files','Fotos/Arquivos'],['reports','Relatórios'],['system','Sistema']];
 function renderShell(){renderAppShell({me,nav,onNavigate:show,onSearch:async query=>{const d=await api('/search?q='+encodeURIComponent(query));tableStore.clear();content(pageHeader('Pesquisa','Resultados da busca global')+dt(d.items,'searchTable'))},onHelp:()=>{const help=helpFor(current);openDrawer({title:help.title,subtitle:'Ajuda contextual',content:`<p>${esc(help.body)}</p>${HELP[current]?.fields?`<dl>${Object.entries(HELP[current].fields).map(([key,value])=>`<dt><strong>${esc(key.replaceAll('_',' '))}</strong></dt><dd>${esc(value)}</dd>`).join('')}</dl>`:''}`})},onUser:()=>content(pageHeader('Usuário','Sessão atual')+`<div class="panel"><strong>${esc(me.name)}</strong><p class="muted">Perfil: ${esc(sessionProfileLabel(me))}</p><p class="muted">Ambiente: ${esc(me.environment)}</p></div>`),onLogout:async()=>{await session.logout();await boot()},onShutdown:requestSystemShutdown})}
@@ -296,67 +295,6 @@ async function commercialPage(lease=null){
     const coverage=document.querySelector('#coverageForm');bindActionForm(coverage,{key:'coverage-create',action:async()=>{const p=formData(coverage);p.cycles=Number(p.cycles||1);if(!p.start_on)delete p.start_on;if(!p.value||p.value==='R$ 0,00')delete p.value;await api('/commercial/coverage',{method:'POST',body:JSON.stringify(p)})},refresh:()=>show('commercial'),successMessage:'Tempo ativo registrado.',notify:toast});
   }; draw();
 }
-async function purchasesPage(){
-  const [sales,clients,catalog,vehicles]=await Promise.all([api('/direct-sales'),api('/clients'),api('/catalog'),api('/vehicles')]);
-  content(pageHeader('Compras Diretas','Vendas avulsas vinculadas aos clientes')+
-    renderPurchasesForm({clients:clients.items.filter(row=>!row.archived),catalog:catalog.items,vehicles:vehicles.items.filter(row=>!row.archived)})+
-    '<div class="panel"><h3>Compras registradas</h3><div id="purchasesTable"></div></div>');
-  const form=document.querySelector('#purchaseForm');
-  const items=[];
-  const catalogSelect=form.querySelector('#purchaseCatalog');
-  const vehicleSelect=form.querySelector('#purchaseVehicle');
-  const draw=()=>{form.querySelector('#purchaseItems').innerHTML=items.length?items.map((item,index)=>{
-    const catalogRow=catalog.items.find(row=>row.id===item.catalog_id);
-    const price=item.unit_price||formatBRL(catalogRow?.price_cents||0);
-    return `${index+1}. ${esc(catalogRow?.name||'Item')} · ${item.quantity} unidade(s) · ${esc(price)}`;
-  }).join('<br>'):'Nenhum item.'};
-  const syncVehicles=()=>{
-    const clientId=form.querySelector('[name=client_id]').value;
-    [...vehicleSelect.options].forEach(option=>{if(option.value)option.hidden=option.dataset.client!==clientId});
-    if(vehicleSelect.selectedOptions[0]?.hidden)vehicleSelect.value='';
-  };
-  form.querySelector('[name=client_id]').onchange=syncVehicles;
-  syncVehicles();
-  form.querySelector('#addPurchaseItem').onclick=()=>{
-    const catalogId=catalogSelect.value;
-    const quantity=Number(form.querySelector('[name=quantity]').value);
-    if(!catalogId||!Number.isInteger(quantity)||quantity<=0)return toast({type:'error',message:'Selecione um item e informe uma quantidade positiva.'});
-    const item={catalog_id:catalogId,vehicle_id:vehicleSelect.value||null,quantity};
-    const unitPrice=form.querySelector('[name=unit_price]').value.trim();
-    if(unitPrice)item.unit_price=unitPrice;
-    items.push(item);draw();
-  };
-  form.onsubmit=async event=>{
-    event.preventDefault();
-    if(!items.length)return toast({type:'error',message:'Adicione ao menos um item.'});
-    const payload=formData(form);
-    delete payload.quantity;delete payload.unit_price;
-    if(!payload.paid_on)delete payload.paid_on;
-    payload.items=items;
-    await api('/direct-sales',{method:'POST',body:JSON.stringify(payload)});
-    toast({message:'Compra registrada.'});await show('purchases');
-  };
-  const openStatusDrawer=row=>{
-    const drawer=openDrawer({title:'Alterar status da compra',subtitle:row.client_name,
-      content:`<form id="purchaseStatusForm"><div class="row"><div class="field"><label>Status</label><select name="status"><option value="OPEN">Em aberto</option><option value="PAID">Paga</option><option value="CANCELLED">Cancelada</option></select></div><div class="field"><label>Data do pagamento</label><input name="paid_on" type="date" value="${esc(row.paid_on||'')}"></div></div></form>`,
-      actions:'<button type="button" class="ui-btn ui-btn-secondary" data-close-overlay>Fechar</button><button type="submit" form="purchaseStatusForm" class="ui-btn ui-btn-primary">Salvar</button>'});
-    drawer.querySelector('[name=status]').value=row.status;
-    drawer.querySelector('#purchaseStatusForm').onsubmit=async event=>{
-      event.preventDefault();const payload=formData(event.target);
-      if(!payload.paid_on)delete payload.paid_on;
-      payload.expected_revision=row.revision;
-      await api('/direct-sales/'+encodeURIComponent(row.id)+'/status',{method:'PATCH',body:JSON.stringify(payload)});
-      closeOverlay();toast({message:'Status atualizado.'});await show('purchases');
-    };
-  };
-  const controller=createTableController({
-    columns:[{key:'client_name',label:'Cliente'},{key:'sold_on',label:'Data'},{key:'status',label:'Status',format:value=>esc(valuePtBR(value))},
-      {key:'paid_on',label:'Pago em'},{key:'total_cents',label:'Valor',format:value=>formatBRL(value)},{key:'item_count',label:'Itens'}],
-    rows:sales.items||[],actions:[{key:'edit',label:'Alterar status',icon:'edit',onClick:openStatusDrawer}]
-  });
-  mountTableController(document.querySelector('#purchasesTable'),controller);
-}
-async function chargesPage(){const [d,s]=await Promise.all([api('/charges'),api('/subscriptions')]);content(`<h2>Cobranças</h2><div class="panel"><h3>Gerar competência</h3><form id="chargeForm"><div class="row"><div class="field"><label>Assinatura</label><select name="sid">${select(s.items,'id','id')}</select></div>${field('Competência','competence','month')}</div><div class="actions"><button>Gerar</button></div></form></div><div class="panel"><h3>Ajuste manual</h3><form id="adjustForm"><div class="row"><div class="field"><label>Cobrança</label><select name="id">${select(d.items,'id','id')}</select></div><div class="field"><label>Tipo</label><select name="kind"><option>FEE</option><option>INTEREST</option><option>PENALTY</option><option>DISCOUNT</option><option>OTHER</option></select></div>${moneyField('Valor','amount')}${field('Motivo','reason')}</div><div class="actions"><button>Aplicar ajuste</button></div></form></div>${dt(d.items,'chargesDT')}`);document.querySelector('#chargeForm').onsubmit=async e=>{e.preventDefault();const p=formData(e.target);await api(`/subscriptions/${p.sid}/charges/${p.competence}`,{method:'POST',body:'{}'});show('charges')};document.querySelector('#adjustForm').onsubmit=async e=>{e.preventDefault();const p=formData(e.target);const id=p.id;delete p.id;await api(`/charges/${id}/adjustments`,{method:'POST',body:JSON.stringify(p)});show('charges')}}
 async function financePage(lease=null){
   const data=await api('/finance');
   const legacyTab=current==='expenses'?'expenses':current==='fiscal'?'fiscal':'payments';
@@ -374,10 +312,6 @@ async function financePage(lease=null){
     const fiscal=document.querySelector('#financeFiscalForm');bindActionForm(fiscal,{key:'fiscal-create',action:async()=>{const p=formData(fiscal);if(!p.amount)delete p.amount;if(!p.due_on)delete p.due_on;if(!p.external_ref)delete p.external_ref;await api('/fiscal',{method:'POST',body:JSON.stringify(p)})},refresh:()=>show('finance'),successMessage:'Obrigação fiscal registrada.',notify:toast});
   };draw();
 }
-async function paymentsPage(){const [d,c,ch]=await Promise.all([api('/payments'),api('/clients'),api('/charges')]);content(`<h2>Recebimentos</h2><div class="panel"><form id="payForm"><div class="row"><div class="field"><label>Cliente</label><select name="client_id">${select(c.items)}</select></div>${moneyField('Valor','amount')}${field('Data','paid_on','date')}${field('Método','method')}</div><h4>Alocações</h4><div class="alloc-grid">${ch.items.map(x=>`<label>${esc(x.id.slice(0,8))} · ${formatBRL(x.amount_cents+x.adjustment_cents)} <input data-charge="${x.id}" data-money-input type="text" inputmode="decimal" autocomplete="off" placeholder="R$ 0,00"></label>`).join('')}</div><label><input type="checkbox" name="create_credit" value="true"> Transformar sobra em crédito</label><div class="actions"><button>Registrar pagamento</button></div></form></div><div class="panel"><h3>Estornar pagamento</h3><form id="reversePay"><div class="field"><label>Pagamento</label><select name="id">${select(d.items,'id','id')}</select></div><div class="actions"><button class="danger">Estornar</button></div></form></div>${dt(d.items,'paymentsDT')}`);document.querySelector('#payForm').onsubmit=async e=>{e.preventDefault();const p=formData(e.target);p.create_credit=p.create_credit==='true';p.allocations=[...document.querySelectorAll('[data-charge]')].filter(x=>x.value.trim()).map(x=>({charge_id:x.dataset.charge,amount:x.value.trim()}));if(!p.paid_on)delete p.paid_on;await api('/payments',{method:'POST',body:JSON.stringify(p)});show('payments')};document.querySelector('#reversePay').onsubmit=async e=>{e.preventDefault();const id=formData(e.target).id;if(confirm('Confirmar estorno?')){await api(`/payments/${id}/reverse`,{method:'POST',body:'{}'});show('payments')}}}
-async function creditsPage(){const [d,ch]=await Promise.all([api('/credits'),api('/charges')]);content(`<h2>Créditos</h2><div class="panel"><form id="creditForm"><div class="row"><div class="field"><label>Crédito</label><select name="credit_id">${select(d.items.filter(x=>x.status==='OPEN'),'id','id')}</select></div><div class="field"><label>Cobrança</label><select name="charge_id">${select(ch.items,'id','id')}</select></div>${moneyField('Valor','amount')}</div><div class="actions"><button>Aplicar crédito</button></div></form></div>${dt(d.items,'creditsDT')}`);document.querySelector('#creditForm').onsubmit=async e=>{e.preventDefault();const p=formData(e.target);const id=p.credit_id;delete p.credit_id;await api(`/credits/${id}/apply`,{method:'POST',body:JSON.stringify(p)});show('credits')}}
-async function expensesPage(){const d=await api('/expenses');content(`<h2>Despesas</h2><div class="panel"><h3>Nova despesa</h3><form id="expForm"><div class="row">${field('Categoria*','category')}${field('Descrição*','description')}${field('Competência*','competence','month')}${moneyField('Valor previsto*','expected_amount',null,true)}${field('Vencimento','due_on','date')}${field('Fornecedor','supplier')}</div><div class="actions"><button>Salvar</button></div></form></div><div class="panel"><h3>Desembolso</h3><form id="disbForm"><div class="row"><div class="field"><label>Despesa</label><select name="id">${select(d.items,'id','description')}</select></div>${moneyField('Valor','amount')}${field('Data','paid_on','date')}</div><div class="actions"><button>Registrar desembolso</button></div></form></div><div class="panel"><h3>Gerar recorrência</h3><form id="recurForm"><div class="row"><div class="field"><label>Despesa origem</label><select name="id">${select(d.items,'id','description')}</select></div>${field('Nova competência','competence','month')}</div><div class="actions"><button>Gerar recorrência</button></div></form></div><div class="panel"><h3>Estornar desembolso</h3><form id="reverseDisb"><div class="row">${field('ID do desembolso','id')}</div><div class="actions"><button class="danger">Estornar</button></div></form></div>${dt(d.items,'expensesDT')}`);document.querySelector('#expForm').onsubmit=async e=>{e.preventDefault();await api('/expenses',{method:'POST',body:JSON.stringify(formData(e.target))});show('expenses')};document.querySelector('#disbForm').onsubmit=async e=>{e.preventDefault();const p=formData(e.target);const id=p.id;delete p.id;if(!p.paid_on)delete p.paid_on;await api(`/expenses/${id}/disbursements`,{method:'POST',body:JSON.stringify(p)});show('expenses')};document.querySelector('#recurForm').onsubmit=async e=>{e.preventDefault();const p=formData(e.target);await api(`/expenses/${p.id}/recur/${p.competence}`,{method:'POST',body:'{}'});show('expenses')};document.querySelector('#reverseDisb').onsubmit=async e=>{e.preventDefault();const id=formData(e.target).id;await api(`/disbursements/${id}/reverse`,{method:'POST',body:'{}'});show('expenses')}}
-async function fiscalPage(){const d=await api('/fiscal');content(`<h2>Acompanhamento fiscal manual</h2><div class="notice">Não transmite nem emite documento fiscal oficial.</div><div class="panel"><form id="fisForm"><div class="row">${field('Competência*','competence','month')}${field('Descrição*','description')}${moneyField('Valor','amount')}${field('Vencimento','due_on','date')}${field('Referência externa','external_ref')}</div><div class="actions"><button>Salvar referência</button></div></form></div>${dt(d.items,'fiscalDT')}`);document.querySelector('#fisForm').onsubmit=async e=>{e.preventDefault();await api('/fiscal',{method:'POST',body:JSON.stringify(formData(e.target))});show('fiscal')}}
 async function filesPage(lease=null){
   const [media,attachments]=await Promise.all([api('/media'),api('/attachments')]);
   if(!content(renderFilesPage({media:media.items||[],attachments:attachments.items||[]}),lease))return;

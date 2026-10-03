@@ -106,5 +106,6 @@ test('app usa helpers globais para moeda e liga inputs monetários', () => {
   assert.match(source, /import \{ formatBRL, formatDateBR \} from '\.\/ui\/formatters\.js'/);
   assert.match(source, /bindMoneyInputs/);
   assert.doesNotMatch(source, /const money=c=>/);
-  assert.match(source, /data-money-input/);
+  const moneyInput = fs.readFileSync(new URL('../frontend/ui/money-input.js', import.meta.url), 'utf8');
+  assert.match(moneyInput, /data-money-input/); // legacy app.js pages removed in R13; inputs come from the shared component
 });
