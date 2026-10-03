@@ -91,7 +91,7 @@ class R12ClientEntityRouteTests(unittest.TestCase):
                          ('Cárlos Operações', 'Órbita Logística'))
         self.assertEqual((capped['limit'], len(capped['items'])), (30, 30))
         self.assertEqual(set(capped['items'][0]), {
-            'id', 'display_name', 'phone', 'email', 'status', 'primary_document', 'primary_company',
+            'id', 'code', 'display_name', 'phone', 'email', 'status', 'primary_document', 'primary_company',
         })
 
     def test_fleets_route_filters_by_client_and_caps_at_one_hundred(self):

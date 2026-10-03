@@ -113,7 +113,7 @@ def list_attachments(db:Database,entity_type:str|None=None,entity_id:str|None=No
     where=[];args=[]
     if entity_type:where.append('entity_type=?');args.append(entity_type)
     if entity_id:where.append('entity_id=?');args.append(entity_id)
-    sql='SELECT id,entity_type,entity_id,filename,mime,size_bytes,sha256,origin,url,created_at,updated_at FROM attachments'
+    sql='SELECT id,entity_type,entity_id,(SELECT lc.code FROM logical_codes lc WHERE lc.entity_id=attachments.entity_id ORDER BY lc.retired_at IS NOT NULL,lc.issued_at DESC LIMIT 1) AS entity_code,filename,mime,size_bytes,sha256,origin,url,created_at,updated_at FROM attachments'
     if where:sql+=' WHERE '+' AND '.join(where)
     sql+=' ORDER BY created_at DESC'
     return [dict(r) for r in db.query(sql,tuple(args))]

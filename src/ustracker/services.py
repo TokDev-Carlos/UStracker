@@ -227,20 +227,22 @@ def search_client_entities(db:Database, query:str, *, limit:int=20)->list[dict]:
     like=f'%{needle}%'
     normalized_document=normalize_document_number(query)
     document_like=f'%{fold_text(normalized_document)}%'
-    rows=db.query('''SELECT c.id,c.legal_name AS display_name,c.phone,c.email,c.status,
+    rows=db.query('''SELECT c.id,c.code,c.legal_name AS display_name,c.phone,c.email,c.status,
         COALESCE((SELECT cd.number FROM client_documents cd WHERE cd.client_id=c.id AND cd.archived=0
                   ORDER BY cd.is_primary DESC,cd.created_at,cd.id LIMIT 1),c.document,'') AS primary_document,
         COALESCE((SELECT cc.legal_name FROM client_companies cc WHERE cc.client_id=c.id AND cc.archived=0
                   ORDER BY cc.is_primary DESC,cc.created_at,cc.id LIMIT 1),c.trade_name,'') AS primary_company
         FROM clients c WHERE c.archived=0 AND (
-          fold_text(c.legal_name) LIKE ? OR fold_text(c.trade_name) LIKE ? OR fold_text(c.public_name) LIKE ?
+          fold_text(c.code) LIKE ?
+          OR EXISTS(SELECT 1 FROM logical_codes lc WHERE lc.client_id=c.id AND fold_text(lc.code) LIKE ?)
+          OR fold_text(c.legal_name) LIKE ? OR fold_text(c.trade_name) LIKE ? OR fold_text(c.public_name) LIKE ?
           OR fold_text(c.phone) LIKE ? OR fold_text(c.email) LIKE ?
           OR EXISTS(SELECT 1 FROM client_documents cd WHERE cd.client_id=c.id AND cd.archived=0
                     AND (fold_text(cd.number) LIKE ? OR fold_text(cd.normalized_number) LIKE ?))
           OR EXISTS(SELECT 1 FROM client_companies cc WHERE cc.client_id=c.id AND cc.archived=0
                     AND (fold_text(cc.legal_name) LIKE ? OR fold_text(cc.trade_name) LIKE ? OR fold_text(cc.document) LIKE ?))
         ) ORDER BY fold_text(c.legal_name),c.id LIMIT ?''',
-        (like,like,like,like,like,like,document_like,like,like,like,bounded))
+        (like,like,like,like,like,like,like,like,document_like,like,like,like,bounded))
     return [dict(row) for row in rows]
 
 
@@ -288,12 +290,13 @@ def create_catalog(db:Database, actor:int, p:dict)->dict:
 
 def _hydrate_subscription(con, row)->dict:
     rec=dict(row)
-    client=con.execute('''SELECT c.legal_name,
+    client=con.execute('''SELECT c.legal_name,c.code,
         (SELECT cc.legal_name FROM client_companies cc
          WHERE cc.client_id=c.id AND cc.archived=0
          ORDER BY cc.is_primary DESC,cc.created_at,cc.id LIMIT 1) AS company_name
         FROM clients c WHERE c.id=?''',(rec['client_id'],)).fetchone()
     rec['client_name']=client['legal_name'] if client else None
+    rec['client_code']=client['code'] if client else None
     rec['company_name']=client['company_name'] if client else None
     items=[]
     for item in con.execute('''SELECT si.*,c.code AS plan_code,c.name AS plan_name,c.category AS plan_category
@@ -304,6 +307,7 @@ def _hydrate_subscription(con, row)->dict:
     targets=[]
     for target in con.execute('''SELECT st.*,
         CASE WHEN st.vehicle_id IS NOT NULL THEN 'VEHICLE' ELSE 'FLEET' END AS target_type,
+        v.code AS vehicle_code,v.type AS vehicle_type,f.code AS fleet_code,
         v.plate AS vehicle_plate,v.brand AS vehicle_brand,v.model AS vehicle_model,v.fleet_id AS vehicle_fleet_id,
         f.name AS fleet_name,cc.legal_name AS fleet_company_name
         FROM subscription_targets st
@@ -473,7 +477,7 @@ def set_direct_sale_status(db:Database, actor:int, sale_id:str, p:dict)->dict:
         return after
 
 def list_direct_sales(db:Database)->list[dict]:
-    return [dict(row) for row in db.query('''SELECT ds.*,c.legal_name AS client_name,
+    return [dict(row) for row in db.query('''SELECT ds.*,c.legal_name AS client_name,c.code AS client_code,
            (SELECT COUNT(*) FROM direct_sale_items dsi WHERE dsi.sale_id=ds.id) AS item_count
            FROM direct_sales ds JOIN clients c ON c.id=ds.client_id
            ORDER BY ds.sold_on DESC,ds.created_at DESC''')]
@@ -717,7 +721,7 @@ def dashboard(db:Database, as_of:date|None=None, year:int|None=None)->dict:
 
 def search(db:Database, query:str)->list[dict]:
     q=f"%{query.strip()}%"; results=[]
-    for table,cols,label in [('clients',['legal_name','trade_name','public_name','document','phone','email'],'client'),('vehicles',['plate','type','renavam','tracker_ref','tracker_serial_imei'],'vehicle'),('catalog',['code','name','category'],'catalog')]:
+    for table,cols,label in [('clients',['code','legal_name','trade_name','public_name','document','phone','email'],'client'),('vehicles',['code','plate','type','renavam','tracker_ref','tracker_serial_imei'],'vehicle'),('catalog',['code','name','category'],'catalog')]:
         where=' OR '.join([f"{c} LIKE ?" for c in cols]); rows=db.query(f"SELECT id,{','.join(cols)} FROM {table} WHERE {where} LIMIT 30",tuple(q for _ in cols))
         for row in rows: results.append({'type':label,**dict(row)})
     return results[:50]

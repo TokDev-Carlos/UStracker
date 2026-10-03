@@ -19,6 +19,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .auth import AuthService, Session
 from .attachments import list_attachments, load_attachment, store_attachment, store_link
+from .codes import resolve_entity_ref
 from .backup import create_backup, maybe_automatic_backup, prune_backups, restore_backup, verify_backup
 from .branding import asset_dir, store_brand_asset
 from .catalog import list_catalog
@@ -612,7 +613,7 @@ def create_app(root: Path | str) -> FastAPI:
             where.append('entity_type=?'); args.append(entity_type)
         if entity_id:
             where.append('entity_id=?'); args.append(entity_id)
-        sql = 'SELECT id,entity_type,entity_id,mime,width,height,sha256,created_at FROM media'
+        sql = 'SELECT id,entity_type,entity_id,(SELECT lc.code FROM logical_codes lc WHERE lc.entity_id=media.entity_id ORDER BY lc.retired_at IS NOT NULL,lc.issued_at DESC LIMIT 1) AS entity_code,mime,width,height,sha256,created_at FROM media'
         if where: sql += ' WHERE ' + ' AND '.join(where)
         sql += ' ORDER BY created_at DESC LIMIT 500'
         return {'items': [dict(r) for r in db.query(sql, tuple(args))]}
@@ -621,6 +622,7 @@ def create_app(root: Path | str) -> FastAPI:
     async def media_upload(entity_type: str, entity_id: str, request: Request, file: UploadFile = File(...), retain_original: bool = False):
         session = session_required(request, True)
         db = authorize_file_mutation(request, session)
+        entity_id = resolve_entity_ref(db, entity_type, entity_id)
         data = await file.read()
         return store_media(root, db, session.slot, session.media_key, entity_type, entity_id, data, retain_original)
 
@@ -644,13 +646,14 @@ def create_app(root: Path | str) -> FastAPI:
     async def attachment_upload(entity_type: str, entity_id: str, request: Request, file: UploadFile = File(...)):
         session = session_required(request, True)
         db = authorize_file_mutation(request, session)
+        entity_id = resolve_entity_ref(db, entity_type, entity_id)
         data = await file.read()
         return store_attachment(root, db, session.slot, session.media_key, entity_type, entity_id, file.filename or 'attachment', file.content_type, data)
 
     @app.post('/api/v1/attachments/link', status_code=201)
     def attachment_link_create(request: Request, p: dict = Body(...)):
         session = session_required(request, True)
-        return mutation(request, session, 'POST /attachments/link', p, lambda db: store_link(db, session.slot, p.get('entity_type'), p.get('entity_id'), p.get('url'), p.get('filename')))
+        return mutation(request, session, 'POST /attachments/link', p, lambda db: store_link(db, session.slot, p.get('entity_type'), resolve_entity_ref(db, p.get('entity_type'), p.get('entity_id')), p.get('url'), p.get('filename')))
 
     @app.get('/api/v1/attachments/{attachment_id}')
     def attachment_download(attachment_id: str, request: Request):

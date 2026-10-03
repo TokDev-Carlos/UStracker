@@ -1,4 +1,5 @@
 import { bindEntityAutocomplete, renderEntityAutocomplete } from './entity-autocomplete.js';
+import { vehicleCategory, vehicleRef } from './logical-codes.js';
 
 const escapeHtml = value => String(value ?? '').replace(/[&<>'"]/g, character => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;',
@@ -25,7 +26,7 @@ export function subscriptionOptionsForClient(model = {}, clientId = '') {
 function targetChoices(model, clientId) {
   const { vehicles, fleets } = subscriptionOptionsForClient(model, clientId);
   const choices = (rows, type, label) => rows.length
-    ? rows.map(row => `<label class="ui-check"><input type="checkbox" data-subscription-target="${type}" value="${escapeHtml(row.id)}"> ${escapeHtml(row[label] || row.id)}</label>`).join('')
+    ? rows.map(row => `<label class="ui-check"><input type="checkbox" data-subscription-target="${type}" value="${escapeHtml(row.id)}"> ${escapeHtml(label === 'plate' ? `${vehicleCategory(row.type)} · ${vehicleRef(row)}` : [row[label], row.code].filter(Boolean).join(' · ') || 'Registro')}</label>`).join('')
     : '<p class="muted">Nenhum registro disponível para este cliente.</p>';
   if (!clientId) return '<p class="muted">Selecione o cliente para carregar veículos e frotas.</p>';
   return `<div class="row"><fieldset class="field"><legend>Veículos</legend>${choices(vehicles, 'vehicle', 'plate')}</fieldset>

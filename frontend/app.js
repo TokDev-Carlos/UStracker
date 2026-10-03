@@ -37,7 +37,8 @@ function enableAutoUpload(form){const input=form?.querySelector('input[type="fil
 function msg(text,type='success'){return `<div class="${type}">${esc(text)}</div>`}
 function content(html,lease=null){if((lease!==null&&lease!==navigationSequence)||(String(html).startsWith('<h2>Sistema')&&systemNavigationLease!==navigationSequence))return false;const normalized=html.replace(/^<h2>([^<]+)<\/h2>/,(_,title)=>pageHeader(title,'Gestão administrativa')).replaceAll('>Publicar<','>Exibir no catálogo público<');const target=document.querySelector('#content');target.innerHTML=normalized;hydrateTables();bindMoneyInputs(target);localizeDom(target);queueMicrotask(bindSystemActions);return true}
 function applyBrand(p){const b=p?.brand||{};if(b.theme_primary)document.documentElement.style.setProperty('--primary',b.theme_primary);if(b.theme_accent)document.documentElement.style.setProperty('--accent',b.theme_accent);document.title=(b.company_display_name||'UStracker')+' — UStracker';const fav=b.assets?.favicon;if(fav){let l=document.querySelector('#dynamicFavicon');if(!l){l=document.createElement('link');l.id='dynamicFavicon';l.rel='icon';document.head.appendChild(l)}l.href=fav+'?v='+Date.now()}}
-function dt(items,id){const rows=items||[];const keys=rows.length?Object.keys(rows[0]).filter(k=>!['notes','address','before_json','after_json'].includes(k)).slice(0,12):[];const isDateKey=key=>key.endsWith('_on')||key.endsWith('_at')||['created_at','updated_at','paid_on','due_on','start_on','end_on','sold_on','installed_on'].includes(key);const columns=keys.map(key=>({key,label:labelPtBR(key),format:key.endsWith('_cents')?value=>formatBRL(Number(value||0)):isDateKey(key)?value=>esc(formatDateBR(value,key.endsWith('_at'))):value=>esc(valuePtBR(value))}));tableStore.set(id,createTableController({columns,rows}));return `<div id="${id}" class="data-table"></div>`}
+const DIAGNOSTIC_TABLES=new Set(['auditDT','stationsDT','adminsDT','backupsDT']);
+function dt(items,id){const rows=items||[];const technical=k=>!DIAGNOSTIC_TABLES.has(id)&&(k==='id'||k.endsWith('_id'));const keys=rows.length?Object.keys(rows[0]).filter(k=>!['notes','address','before_json','after_json'].includes(k)&&!technical(k)).sort((a,b)=>(b==='code')-(a==='code')).slice(0,12):[];const isDateKey=key=>key.endsWith('_on')||key.endsWith('_at')||['created_at','updated_at','paid_on','due_on','start_on','end_on','sold_on','installed_on'].includes(key);const columns=keys.map(key=>({key,label:key==='code'?'Código':labelPtBR(key),format:key==='code'?value=>value?`<span class="ui-code">${esc(value)}</span>`:'—':key.endsWith('_cents')?value=>formatBRL(Number(value||0)):isDateKey(key)?value=>esc(formatDateBR(value,key.endsWith('_at'))):value=>esc(valuePtBR(value))}));tableStore.set(id,createTableController({columns,rows}));return `<div id="${id}" class="data-table"></div>`}
 function hydrateTables(){for(const id of tableStore.keys()){if(document.querySelector('#'+CSS.escape(id)))renderDT(id)}}
 function renderDT(id){const box=document.querySelector('#'+CSS.escape(id));const controller=tableStore.get(id);if(box&&controller)mountTableController(box,controller)}
 function select(items,value='id',label='legal_name',blank=false){return `${blank?'<option value="">—</option>':''}${(items||[]).map(x=>`<option value="${esc(x[value])}">${esc(x[label]??x[value])}</option>`).join('')}`}
@@ -61,7 +62,7 @@ const nav=[['dashboard','Visão geral'],['clients','Clientes'],['mobility','Frot
 function renderShell(){renderAppShell({me,nav,onNavigate:show,onSearch:async query=>{const d=await api('/search?q='+encodeURIComponent(query));tableStore.clear();content(pageHeader('Pesquisa','Resultados da busca global')+dt(d.items,'searchTable'))},onHelp:()=>{const help=helpFor(current);openDrawer({title:help.title,subtitle:'Ajuda contextual',content:`<p>${esc(help.body)}</p>${HELP[current]?.fields?`<dl>${Object.entries(HELP[current].fields).map(([key,value])=>`<dt><strong>${esc(key.replaceAll('_',' '))}</strong></dt><dd>${esc(value)}</dd>`).join('')}</dl>`:''}`})},onUser:()=>content(pageHeader('Usuário','Sessão atual')+`<div class="panel"><strong>${esc(me.name)}</strong><p class="muted">Perfil: ${esc(sessionProfileLabel(me))}</p><p class="muted">Ambiente: ${esc(me.environment)}</p></div>`),onLogout:async()=>{await session.logout();await boot()},onShutdown:requestSystemShutdown})}
 async function openClientProfile(clientId){
   const profile=await api('/clients/'+encodeURIComponent(clientId)+'/profile');
-  const drawer=openDrawer({title:'Ficha do Cliente',subtitle:profile.client?.legal_name||'',content:renderClientProfile(profile)});
+  const drawer=openDrawer({title:'Ficha do Cliente',subtitle:[profile.client?.legal_name,profile.client?.code].filter(Boolean).join(' · '),content:renderClientProfile(profile)});
   drawer.querySelector('.ui-drawer').classList.add('r2-profile-wide');
   const refresh=async()=>{closeOverlay();await openClientProfile(clientId)};
   const basics=drawer.querySelector('#clientBasicsForm');
@@ -171,7 +172,7 @@ async function mobilityPage(filters={},lease=null){
 
   const openTransfer=async vehicle=>{
     const cases=await api(`/vehicles/${encodeURIComponent(vehicle.id)}/transfer-cases`);
-    const drawer=openDrawer({title:'Transferência de propriedade',subtitle:vehicle.plate||vehicle.id,content:renderTransferCaseForm(vehicle,{cases:cases.items||[]})});
+    const drawer=openDrawer({title:'Transferência de propriedade',subtitle:[vehicle.code,vehicle.plate].filter(Boolean).join(' · ')||'Veículo',content:renderTransferCaseForm(vehicle,{cases:cases.items||[]})});
     const form=drawer.querySelector('#transferCaseForm');
     if(form){
       const fleetSelect=form.querySelector('[name=fleet_id]');
@@ -187,7 +188,7 @@ async function mobilityPage(filters={},lease=null){
   const openFleetProfile=async fleetId=>{
     const profile=await api('/fleets/'+encodeURIComponent(fleetId)+'/profile');
     const companies=await api('/clients/'+encodeURIComponent(profile.fleet.client_id)+'/companies');
-    const drawer=openDrawer({title:'Ficha da Frota',subtitle:profile.fleet.name||'',content:renderFleetProfile(profile,{companies:companies.items||[]})});
+    const drawer=openDrawer({title:'Ficha da Frota',subtitle:[profile.fleet.name,profile.fleet.code].filter(Boolean).join(' · '),content:renderFleetProfile(profile,{companies:companies.items||[]})});
     drawer.querySelector('.ui-drawer').classList.add('r2-profile-wide');
     const edit=drawer.querySelector('#fleetEditForm');
     bindActionForm(edit,{key:`fleet-edit:${fleetId}`,action:async()=>{const payload=formData(edit);payload.expected_revision=Number(payload.expected_revision);await api('/fleets/'+encodeURIComponent(fleetId),{method:'PATCH',body:JSON.stringify(payload)});closeOverlay()},refresh:()=>mobilityPage(filters),successMessage:'Frota atualizada.',notify:toast});

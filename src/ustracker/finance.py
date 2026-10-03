@@ -52,7 +52,7 @@ def ensure_fiscal_expense(db:Database,actor:int,fiscal_id:str)->dict:
 
 
 def finance_snapshot(db:Database)->dict:
-    payments=[dict(r) for r in db.query('SELECT * FROM payments ORDER BY paid_on DESC,created_at DESC')]
+    payments=[dict(r) for r in db.query('SELECT p.*,c.legal_name AS client_name,c.code AS client_code FROM payments p LEFT JOIN clients c ON c.id=p.client_id ORDER BY p.paid_on DESC,p.created_at DESC')]
     active_payments=[payment for payment in payments if not payment.get('reversed_at')]
     realized_received=sum(int(payment['amount_cents']) for payment in active_payments)
     realized_expenses=int(db.one(
@@ -66,6 +66,6 @@ def finance_snapshot(db:Database)->dict:
         'cash_result_cents':realized_received-realized_expenses,
         'expenses':[dict(r) for r in db.query('SELECT * FROM expenses ORDER BY competence DESC,created_at DESC')],
         'fiscal':[dict(r) for r in db.query('SELECT * FROM fiscal_obligations ORDER BY competence DESC,created_at DESC')],
-        'charges':[dict(r) for r in db.query("SELECT * FROM charges WHERE status<>'VOID' ORDER BY due_on DESC,created_at DESC")],
+        'charges':[dict(r) for r in db.query("SELECT ch.*,s.code||'/'||substr(ch.competence,1,7) AS code FROM charges ch LEFT JOIN subscriptions s ON s.id=ch.subscription_id WHERE ch.status<>'VOID' ORDER BY ch.due_on DESC,ch.created_at DESC")],
         'disbursements':[dict(r) for r in db.query('SELECT * FROM disbursements ORDER BY paid_on DESC,created_at DESC')],
     }

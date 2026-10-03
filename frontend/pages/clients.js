@@ -25,6 +25,7 @@ export function clientTableDefinition(onView = () => {}) {
   return {
     selectionMode: 'multiple',
     columns: [
+      { key: 'code', label: 'Código', format: value => value ? `<span class="ui-code">${String(value).replace(/[&<>'"]/g, '')}</span>` : '—' },
       { key: 'legal_name', label: 'Cliente' },
       { key: 'primary_company', label: 'Empresa principal' },
       { key: 'primary_contact', label: 'Contato principal' },

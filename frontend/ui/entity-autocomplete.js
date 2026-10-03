@@ -88,7 +88,7 @@ export function renderEntityAutocompleteResults(state = {}) {
   if (state.error) return `<div class="error" data-entity-status>${escapeHtml(state.error)}</div>`;
   const items = (state.items || []).slice(0, 30);
   if (!items.length) return state.query ? '<div class="muted" data-entity-status>Nenhum resultado.</div>' : '';
-  return items.map((item, index) => `<button type="button" role="option" data-entity-option="${escapeHtml(item.id)}" class="entity-autocomplete-option ${index === state.activeIndex ? 'active' : ''}" aria-selected="${index === state.activeIndex ? 'true' : 'false'}"><strong>${escapeHtml(item.display_name || item.id)}</strong>${item.primary_company ? `<span>${escapeHtml(item.primary_company)}</span>` : ''}${item.primary_document ? `<span>${escapeHtml(item.primary_document)}</span>` : ''}</button>`).join('');
+  return items.map((item, index) => `<button type="button" role="option" data-entity-option="${escapeHtml(item.id)}" class="entity-autocomplete-option ${index === state.activeIndex ? 'active' : ''}" aria-selected="${index === state.activeIndex ? 'true' : 'false'}"><strong>${escapeHtml(item.display_name || item.code || 'Cliente')}</strong>${item.code ? `<span class="ui-code">${escapeHtml(item.code)}</span>` : ''}${item.primary_company ? `<span>${escapeHtml(item.primary_company)}</span>` : ''}${item.primary_document ? `<span>${escapeHtml(item.primary_document)}</span>` : ''}</button>`).join('');
 }
 
 export function renderEntityAutocomplete({ name = 'client_id', label = 'Cliente', selected = null, required = false, placeholder = 'Digite para pesquisar' } = {}) {

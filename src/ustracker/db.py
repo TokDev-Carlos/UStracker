@@ -8,7 +8,7 @@ from contextlib import closing, contextmanager
 from pathlib import Path
 from typing import Iterator
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 
 
 def fold_text(value) -> str:
@@ -341,6 +341,10 @@ class Database:
             if current_version < 9:
                 # R11 subscription targets are additive; SCHEMA_SQL creates the table and indexes.
                 pass
+            if current_version < 10:
+                # AJ-04 logical public codes: additive columns, registry, deterministic backfill, triggers.
+                from .codes import migrate as migrate_logical_codes
+                migrate_logical_codes(con)
             con.execute("INSERT OR REPLACE INTO meta(key,value) VALUES('schema_version',?)", (str(SCHEMA_VERSION),))
             con.commit()
 

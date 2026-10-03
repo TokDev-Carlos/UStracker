@@ -1,6 +1,7 @@
 import { getIconPath } from './icon-registry.js';
 import { formatBRL, formatDateBR } from './formatters.js';
 import { renderMoneyInput } from './money-input.js';
+import { codeTag, vehicleCategory, vehicleDetail } from './logical-codes.js';
 
 const escapeHtml = value => String(value ?? '').replace(/[&<>'"]/g, character => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
@@ -98,18 +99,18 @@ export function renderClientProfile(profile = {}) {
     .sort(([a], [b]) => (typeOrder.get(a) ?? 99) - (typeOrder.get(b) ?? 99) || String(a).localeCompare(String(b), 'pt-BR'))
     .map(([type, vehicles]) => `<section class="r2-profile-vehicle-group"><h4>${escapeHtml(pluralType(type))}</h4>${list(vehicles, vehicle => {
       const media = profile.vehicle_media?.[vehicle.id]?.[0];
-      const description = [vehicle.plate, vehicle.brand, vehicle.model].filter(Boolean).join(' · ');
-      return `<div class="r2-profile-vehicle">${media ? thumb(media) : ''}<span>${escapeHtml(description || vehicle.id)}</span></div>`;
+      const description = vehicleDetail(vehicle) || vehicleCategory(vehicle.type);
+      return `<div class="r2-profile-vehicle">${media ? thumb(media) : ''}<span>${escapeHtml(description)} ${codeTag(vehicle.code)}</span></div>`;
     })}</section>`).join('') || '<p class="muted">Nenhum veículo.</p>';
 
   const signatureAttachments = attachments.filter(attachment => attachment.entity_type === 'subscription');
   const signatureList = list(signatureAttachments, attachment => attachment.origin === 'LINK'
     ? `<a href="${escapeHtml(attachment.url)}" target="_blank" rel="noopener">${escapeHtml(attachment.filename || 'Abrir assinatura')}</a>`
     : `<a href="/api/v1/attachments/${escapeHtml(encodeURIComponent(attachment.id))}">${escapeHtml(attachment.filename || 'Baixar assinatura')}</a>`, 'Nenhuma assinatura eletrônica anexada.');
-  const signatureUpload = subscriptions.length ? `<form id="clientSignatureForm" data-auto-upload><div class="row"><div class="field"><label>Assinatura</label><select name="subscription_id" required><option value="">Selecione</option>${subscriptions.map(subscription => `<option value="${escapeHtml(subscription.id)}">${escapeHtml(subscription.id)}</option>`).join('')}</select></div></div><div class="actions"><label class="ui-btn ui-btn-secondary ui-file-action">Escolher e anexar arquivo<input type="file" name="file" accept=".jpg,.jpeg,.png,.webp,.pdf" required></label></div></form>` : '<p class="muted">Cadastre uma assinatura comercial antes de anexar o documento eletrônico.</p>';
+  const signatureUpload = subscriptions.length ? `<form id="clientSignatureForm" data-auto-upload><div class="row"><div class="field"><label>Assinatura</label><select name="subscription_id" required><option value="">Selecione</option>${subscriptions.map(subscription => `<option value="${escapeHtml(subscription.id)}">${escapeHtml(subscription.code || 'Assinatura')}</option>`).join('')}</select></div></div><div class="actions"><label class="ui-btn ui-btn-secondary ui-file-action">Escolher e anexar arquivo<input type="file" name="file" accept=".jpg,.jpeg,.png,.webp,.pdf" required></label></div></form>` : '<p class="muted">Cadastre uma assinatura comercial antes de anexar o documento eletrônico.</p>';
   const subscriptionList = list(subscriptions, subscription => {
     const plans = (subscription.items || subscription.subscription_items || []).map(item => item.plan_name || item.description).filter(Boolean).join(', ') || 'Plano';
-    return `<strong>${escapeHtml(plans)}</strong> · ${escapeHtml(formatDateBR(subscription.start_on, false))} · ${escapeHtml(formatBRL(subscription.effective_total_cents || 0))} · ${escapeHtml(subscription.lifecycle_status || '')}`;
+    return `<strong>${escapeHtml(plans)}</strong> ${codeTag(subscription.code)} · ${escapeHtml(formatDateBR(subscription.start_on, false))} · ${escapeHtml(formatBRL(subscription.effective_total_cents || 0))} · ${escapeHtml(subscription.lifecycle_status || '')}`;
   }, 'Nenhuma assinatura comercial.');
 
   return `<div class="r2-profile">

@@ -49,22 +49,24 @@ def commercial_snapshot(db:Database)->dict:
     for rec in subscriptions:
         rec['total_cents']=rec['effective_total_cents']
         rec['vehicles']=[{
-            'id':target['vehicle_id'],'plate':target['vehicle_plate'],'fleet_id':target['vehicle_fleet_id'],
+            'id':target['vehicle_id'],'code':target['vehicle_code'],'type':target['vehicle_type'],
+            'brand':target['vehicle_brand'],'model':target['vehicle_model'],
+            'plate':target['vehicle_plate'],'fleet_id':target['vehicle_fleet_id'],
         } for target in rec['targets'] if target['target_type']=='VEHICLE']
         rec['plans']=[{
             'id':item['catalog_id'],'name':item['plan_name'],'code':item['plan_code'],
             'quantity':item['quantity'],'unit_price_cents':item['unit_price_cents'],
         } for item in rec['items']]
-    coverages=[dict(r) for r in db.query('''SELECT sc.*,c.legal_name AS client_name FROM service_coverage_periods sc
+    coverages=[dict(r) for r in db.query('''SELECT sc.*,c.legal_name AS client_name,s.code AS subscription_code FROM service_coverage_periods sc LEFT JOIN subscriptions s ON s.id=sc.subscription_id
                                             JOIN clients c ON c.id=sc.client_id ORDER BY sc.end_on DESC,sc.created_at DESC''')]
     return {
         'subscriptions':subscriptions,
         'direct_sales':list_direct_sales(db),
-        'credits':[dict(r) for r in db.query('SELECT * FROM credits ORDER BY created_at DESC')],
+        'credits':[dict(r) for r in db.query('SELECT cr.*,c.legal_name AS client_name,c.code AS client_code FROM credits cr LEFT JOIN clients c ON c.id=cr.client_id ORDER BY cr.created_at DESC')],
         'coverage_periods':coverages,
         'catalog_avulsa':[dict(r) for r in db.query("SELECT * FROM catalog WHERE active=1 AND category='AVULSA' ORDER BY name")],
         'catalog_mensal':[dict(r) for r in db.query("SELECT * FROM catalog WHERE active=1 AND category='MENSAL' ORDER BY name")],
         'payments':[dict(r) for r in db.query('SELECT * FROM payments WHERE reversed_at IS NULL ORDER BY paid_on DESC,created_at DESC')],
-        'vehicles':[dict(r) for r in db.query('SELECT id,client_id,plate,fleet_id FROM vehicles WHERE archived=0 ORDER BY plate')],
-        'fleets':[dict(r) for r in db.query('SELECT id,client_id,client_company_id,name FROM fleets WHERE archived=0 ORDER BY name')],
+        'vehicles':[dict(r) for r in db.query('SELECT id,code,client_id,plate,type,brand,model,fleet_id FROM vehicles WHERE archived=0 ORDER BY plate')],
+        'fleets':[dict(r) for r in db.query('SELECT id,code,client_id,client_company_id,name FROM fleets WHERE archived=0 ORDER BY name')],
     }

@@ -279,7 +279,7 @@ def list_mobility(db: Database, *, client_id: str | None = None, fleet_id: str |
         where.append('upper(v.plate) LIKE ?'); args.append('%' + _normalize_plate(plate) + '%')
     predicate = ' AND '.join(where)
     value_sql = _vehicle_value_sql()
-    rows = [dict(r) for r in db.query(f'''SELECT v.*,c.legal_name AS client_name,f.name AS fleet_name,
+    rows = [dict(r) for r in db.query(f'''SELECT v.*,c.legal_name AS client_name,c.code AS client_code,f.name AS fleet_name,f.code AS fleet_code,
             {value_sql} AS total_value_cents
             FROM vehicles v JOIN clients c ON c.id=v.client_id
             LEFT JOIN fleets f ON f.id=v.fleet_id
@@ -297,7 +297,7 @@ def list_mobility(db: Database, *, client_id: str | None = None, fleet_id: str |
         fleet_where.append('EXISTS(SELECT 1 FROM vehicles pv WHERE pv.fleet_id=f.id AND pv.archived=0 AND upper(pv.plate) LIKE ?)')
         fleet_args.append('%' + _normalize_plate(plate) + '%')
     fleets = []
-    for fleet in db.query(f'''SELECT f.*,c.legal_name AS client_name,cc.legal_name AS company_name
+    for fleet in db.query(f'''SELECT f.*,c.legal_name AS client_name,c.code AS client_code,cc.legal_name AS company_name
                               FROM fleets f JOIN clients c ON c.id=f.client_id
                               LEFT JOIN client_companies cc ON cc.id=f.client_company_id
                               WHERE {' AND '.join(fleet_where)} ORDER BY c.legal_name,f.name''', tuple(fleet_args)):
@@ -320,7 +320,7 @@ def list_mobility(db: Database, *, client_id: str | None = None, fleet_id: str |
 
 
 def fleet_profile(db: Database, fleet_id: str) -> dict:
-    row = db.one('''SELECT f.*,c.legal_name AS client_name,cc.legal_name AS company_name
+    row = db.one('''SELECT f.*,c.legal_name AS client_name,c.code AS client_code,cc.legal_name AS company_name
                     FROM fleets f JOIN clients c ON c.id=f.client_id
                     LEFT JOIN client_companies cc ON cc.id=f.client_company_id
                     WHERE f.id=? AND f.archived=0''', (fleet_id,))
