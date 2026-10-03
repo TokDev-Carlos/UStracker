@@ -162,3 +162,30 @@ td>.ui-code:first-child{margin-left:0}
 .cp-photo-plus{font-size:.7rem;padding:2px 6px;border:1px dashed var(--us-gray-300);border-radius:6px;color:var(--us-gray-600)}
 .cp-photo-remove{width:20px;height:20px;padding:0;border-radius:50%;background:var(--us-red-50);color:var(--us-red-700);font-size:.8rem;line-height:1}
 .cp-avatar{position:relative}.cp-avatar-remove{position:absolute;top:0;right:-4px}
+
+/* R16 — consistent control geometry and table widths */
+.field input,.field select,.field textarea{min-height:40px}
+.field label{min-height:1.2em}
+button:not(.ui-icon-btn):not(.subs-count):not(.cp-photo-remove):not(.tree-fleet):not([role=tab]):not(.mobility-tab):not(.entity-autocomplete-option){min-height:36px}
+.overview-table{min-width:980px}
+.overview-table th:nth-child(1){width:24%}
+.overview-table th:nth-child(2),.overview-table th:nth-child(3),.overview-table th:nth-child(4){width:8%}
+.overview-table th:nth-child(5){width:16%}
+.overview-table th:nth-child(6){width:12%}
+.overview-table th:nth-child(7){width:10%}
+.overview-table th:nth-child(8){width:14%}
+.overview-table td:nth-child(n+2):nth-child(-n+4){text-align:center}
+.money,td.money,th.money{text-align:right;font-variant-numeric:tabular-nums}
+.ui-table td,.compact-table td{vertical-align:middle}
+.mobility-table th:last-child,.mobility-table td:last-child{width:1%;white-space:nowrap}
+.indicators-head{display:flex;align-items:center;justify-content:space-between;gap:var(--us-space-3);flex-wrap:wrap;margin-bottom:var(--us-space-3)}
+.indicators-head h3{margin:0}
+.indicators-head .field{min-width:180px;flex:0 0 auto}
+.indicators-head form{margin:0}
+.ui-fleet-name{display:flex;flex-direction:column;align-items:flex-start;gap:2px}
+.ui-fleet-name .ui-code{margin-left:0}
+.overview-table th{overflow-wrap:normal;word-break:normal;hyphens:auto}
+.tabs{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:var(--us-space-3)}
+.tabs button{background:var(--us-gray-100);color:var(--us-gray-700);border:1px solid var(--us-gray-200)}
+.tabs button.active{background:var(--us-blue-600);color:var(--us-white);border-color:var(--us-blue-600)}
+button:disabled,.ui-btn:disabled{opacity:.5;cursor:not-allowed}

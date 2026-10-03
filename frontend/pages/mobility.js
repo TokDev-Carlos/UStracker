@@ -58,7 +58,7 @@ function mobilityTable(rows = [], fleetMode = false) {
     : '<th>Veículo</th><th>Cliente</th><th>Empresa › Frota</th><th>Contratação</th><th>Revisão</th><th>Valor Total</th><th>Assinaturas</th><th>Ação</th>';
   const cols = fleetMode ? 10 : 8;
   const body = rows.length ? rows.map(row => fleetMode ? `<tr>
-    <td><span class="ui-vehicle"><strong>${esc(row.name || 'Frota')}</strong>${codeTag(row.code)}</span></td>
+    <td><span class="ui-fleet-name"><strong>${esc(row.name || 'Frota')}</strong>${codeTag(row.code)}</span></td>
     <td>${esc(row.client_name || '—')} ${codeTag(row.client_code)}</td>
     <td>${esc(row.company_name || '—')}</td>
     <td>${groupBadge(row.vehicle_group, row.vehicle_group_label)}</td>
