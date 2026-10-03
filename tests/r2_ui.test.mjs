@@ -67,7 +67,7 @@ test('Mensalidade apresenta somente os ciclos existentes sem conversão inventad
   assert.equal(formatSubscriptionRates({}), '—');
 });
 
-test('A ficha do cliente usa cinco blocos consolidados e reutiliza miniaturas', async () => {
+test('A ficha do cliente usa abas enxutas (AJ-07) e reutiliza miniaturas', async () => {
   const { renderClientProfile } = await import('../frontend/ui/r2-ui.js');
   const html = renderClientProfile({
     client: { legal_name: '<Empresa>', trade_name: 'Marca', document: '123' },
@@ -78,12 +78,14 @@ test('A ficha do cliente usa cinco blocos consolidados e reutiliza miniaturas', 
     direct_sales: [{ status: 'PAID', total_cents: 5000, direct_sale_items: [{ description: 'Item', quantity: 1 }] }],
     financial: { subscription_received_cents: 2000, direct_sales_paid_cents: 5000, client_expenses_paid_cents: 1000 },
   });
-  const titles = [...html.matchAll(/<summary>([^<]+)/g)].map(match => match[1]);
-  assert.deepEqual(titles, ['Dados Básicos', 'Empresas', 'Veículos', 'Financeiro', 'Assinaturas']);
+  const tabs = [...html.matchAll(/data-cp-tab="[^"]+"[^>]*>([^<]+)/g)].map(match => match[1]);
+  assert.deepEqual(tabs, ['Resumo', 'Dados Básicos', 'Empresas', 'Veículos e Frotas', 'Assinaturas e Compras', 'Financeiro', 'Arquivos']);
   assert.match(html, /\/api\/v1\/media\/m1\/thumb/);
   assert.match(html, /\/api\/v1\/media\/m2\/thumb/);
   assert.match(html, /&lt;Empresa&gt;/);
   assert.doesNotMatch(html, /<Empresa>/);
+  assert.match(html, /<form id="clientBasicsForm" class="cp-form" hidden>/);
+  assert.match(html, /data-cp-panel="resumo" role="tabpanel">/);
 });
 
 test('O Login tem logo, duas áreas e REAL selecionado em cada abertura', async () => {

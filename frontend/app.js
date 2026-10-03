@@ -12,6 +12,7 @@ import { bindMoneyInputs, renderMoneyInput } from './ui/money-input.js';
 import { bindSubscriptionWorkflow, renderSubscriptionWorkflow } from './ui/subscription-workflow.js';
 import { bindEntityAutocomplete } from './ui/entity-autocomplete.js';
 import { closeSubscriptionPopover, openSubscriptionPopover } from './ui/subscription-popover.js';
+import { bindClientProfileUi } from './ui/client-profile.js';
 import { bindActionButton, bindActionForm, runDomAction } from './ui/action-state.js';
 import { buildClientCreatePayload, clientTableDefinition, renderClientEditor } from './pages/clients.js';
 import { buildMobilityQuery, buildVehiclePayload, renderFleetProfile, renderMobilityPage, renderTransferCaseForm } from './pages/mobility.js';
@@ -78,9 +79,7 @@ const nav=[['dashboard','Visão geral'],['clients','Clientes'],['mobility','Frot
 function renderShell(){renderAppShell({me,nav,onNavigate:show,onSearch:async query=>{const d=await api('/search?q='+encodeURIComponent(query));tableStore.clear();content(pageHeader('Pesquisa','Resultados da busca global')+dt(d.items,'searchTable'))},onHelp:()=>{const help=helpFor(current);openDrawer({title:help.title,subtitle:'Ajuda contextual',content:`<p>${esc(help.body)}</p>${HELP[current]?.fields?`<dl>${Object.entries(HELP[current].fields).map(([key,value])=>`<dt><strong>${esc(key.replaceAll('_',' '))}</strong></dt><dd>${esc(value)}</dd>`).join('')}</dl>`:''}`})},onUser:()=>content(pageHeader('Usuário','Sessão atual')+`<div class="panel"><strong>${esc(me.name)}</strong><p class="muted">Perfil: ${esc(sessionProfileLabel(me))}</p><p class="muted">Ambiente: ${esc(me.environment)}</p></div>`),onLogout:async()=>{await session.logout();await boot()},onShutdown:requestSystemShutdown})}
 function bindClientJourney(drawer,profile,clientId){
   const reopen=focus=>async()=>{closeOverlay();await openClientProfile(clientId,{focus})};
-  const openCard=(selector,focusSelector)=>{const target=drawer.querySelector(selector);const details=target?.closest('details');if(details)details.open=true;target?.scrollIntoView({behavior:'smooth',block:'start'});target?.querySelector(focusSelector||'input,select')?.focus()};
-  drawer.querySelectorAll('[data-journey="mobility"]').forEach(button=>button.onclick=()=>openCard('#clientVehicleForm'));
-  drawer.querySelectorAll('[data-journey="purchase"]').forEach(button=>button.onclick=()=>openCard('#clientPurchaseForm'));
+  bindClientProfileUi(drawer);
   drawer.querySelectorAll('[data-open-commercial]').forEach(button=>button.onclick=()=>{closeOverlay();history.replaceState(null,'','#commercial/'+button.dataset.openCommercial+(button.dataset.code?'/'+encodeURIComponent(button.dataset.code):''));show('commercial')});
   const vehicleForm=drawer.querySelector('#clientVehicleForm');
   if(vehicleForm){
@@ -100,8 +99,8 @@ function bindClientJourney(drawer,profile,clientId){
 async function openClientProfile(clientId,options={}){
   const profile=await api('/clients/'+encodeURIComponent(clientId)+'/profile');
   const drawer=openDrawer({title:'Ficha do Cliente',subtitle:[profile.client?.legal_name,profile.client?.code].filter(Boolean).join(' · '),content:renderClientProfile(profile,options)});
-  drawer.querySelector('.ui-drawer').classList.add('r2-profile-wide');
-  const refresh=async()=>{closeOverlay();await openClientProfile(clientId)};
+  drawer.querySelector('.ui-drawer').classList.add('r2-profile-wide','cp-drawer');
+  const refresh=async()=>{const tab=drawer.querySelector('.cp')?.dataset.cpActive;closeOverlay();await openClientProfile(clientId,{tab})};
   const basics=drawer.querySelector('#clientBasicsForm');
   bindActionForm(basics,{key:`client-basics:${clientId}`,action:async()=>{const payload=formData(basics);payload.expected_revision=profile.client.revision;await api('/clients/'+encodeURIComponent(clientId),{method:'PATCH',body:JSON.stringify(payload)})},refresh,successMessage:'Dados do cliente atualizados.',notify:toast});
   const companyForm=drawer.querySelector('#clientCompanyForm');

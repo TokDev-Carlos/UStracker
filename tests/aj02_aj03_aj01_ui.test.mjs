@@ -33,7 +33,12 @@ test('AJ-01: Receita Geral e Previsão do Mês lado a lado; previsão fora do Re
   assert.match(html, /R\$ 100,00<\/td><td class="money">R\$ 0,00/);
 });
 
-test('AJ-03: ficha mostra jornada Cliente → Mobilidade → Plano e atalhos para o Comercial', () => {
+test('AJ-03: jornada aparece só enquanto o cadastro está incompleto', () => {
+  const partial = renderClientProfile({ client: { legal_name: 'Novo', code: 'CLI-0009' } });
+  assert.match(partial, /cp-steps[\s\S]*Cliente[\s\S]*Veículo ou frota[\s\S]*data-journey="mobility"/);
+});
+
+test('AJ-03: ficha mostra formulários e atalhos para o Comercial', () => {
   const html = renderClientProfile({
     client: { legal_name: 'Alfa', code: 'CLI-0001' }, companies: [{ id: 'co', legal_name: 'Empresa', is_primary: 1 }],
     vehicles: [{ id: 'v', code: 'CLI-0001-V01', type: 'Lancha', category: 'BOAT', category_label: 'Embarcação', brand: 'X', model: 'Y', plate: 'B1' }],
@@ -41,12 +46,12 @@ test('AJ-03: ficha mostra jornada Cliente → Mobilidade → Plano e atalhos par
     direct_sales: [{ id: 'd', code: 'CLI-0001-C01', status: 'OPEN', total_cents: 5000, direct_sale_items: [{ description: 'Instalação' }] }],
     summary: { vehicle_breakdown: { categories: [{ key: 'BOAT', count: 1 }] }, contracted_active_cents: 10000, realized_revenue_cents: 0 },
   });
-  assert.match(html, /client-journey[\s\S]*1 · Cliente[\s\S]*2 · Mobilidade[\s\S]*3 · Plano ou compra/);
+  assert.equal(html.includes('cp-steps'), false); // jornada completa some (AJ-07)
   assert.match(html, /id="clientVehicleForm"/);
   assert.match(html, /id="clientFleetForm"/);
   assert.match(html, /id="clientPurchaseForm"/);
   assert.match(html, /data-open-commercial="subscriptions" data-code="CLI-0001-A01"/);
   assert.match(html, /data-open-commercial="purchases" data-code="CLI-0001-C01"/);
-  assert.match(html, /Embarcações <span class="muted">\(1\)/);
-  assert.match(html, /Valor contratado ativo<\/dt><dd>R\$ 100,00/);
+  assert.match(html, /Valor contratado ativo \(mês\)<\/dt><dd>R\$ 100,00/);
+  assert.match(html, /<strong>Embarcação<\/strong>/);
 });

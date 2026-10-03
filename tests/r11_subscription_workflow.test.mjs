@@ -77,7 +77,7 @@ test('Os dois contextos produzem o mesmo payload e rejeitam duplicidades', () =>
 
 test('Ficha e Comercial acionam o mesmo workflow e a mesma rota', () => {
   const app = fs.readFileSync(new URL('../frontend/app.js', import.meta.url), 'utf8');
-  const profile = fs.readFileSync(new URL('../frontend/ui/r2-ui.js', import.meta.url), 'utf8');
+  const profile = fs.readFileSync(new URL('../frontend/ui/client-profile.js', import.meta.url), 'utf8');
   const commercial = fs.readFileSync(new URL('../frontend/pages/commercial.js', import.meta.url), 'utf8');
   const help = fs.readFileSync(new URL('../frontend/ui/help-catalog.js', import.meta.url), 'utf8');
   assert.match(app, /renderSubscriptionWorkflow/);
