@@ -8,26 +8,26 @@ R11-06,R11,Payment updates finance/overview without double counting,Integration 
 R12-01,R12,Client autocomplete handles 1000+ without rendering all,Frontend/API performance fixture,PASS
 R12-02,R12,Search is accent/case insensitive,Search test,PASS
 R12-03,R12,Debounce and stale response protection,Frontend async test,PASS
-R13-01,R13,Mutation does not require F5,Frontend integration smoke,IMPLEMENTED_UNVERIFIED
-R13-02,R13,Double click does not double write,Idempotency/UI test,IMPLEMENTED_UNVERIFIED
-R13-03,R13,API error preserves old state and displays error,Frontend integration test,IMPLEMENTED_UNVERIFIED
-R14-01,R14,Photo upload is single visible action,UI test,IMPLEMENTED_UNVERIFIED
-R14-02,R14,Replace/remove photo safe and confirmed,UI/API test,IMPLEMENTED_UNVERIFIED
-R15-01,R15,Menu/action icon map complete,Static registry test,IMPLEMENTED_UNVERIFIED
-R15-02,R15,No emoji production icons,Static scan,IMPLEMENTED_UNVERIFIED
-R16-01,R16,Control/table alignment consistent,Visual smoke checklist,IMPLEMENTED_UNVERIFIED
-R17-01,R17,Brand assets preserve aspect ratio,Static CSS+visual smoke,IMPLEMENTED_UNVERIFIED
-R18-01,R18,Overview period supports Geral and years,API+frontend test,IMPLEMENTED_UNVERIFIED
-R18-02,R18,Revenue uses realized only,Finance integration test,IMPLEMENTED_UNVERIFIED
-R18-03,R18,Expense and result drilldown reconciles,Finance integration test,IMPLEMENTED_UNVERIFIED
-R19-01,R19,System defaults to Administration tab,Frontend test,IMPLEMENTED_UNVERIFIED
-R19-02,R19,Development diagnostics separated and protected,Auth/frontend test,IMPLEMENTED_UNVERIFIED
-R20-01,R20,No product dependency on C:\UStracker,Source scan+path tests,IMPLEMENTED_UNVERIFIED
-R20-02,R20,App roots derive from runtime root,Path unit tests,IMPLEMENTED_UNVERIFIED
-R21-01,R21,Repository boundary exists without speculative cloud provider,Architecture test/review,IMPLEMENTED_UNVERIFIED
-R22-01,R22,Updater verifies version/hash/schema,Updater tests,CORE_IMPLEMENTED_UNVERIFIED
-R22-02,R22,Updater rolls back failed healthcheck,Updater integration test,CORE_IMPLEMENTED_UNVERIFIED
-R22-03,R22,Updater creates no arbitrary install clones,Filesystem integration test,CORE_IMPLEMENTED_UNVERIFIED
+R13-01,R13,Mutation does not require F5,Frontend integration smoke,IMPLEMENTED_LIGHT_TESTED
+R13-02,R13,Double click does not double write,Idempotency/UI test,IMPLEMENTED_LIGHT_TESTED
+R13-03,R13,API error preserves old state and displays error,Frontend integration test,IMPLEMENTED_LIGHT_TESTED
+R14-01,R14,Photo upload is single visible action,UI test,IMPLEMENTED_LIGHT_TESTED
+R14-02,R14,Replace/remove photo safe and confirmed,UI/API test,IMPLEMENTED_LIGHT_TESTED
+R15-01,R15,Menu/action icon map complete,Static registry test,IMPLEMENTED_LIGHT_TESTED
+R15-02,R15,No emoji production icons,Static scan,IMPLEMENTED_LIGHT_TESTED
+R16-01,R16,Control/table alignment consistent,Visual smoke checklist,IMPLEMENTED_LIGHT_TESTED
+R17-01,R17,Brand assets preserve aspect ratio,Static CSS+visual smoke,IMPLEMENTED_LIGHT_TESTED
+R18-01,R18,Overview period supports Geral and years,API+frontend test,IMPLEMENTED_LIGHT_TESTED
+R18-02,R18,Revenue uses realized only,Finance integration test,IMPLEMENTED_LIGHT_TESTED
+R18-03,R18,Expense and result drilldown reconciles,Finance integration test,IMPLEMENTED_LIGHT_TESTED
+R19-01,R19,System defaults to Administration tab,Frontend test,IMPLEMENTED_LIGHT_TESTED
+R19-02,R19,Development diagnostics separated and protected,Auth/frontend test,IMPLEMENTED_LIGHT_TESTED
+R20-01,R20,No product dependency on C:\UStracker,Source scan+path tests,IMPLEMENTED_LIGHT_TESTED
+R20-02,R20,App roots derive from runtime root,Path unit tests,IMPLEMENTED_LIGHT_TESTED
+R21-01,R21,Repository boundary exists without speculative cloud provider,Architecture test/review,IMPLEMENTED_LIGHT_TESTED
+R22-01,R22,Updater verifies version/hash/schema,Updater tests,IMPLEMENTED_LIGHT_TESTED
+R22-02,R22,Updater rolls back failed healthcheck,Updater integration test,IMPLEMENTED_LIGHT_TESTED
+R22-03,R22,Updater creates no arbitrary install clones,Filesystem integration test,IMPLEMENTED_LIGHT_TESTED
 R23-01,R23,Every menu passes functional audit,Audit report,AWAITING_HUMAN
 R23-02,R23,Backup/restore covers all active domains,Restore integration test,AWAITING_HUMAN
 R23-03,R23,Windows physical smoke completed,Windows homologation evidence,AWAITING_HUMAN
@@ -38,3 +38,7 @@ AJ-03-01,POST_VALIDATION,Client creation can continue through mobility and plan 
 AJ-03-02,POST_VALIDATION,Client Commercial Mobility and Overview share synchronized projections,Integration and stale-state test,IMPLEMENTED_AWAITING_HUMAN
 AJ-04-01,POST_VALIDATION,Technical UUID remains internal while logical codes are compact and immutable,Migration and API test,IMPLEMENTED_AWAITING_HUMAN
 AJ-04-02,POST_VALIDATION,Vehicle columns use normalized type as primary display,Frontend table and accessibility test,IMPLEMENTED_AWAITING_HUMAN
+AJ-05-01,POST_VALIDATION,Fleet declares group (or Misto) and rejects other categories,Domain test,IMPLEMENTED_LIGHT_TESTED
+AJ-05-02,POST_VALIDATION,Cliente›Empresa›Frota›Grupo totals reconcile,Aggregate test,IMPLEMENTED_LIGHT_TESTED
+AJ-06-01,POST_VALIDATION,Subscription column is a count with detail menu,UI+API test,IMPLEMENTED_LIGHT_TESTED
+AJ-07-01,POST_VALIDATION,Client profile uses compact header tabs and on-demand forms,UI render test + visual smoke,IMPLEMENTED_LIGHT_TESTED

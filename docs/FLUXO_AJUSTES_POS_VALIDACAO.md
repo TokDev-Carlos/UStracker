@@ -1,6 +1,6 @@
 # Fluxo de ajustes pós-validação básica
 
-Estado: AJ-04, AJ-02, AJ-03 e AJ-01 implementados (schema 10) e aguardando validação humana. Roteiro: `docs/VALIDACAO_HUMANA_AJ01_AJ04.md`. Este fluxo inicia depois da validação
+Estado: AJ-01..AJ-07 e R13..R22 implementados com testes leves (schema 11); aguardando testes pesados e validação humana. Roteiro: `docs/VALIDACAO_HUMANA_ENTREGA_TOTAL.md`.
 humana do candidato `1.003`; não promove versão por si só.
 
 ## AJ-01 — Visão Geral: realizado acumulado e previsão mensal
