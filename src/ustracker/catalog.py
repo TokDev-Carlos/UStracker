@@ -124,6 +124,31 @@ def get_catalog_item(db:Database,catalog_id:str)->dict:
         if not row: raise KeyError('catalog item not found')
         return _hydrate(con,row)
 
+def _usage(con,catalog_id:str)->int:
+    n=0
+    for sql in ('SELECT COUNT(*) FROM subscription_items WHERE catalog_id=?','SELECT COUNT(*) FROM direct_sale_items WHERE catalog_id=?',
+                'SELECT COUNT(*) FROM expenses WHERE catalog_id=?'):
+        n+=int(con.execute(sql,(catalog_id,)).fetchone()[0] or 0)
+    return n
+
+def remove_catalog_item(db:Database,actor:int,catalog_id:str)->dict:
+    """AJ-11: delete a product never used; a product already used is archived (history preserved)."""
+    with db.transaction() as con:
+        row=con.execute('SELECT * FROM catalog WHERE id=?',(catalog_id,)).fetchone()
+        if not row: raise KeyError('catalog item not found')
+        if _usage(con,catalog_id):
+            con.execute('UPDATE catalog SET active=0,revision=revision+1,updated_at=? WHERE id=?',(now(),catalog_id))
+            audit(con,actor,'CATALOG_ARCHIVE','catalog',catalog_id,dict(row),{'active':0})
+            return {'id':catalog_id,'deleted':False,'archived':True}
+        con.execute('DELETE FROM catalog_cost_components WHERE catalog_id=?',(catalog_id,))
+        con.execute('DELETE FROM catalog_prices WHERE catalog_id=?',(catalog_id,))
+        con.execute('DELETE FROM catalog WHERE id=?',(catalog_id,))
+        audit(con,actor,'CATALOG_DELETE','catalog',catalog_id,dict(row),None)
+        return {'id':catalog_id,'deleted':True,'archived':False}
+
 def list_catalog(db:Database)->list[dict]:
     with db.transaction() as con:
-        return [_hydrate(con,row) for row in con.execute('SELECT * FROM catalog ORDER BY code,id').fetchall()]
+        out=[]
+        for row in con.execute('SELECT * FROM catalog ORDER BY active DESC,code,id').fetchall():
+            rec=_hydrate(con,row); rec['usage_count']=_usage(con,row['id']); out.append(rec)
+        return out

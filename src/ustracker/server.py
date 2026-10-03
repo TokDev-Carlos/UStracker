@@ -23,7 +23,7 @@ from .codes import resolve_entity_ref
 from .backup import create_backup, maybe_automatic_backup, prune_backups, restore_backup, verify_backup
 from .branding import asset_dir, store_brand_asset
 from .billing import client_payment_options, register_subscription_payment, subscription_payment_status
-from .catalog import list_catalog
+from .catalog import list_catalog, remove_catalog_item
 from .expenses import convert_expense_to_sale, create_company_expense, delete_expense, pay_expense, run_recurring_expenses, stop_recurring_expense
 from .commercial import commercial_snapshot, create_coverage
 from .finance import ensure_fiscal_expense, finance_snapshot
@@ -455,6 +455,15 @@ def create_app(root: Path | str) -> FastAPI:
             if session.environment == 'production': rebuild_public(root, db)
             return rec
         return mutation(request, session, f'PATCH /catalog/{catalog_id}', p, action)
+
+    @app.delete('/api/v1/catalog/{catalog_id}')
+    def catalog_delete(catalog_id: str, request: Request):
+        session = session_required(request, True)
+        def action(db):
+            rec = remove_catalog_item(db, session.slot, catalog_id)
+            if session.environment == 'production': rebuild_public(root, db)
+            return rec
+        return mutation(request, session, f'DELETE /catalog/{catalog_id}', {'id': catalog_id}, action)
 
     @app.get('/api/v1/catalog/{catalog_id}/prices')
     def catalog_prices(catalog_id: str, request: Request):

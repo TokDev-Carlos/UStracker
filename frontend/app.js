@@ -16,7 +16,7 @@ import { bindClientProfileUi } from './ui/client-profile.js';
 import { bindActionButton, bindActionForm, runDomAction } from './ui/action-state.js';
 import { buildClientCreatePayload, clientTableDefinition, renderClientEditor } from './pages/clients.js';
 import { buildMobilityQuery, buildVehiclePayload, renderFleetProfile, renderMobilityPage, renderTransferCaseForm } from './pages/mobility.js';
-import { catalogPayload, renderCatalogEditForm, renderCatalogPage } from './pages/catalog.js';
+import { bindCatalogForm, catalogPayload, renderCatalogEditForm, renderCatalogPage } from './pages/catalog.js';
 import { renderCommercialPage } from './pages/commercial.js';
 import { renderFinancePage, renderSellExpenseForm } from './pages/finance.js';
 import { openPaymentDialog } from './ui/payment-dialog.js';
@@ -268,19 +268,17 @@ async function catalogPage(lease=null){
   const d=await api('/catalog');
   if(!content(renderCatalogPage(d),lease))return;
   const form=document.querySelector('#catalogForm');
-  let costIndex=1;
-  document.querySelector('#catalogAddCost').onclick=()=>{
-    const box=form.querySelector('.catalog-costs');
-    box.insertAdjacentHTML('beforeend',`<div class="row catalog-cost-row"><div class="field"><label>Componente de custo</label><input name="cost_description_${costIndex}"></div><div class="field"><label>Valor</label><input name="cost_amount_${costIndex}" type="text" inputmode="decimal" value="R$ 0,00"></div></div>`);
-    costIndex++; bindMoneyInputs(box);
-  };
+  bindCatalogForm(form,{bindMoney:bindMoneyInputs});
   bindActionForm(form,{key:'catalog-create',action:()=>api('/catalog',{method:'POST',body:JSON.stringify(catalogPayload(form))}),refresh:()=>show('catalog'),successMessage:'Produto cadastrado.',notify:toast});
+  const byId=id=>d.items.find(item=>item.id===id);
   document.querySelectorAll('[data-catalog-edit]').forEach(button=>button.onclick=()=>{
-    const row=d.items.find(item=>item.id===button.dataset.catalogEdit); if(!row)return;
-    const drawer=openDrawer({title:'Editar produto',subtitle:row.code,content:renderCatalogEditForm(row)}); bindMoneyInputs(drawer);
-    const edit=drawer.querySelector('#catalogEditForm');
+    const row=byId(button.dataset.catalogEdit); if(!row)return;
+    const drawer=openDrawer({title:'Editar plano/produto',subtitle:row.code,content:renderCatalogEditForm(row)});
+    const edit=drawer.querySelector('#catalogEditForm');bindCatalogForm(edit,{bindMoney:bindMoneyInputs});
     bindActionForm(edit,{key:`catalog-edit:${row.id}`,action:async()=>{const payload=catalogPayload(edit);payload.expected_revision=row.revision;await api('/catalog/'+encodeURIComponent(row.id),{method:'PATCH',body:JSON.stringify(payload)});closeOverlay()},refresh:()=>show('catalog'),successMessage:'Produto atualizado.',notify:toast});
   });
+  document.querySelectorAll('[data-catalog-delete]').forEach(button=>{const used=Number(button.dataset.used||0);bindActionButton(button,{key:'catalog-delete:'+button.dataset.catalogDelete,confirm:used?'Este item já foi usado em assinaturas ou compras. Ele será arquivado (some das novas vendas, o histórico continua). Continuar?':'Excluir este item definitivamente?',action:()=>api('/catalog/'+encodeURIComponent(button.dataset.catalogDelete),{method:'DELETE'}),refresh:()=>show('catalog'),successMessage:used?'Item arquivado.':'Item excluído.',notify:toast})});
+  document.querySelectorAll('[data-catalog-restore]').forEach(button=>{const row=byId(button.dataset.catalogRestore);bindActionButton(button,{key:'catalog-restore:'+row.id,action:()=>api('/catalog/'+encodeURIComponent(row.id),{method:'PATCH',body:JSON.stringify({active:true,expected_revision:row.revision})}),refresh:()=>show('catalog'),successMessage:'Item reativado.',notify:toast})});
 }
 async function commercialPage(lease=null){
   const data=await api('/commercial');
