@@ -42,6 +42,10 @@
     "vehicle.truck": "vehicles/truck",
     "vehicle.boat": "vehicles/boat",
     "vehicle.aircraft": "vehicles/aircraft",
-    "vehicle.other": "vehicles/other"
+    "vehicle.other": "vehicles/other",
+    "nav.mobility": "menu/vehicles",
+    "nav.commercial": "menu/subscriptions",
+    "nav.finance": "menu/payments",
+    "nav.files": "menu/media"
   }
 }

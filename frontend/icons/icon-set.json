@@ -47,6 +47,10 @@
     "vehicle.truck": "/assets/icons/default/vehicles/truck.svg",
     "vehicle.boat": "/assets/icons/default/vehicles/boat.svg",
     "vehicle.aircraft": "/assets/icons/default/vehicles/aircraft.svg",
-    "vehicle.other": "/assets/icons/default/vehicles/other.svg"
+    "vehicle.other": "/assets/icons/default/vehicles/other.svg",
+    "nav.mobility": "/assets/icons/default/menu/vehicles.png",
+    "nav.commercial": "/assets/icons/default/menu/subscriptions.png",
+    "nav.finance": "/assets/icons/default/menu/payments.png",
+    "nav.files": "/assets/icons/default/menu/media.png"
   }
 }

@@ -57,7 +57,7 @@ export function renderClientProfile(profile = {}, options = {}) {
     <div class="cp-chips">${chips}</div></header>`;
 
   // Jornada fina (some quando completa)
-  const step = (n, label, done, current, action) => `<li class="${done ? 'done' : current ? 'current' : ''}"><span class="cp-step-n">${done ? '✓' : n}</span><span>${esc(label)}</span>${!done && current ? action : ''}</li>`;
+  const step = (n, label, done, current, action) => `<li class="${done ? 'done' : current ? 'current' : ''}"><span class="cp-step-n">${done ? '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M3 8.5l3 3 7-7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>' : n}</span><span>${esc(label)}</span>${!done && current ? action : ''}</li>`;
   const journey = hasMobility && hasCommercial ? '' : `<ol class="cp-steps" aria-label="Próximos passos do cadastro">
     ${step(1, 'Cliente', true, false, '')}
     ${step(2, 'Veículo ou frota', hasMobility, !hasMobility, '<button type="button" class="ui-btn ui-btn-primary ui-btn-sm" data-journey="mobility">Adicionar</button>')}
