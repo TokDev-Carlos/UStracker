@@ -116,3 +116,46 @@ def month_forecast(db, as_of: date | None = None) -> dict:
     return {'competence': competence, 'forecast_cents': total, 'charges_cents': charges,
             'uncharged_subscriptions_cents': uncharged, 'direct_sales_cents': sales,
             'received_in_month_cents': received}
+
+
+def overview_drilldown(db, year: int | None = None, as_of: date | None = None) -> dict:
+    """R18 — components of Receita Geral, Despesas Gerais and Resultado for 'Geral' or one year.
+
+    Uses the same realized rules as the cards (paid, not reversed, paid_on <= today), so the
+    sum of the components always equals the card values.
+    """
+    today = (as_of or date.today()).isoformat()
+    if year is not None and not (2000 <= int(year) <= 2100):
+        raise ValueError('year must be between 2000 and 2100')
+    start = date(int(year), 1, 1) if year is not None else None
+    end = date(int(year) + 1, 1, 1) if year is not None else None
+    clauses, args = ['paid_on<=?'], [today]
+    if start:
+        clauses += ['paid_on>=?', 'paid_on<?']; args += [start.isoformat(), end.isoformat()]
+    where = ' AND '.join(clauses)
+    bucket = "substr(paid_on,1,7)" if year is not None else "substr(paid_on,1,4)"
+    periods: dict[str, dict] = {}
+
+    def add(key, field, value):
+        row = periods.setdefault(key, {'period': key, 'subscriptions_cents': 0, 'direct_sales_cents': 0, 'expenses_cents': 0})
+        row[field] += int(value or 0)
+
+    for r in db.query(f"SELECT {bucket} AS k,SUM(amount_cents) AS v FROM payments WHERE reversed_at IS NULL AND {where} GROUP BY k", tuple(args)):
+        add(r['k'], 'subscriptions_cents', r['v'])
+    for r in db.query(f"SELECT {bucket} AS k,SUM(total_cents) AS v FROM direct_sales WHERE status='PAID' AND {where} GROUP BY k", tuple(args)):
+        add(r['k'], 'direct_sales_cents', r['v'])
+    for r in db.query(f"SELECT {bucket} AS k,SUM(amount_cents) AS v FROM disbursements WHERE reversed_at IS NULL AND {where} GROUP BY k", tuple(args)):
+        add(r['k'], 'expenses_cents', r['v'])
+    rows = []
+    for key in sorted(periods):
+        row = periods[key]
+        row['revenue_cents'] = row['subscriptions_cents'] + row['direct_sales_cents']
+        row['result_cents'] = row['revenue_cents'] - row['expenses_cents']
+        rows.append(row)
+    categories = [dict(r) for r in db.query(f'''SELECT e.category AS category,SUM(d.amount_cents) AS amount_cents FROM disbursements d
+                    JOIN expenses e ON e.id=d.expense_id WHERE d.reversed_at IS NULL AND {where.replace('paid_on', 'd.paid_on')}
+                    GROUP BY e.category ORDER BY amount_cents DESC''', tuple(args))]
+    reversed_cents = int(db.one(f'SELECT COALESCE(SUM(amount_cents),0) FROM payments WHERE reversed_at IS NOT NULL AND {where}', tuple(args))[0] or 0)
+    totals = {k: sum(r[k] for r in rows) for k in ('subscriptions_cents', 'direct_sales_cents', 'revenue_cents', 'expenses_cents', 'result_cents')}
+    return {'year': year, 'label': str(year) if year is not None else 'Geral', 'granularity': 'month' if year is not None else 'year',
+            'periods': rows, 'expense_categories': categories, 'reversed_payments_cents': reversed_cents, 'totals': totals}

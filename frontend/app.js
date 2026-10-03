@@ -19,7 +19,7 @@ import { buildMobilityQuery, buildVehiclePayload, renderFleetProfile, renderMobi
 import { catalogPayload, renderCatalogEditForm, renderCatalogPage } from './pages/catalog.js';
 import { renderCommercialPage } from './pages/commercial.js';
 import { renderFinancePage } from './pages/finance.js';
-import { renderOverviewPage } from './pages/dashboard.js';
+import { renderOverviewDrilldown, renderOverviewPage } from './pages/dashboard.js';
 import { entityChoices, renderFilesPage } from './pages/files.js';
 
 const app=document.querySelector('#app');
@@ -137,6 +137,7 @@ async function dashboardPage(query='',lease=null,year=''){
   if(!content(renderOverviewPage(d,query,year),lease))return;
   pageReload=()=>dashboardPage(query,null,year);
   const form=document.querySelector('#overviewSearch');if(form)form.onsubmit=async event=>{event.preventDefault();await dashboardPage(formData(form).q||'',null,year)};
+  const drill=document.querySelector('[data-overview-drilldown]');if(drill)drill.onclick=async()=>{try{const data=await api('/dashboard/drilldown'+(year?'?year='+encodeURIComponent(year):''));const drawer=openDrawer({title:'Detalhamento financeiro',subtitle:data.label==='Geral'?'Período: Geral':'Ano '+data.label,content:renderOverviewDrilldown(data)});drawer.querySelector('.ui-drawer').classList.add('r2-profile-wide')}catch(error){toast({type:'error',message:error.message})}};
   const period=document.querySelector('#overviewPeriod [name=year]');if(period)period.onchange=()=>dashboardPage(query,null,period.value);
   const clear=document.querySelector('#overviewClear');if(clear)clear.onclick=()=>dashboardPage('',null,year);
   document.querySelectorAll('[data-profile-id]').forEach(button=>button.onclick=()=>openClientProfile(button.dataset.profileId).catch(error=>toast({type:'error',message:error.message})));

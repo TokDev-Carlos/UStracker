@@ -576,6 +576,11 @@ def create_app(root: Path | str) -> FastAPI:
         db = get_db(session_required(request, True))
         return {**dashboard(db, year=year), **dashboard_extended(db), 'client_activity': client_activity_overview(db, q)}
 
+    @app.get('/api/v1/dashboard/drilldown')
+    def dashboard_drilldown(request: Request, year: int | None = Query(default=None)):
+        from .projections import overview_drilldown
+        return overview_drilldown(get_db(session_required(request, True)), year)
+
     @app.get('/api/v1/search')
     def search_get(q: str, request: Request):
         return {'items': search(get_db(session_required(request, True)), q)}

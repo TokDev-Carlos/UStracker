@@ -189,3 +189,4 @@ button:not(.ui-icon-btn):not(.subs-count):not(.cp-photo-remove):not(.tree-fleet)
 .tabs button{background:var(--us-gray-100);color:var(--us-gray-700);border:1px solid var(--us-gray-200)}
 .tabs button.active{background:var(--us-blue-600);color:var(--us-white);border-color:var(--us-blue-600)}
 button:disabled,.ui-btn:disabled{opacity:.5;cursor:not-allowed}
+.drilldown h4{margin:var(--us-space-4) 0 var(--us-space-2)}.drilldown-cards{grid-template-columns:repeat(3,1fr)}td.negative{color:var(--us-red-700)}

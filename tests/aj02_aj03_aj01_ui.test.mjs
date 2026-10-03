@@ -55,3 +55,14 @@ test('AJ-03: ficha mostra formulários e atalhos para o Comercial', () => {
   assert.match(html, /Valor contratado ativo \(mês\)<\/dt><dd>R\$ 100,00/);
   assert.match(html, /<strong>Embarcação<\/strong>/);
 });
+
+test('R18: detalhamento mostra componentes por período e categorias', async () => {
+  const { renderOverviewDrilldown } = await import('../frontend/pages/dashboard.js');
+  const html = renderOverviewDrilldown({ granularity: 'month', label: '2026', totals: { revenue_cents: 5000, expenses_cents: 2000, result_cents: 3000, subscriptions_cents: 5000, direct_sales_cents: 0 },
+    periods: [{ period: '2026-01', subscriptions_cents: 5000, direct_sales_cents: 0, revenue_cents: 5000, expenses_cents: 2000, result_cents: 3000 }],
+    expense_categories: [{ category: 'Operação', amount_cents: 2000 }], reversed_payments_cents: 3000 });
+  assert.match(html, /jan\/2026/);
+  assert.match(html, /R\$ 30,00<\/strong>/);
+  assert.match(html, /Operação/);
+  assert.match(html, /estornados[^<]*R\$ 30,00/);
+});
