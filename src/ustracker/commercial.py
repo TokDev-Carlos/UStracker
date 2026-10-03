@@ -59,6 +59,14 @@ def commercial_snapshot(db:Database)->dict:
             'id':item['catalog_id'],'name':item['plan_name'],'code':item['plan_code'],
             'quantity':item['quantity'],'unit_price_cents':item['unit_price_cents'],
         } for item in rec['items']]
+    # AJ-10/AJ-12: payment position per subscription ("Pago até" / months late).
+    from .billing import _status
+    with db.transaction() as con:
+        today=date.today()
+        for rec in subscriptions:
+            row=con.execute('SELECT * FROM subscriptions WHERE id=?',(rec['id'],)).fetchone()
+            st=_status(con,row,today)
+            rec['paid_through']=st['paid_through']; rec['next_due']=st['next_due']; rec['overdue_months']=st['overdue_months']
     coverages=[dict(r) for r in db.query('''SELECT sc.*,c.legal_name AS client_name,s.code AS subscription_code FROM service_coverage_periods sc LEFT JOIN subscriptions s ON s.id=sc.subscription_id
                                             JOIN clients c ON c.id=sc.client_id ORDER BY sc.end_on DESC,sc.created_at DESC''')]
     return {
@@ -68,7 +76,8 @@ def commercial_snapshot(db:Database)->dict:
         'coverage_periods':coverages,
         'catalog_avulsa':[dict(r) for r in db.query("SELECT * FROM catalog WHERE active=1 AND category='AVULSA' ORDER BY name")],
         'catalog_mensal':[dict(r) for r in db.query("SELECT * FROM catalog WHERE active=1 AND category='MENSAL' ORDER BY name")],
+        'catalog_mensal_all':[dict(r) for r in db.query("SELECT id,code,name,price_cents,active FROM catalog WHERE category='MENSAL' ORDER BY active DESC,name")],
         'payments':[dict(r) for r in db.query('SELECT * FROM payments WHERE reversed_at IS NULL ORDER BY paid_on DESC,created_at DESC')],
         'vehicles':[annotate_vehicle(dict(r)) for r in db.query('SELECT id,code,client_id,plate,type,brand,model,fleet_id FROM vehicles WHERE archived=0 ORDER BY plate')],
-        'fleets':[dict(r) for r in db.query('SELECT id,code,client_id,client_company_id,name FROM fleets WHERE archived=0 ORDER BY name')],
+        'fleets':[dict(r) for r in db.query('SELECT id,code,client_id,client_company_id,name,vehicle_group FROM fleets WHERE archived=0 ORDER BY name')],
     }

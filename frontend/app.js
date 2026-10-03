@@ -17,9 +17,10 @@ import { bindActionButton, bindActionForm, runDomAction } from './ui/action-stat
 import { buildClientCreatePayload, clientTableDefinition, renderClientEditor } from './pages/clients.js';
 import { buildMobilityQuery, buildVehiclePayload, renderFleetProfile, renderMobilityPage, renderTransferCaseForm } from './pages/mobility.js';
 import { bindCatalogForm, catalogPayload, renderCatalogEditForm, renderCatalogPage } from './pages/catalog.js';
-import { renderCommercialPage } from './pages/commercial.js';
+import { renderCommercialPage, renderSubscriptionAmendForm, subscriptionMenuItems } from './pages/commercial.js';
+import { openActionMenu } from './ui/action-menu.js';
 import { renderFinancePage, renderSellExpenseForm } from './pages/finance.js';
-import { openPaymentDialog } from './ui/payment-dialog.js';
+import { localToday, openPaymentDialog } from './ui/payment-dialog.js';
 import { renderOverviewDrilldown, renderOverviewPage } from './pages/dashboard.js';
 import { entityChoices, renderFilesPage } from './pages/files.js';
 
@@ -106,7 +107,7 @@ function bindClientJourney(drawer,profile,clientId){
   if(purchaseForm){
     const catalogSelect=purchaseForm.querySelector('[data-avulsa-catalog]');
     api('/catalog').then(result=>{const rows=(result.items||[]).filter(row=>Number(row.active??1)===1&&String(row.category||'').toUpperCase()==='AVULSA');catalogSelect.innerHTML=rows.length?'<option value="">Selecione</option>'+rows.map(row=>`<option value="${esc(row.id)}">${esc(row.name||row.description)} · ${esc(formatBRL(Number(row.price_cents||0)))}</option>`).join(''):'<option value="">Nenhum produto avulso ativo</option>'}).catch(error=>toast({type:'error',message:error.message}));
-    bindActionForm(purchaseForm,{key:`client-purchase:${clientId}`,action:async()=>{const p=formData(purchaseForm);if(!p.catalog_id)throw new Error('Selecione o produto avulso.');await api('/direct-sales',{method:'POST',body:JSON.stringify({client_id:clientId,sold_on:p.sold_on||new Date().toISOString().slice(0,10),items:[{catalog_id:p.catalog_id,vehicle_id:p.vehicle_id||null,quantity:Number(p.quantity||1)}]})})},refresh:reopen('commercial'),successMessage:'Compra direta registrada.',notify:toast});
+    bindActionForm(purchaseForm,{key:`client-purchase:${clientId}`,action:async()=>{const p=formData(purchaseForm);if(!p.catalog_id)throw new Error('Selecione o produto avulso.');await api('/direct-sales',{method:'POST',body:JSON.stringify({client_id:clientId,sold_on:p.sold_on||localToday(),items:[{catalog_id:p.catalog_id,vehicle_id:p.vehicle_id||null,quantity:Number(p.quantity||1)}]})})},refresh:reopen('commercial'),successMessage:'Compra direta registrada.',notify:toast});
   }
 }
 async function openClientProfile(clientId,options={}){
@@ -291,14 +292,33 @@ async function commercialPage(lease=null){
     if(!content(renderCommercialPage({...data,purchase_client:purchaseClient},active),lease))return;
     if(focusCode){const row=[...document.querySelectorAll('[data-row-code]')].find(item=>item.dataset.rowCode===focusCode);if(row){row.classList.add('commercial-focus');row.scrollIntoView({block:'center'})}focusCode=''}
     document.querySelectorAll('[data-commercial-tab]').forEach(button=>button.onclick=()=>{active=button.dataset.commercialTab;history.replaceState(null,'','#commercial/'+active);draw()});
-    document.querySelectorAll('[data-buy-client]').forEach(button=>button.onclick=()=>{purchaseClient={id:button.dataset.buyClient,display_name:button.dataset.buyClientName};active='purchases';history.replaceState(null,'','#commercial/purchases');draw()});
+    // AJ-10 — one "Ações" menu per subscription.
+    document.querySelectorAll('[data-sub-actions]').forEach(button=>button.onclick=()=>{
+      const sub=(data.subscriptions||[]).find(row=>row.id===button.dataset.subActions);if(!sub)return;
+      const reload=()=>show('commercial');
+      const setStatus=(status,message,confirmText)=>runDomAction({key:'sub-status:'+sub.id,scope:button,confirm:confirmText,action:()=>api('/subscriptions/'+encodeURIComponent(sub.id)+'/status',{method:'PATCH',body:JSON.stringify({lifecycle_status:status,expected_revision:sub.revision,...(status==='CANCELLED'?{end_on:localToday()}:{})})}),refresh:reload,successMessage:message,notify:toast});
+      const handlers={
+        pay:()=>openPaymentDialog({api,search:searchClientEntities,client:{id:sub.client_id,display_name:sub.client_name},subscriptionId:sub.id,notify:toast,onSuccess:reload}),
+        amend:()=>{const drawer=openDrawer({title:'Ajustar assinatura',subtitle:[sub.code,sub.client_name].filter(Boolean).join(' · '),content:renderSubscriptionAmendForm(sub,{catalog:data.catalog_mensal_all||data.catalog_mensal||[],vehicles:data.vehicles||[],fleets:data.fleets||[]})});
+          const form=drawer.querySelector('#subscriptionAmendForm');bindMoneyInputs(form);
+          form.querySelectorAll('[name=catalog_id]').forEach(select=>select.onchange=()=>{const price=Number(select.selectedOptions[0]?.dataset.price||0);const unit=select.closest('.amend-item').querySelector('[name=unit_price]');if(unit)unit.value=formatBRL(price)});
+          bindActionForm(form,{key:'sub-amend:'+sub.id,action:async()=>{const rows=[...form.querySelectorAll('.amend-item')].map(row=>({catalog_id:row.querySelector('[name=catalog_id]').value,quantity:Number(row.querySelector('[name=quantity]').value||1),unit_price:row.querySelector('[name=unit_price]').value}));
+            const fd=new FormData(form);await api('/subscriptions/'+encodeURIComponent(sub.id),{method:'PATCH',body:JSON.stringify({expected_revision:sub.revision,items:rows,due_day:Number(fd.get('due_day')||sub.due_day),target_vehicle_ids:fd.getAll('target_vehicle'),target_fleet_ids:fd.getAll('target_fleet')})});closeOverlay()},refresh:reload,successMessage:'Assinatura ajustada.',notify:toast});},
+        purchase:()=>{purchaseClient={id:sub.client_id,display_name:sub.client_name};active='purchases';history.replaceState(null,'','#commercial/purchases');draw()},
+        profile:()=>openClientProfile(sub.client_id,{focus:'commercial'}).catch(error=>toast({type:'error',message:error.message})),
+        pause:()=>setStatus('PAUSED','Assinatura pausada.'),
+        resume:()=>setStatus('ACTIVE','Assinatura reativada.'),
+        cancel:()=>setStatus('CANCELLED','Assinatura cancelada.','Cancelar esta assinatura? Ela deixa de gerar mensalidades. O histórico é mantido.'),
+      };
+      openActionMenu(button,subscriptionMenuItems(sub).map(item=>({...item,onClick:handlers[item.key]})));
+    });
     const newSubscription=document.querySelector('[data-new-subscription]');if(newSubscription)newSubscription.onclick=()=>openSubscriptionWorkflow({context:'COMMERCIAL',catalog:data.catalog_mensal||[],vehicles:data.vehicles||[],fleets:data.fleets||[]},{onSuccess:()=>show('commercial')});
     const purchase=document.querySelector('#commercialPurchaseForm'); if(purchase){
       const vehicleSelect=purchase.querySelector('[name=vehicle_id]');
       const filterVehicles=client=>{const clientId=client?.id||'';vehicleSelect.disabled=!clientId;for(const option of [...vehicleSelect.options].slice(1))option.hidden=option.dataset.client!==clientId;if(vehicleSelect.selectedOptions[0]?.hidden)vehicleSelect.value=''};
       bindEntityAutocomplete(purchase,{search:searchClientEntities,onSelection:filterVehicles});
       filterVehicles(purchaseClient);
-      bindActionForm(purchase,{key:'purchase-create',action:async()=>{const p=formData(purchase);const item={catalog_id:p.catalog_id,vehicle_id:p.vehicle_id||null,quantity:Number(p.quantity||1)};await api('/direct-sales',{method:'POST',body:JSON.stringify({client_id:p.client_id,sold_on:p.sold_on||new Date().toISOString().slice(0,10),items:[item]})})},refresh:()=>show('commercial'),successMessage:'Compra direta registrada.',notify:toast});
+      bindActionForm(purchase,{key:'purchase-create',action:async()=>{const p=formData(purchase);const item={catalog_id:p.catalog_id,vehicle_id:p.vehicle_id||null,quantity:Number(p.quantity||1)};await api('/direct-sales',{method:'POST',body:JSON.stringify({client_id:p.client_id,sold_on:p.sold_on||localToday(),items:[item]})})},refresh:()=>show('commercial'),successMessage:'Compra direta registrada.',notify:toast});
     }
     const coverage=document.querySelector('#coverageForm');bindActionForm(coverage,{key:'coverage-create',action:async()=>{const p=formData(coverage);p.cycles=Number(p.cycles||1);if(!p.start_on)delete p.start_on;if(!p.value||p.value==='R$ 0,00')delete p.value;await api('/commercial/coverage',{method:'POST',body:JSON.stringify(p)})},refresh:()=>show('commercial'),successMessage:'Tempo ativo registrado.',notify:toast});
   }; draw();

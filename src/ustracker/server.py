@@ -24,6 +24,7 @@ from .backup import create_backup, maybe_automatic_backup, prune_backups, restor
 from .branding import asset_dir, store_brand_asset
 from .billing import client_payment_options, register_subscription_payment, subscription_payment_status
 from .catalog import list_catalog, remove_catalog_item
+from .subscription_edit import amend_subscription
 from .expenses import convert_expense_to_sale, create_company_expense, delete_expense, pay_expense, run_recurring_expenses, stop_recurring_expense
 from .commercial import commercial_snapshot, create_coverage
 from .finance import ensure_fiscal_expense, finance_snapshot
@@ -483,6 +484,11 @@ def create_app(root: Path | str) -> FastAPI:
     def subscriptions_status(sid: str, request: Request, p: dict = Body(...)):
         session = session_required(request, True)
         return mutation(request, session, f'PATCH /subscriptions/{sid}/status', p, lambda db: set_subscription_status(db, session.slot, sid, p))
+
+    @app.patch('/api/v1/subscriptions/{sid}')
+    def subscriptions_amend(sid: str, request: Request, p: dict = Body(...)):
+        session = session_required(request, True)
+        return mutation(request, session, f'PATCH /subscriptions/{sid}', p, lambda db: amend_subscription(db, session.slot, sid, p))
 
     @app.post('/api/v1/subscriptions/{sid}/charges/{competence}')
     def charge_generate(sid: str, competence: str, request: Request):
