@@ -57,9 +57,12 @@ const defaultRunner = createActionRunner();
 const domInFlight = new Map();
 
 export function runDomAction({
-  key, scope, action, refresh, successMessage, notify = () => {}, runner = defaultRunner,
+  key, scope, action, refresh, successMessage, notify = () => {}, runner = defaultRunner, confirm: confirmText = '',
+  confirmFn = globalThis.confirm,
 } = {}) {
   if (domInFlight.has(key)) return domInFlight.get(key);
+  // R19: destructive actions declare `confirm`; cancelling performs no request and no notification.
+  if (confirmText && typeof confirmFn === 'function' && !confirmFn(confirmText)) return Promise.resolve({ ok: false, cancelled: true });
   const controls = [
     ...(scope?.matches?.('button, input[type="submit"]') ? [scope] : []),
     ...(scope?.querySelectorAll?.('button, input[type="submit"]') || []),
