@@ -98,7 +98,7 @@ class AJ04LogicalCodeTests(unittest.TestCase):
             con.execute("UPDATE meta SET value='9' WHERE key='schema_version'")
         Database(self.root, 'test', b'0' * 32)
         again = Database(self.root, 'test', b'0' * 32)
-        self.assertEqual(again.one("SELECT value FROM meta WHERE key='schema_version'")[0], '10')
+        self.assertEqual(again.one("SELECT value FROM meta WHERE key='schema_version'")[0], '11')
         self.assertEqual(self._code('clients', a['id']), 'CLI-0001')
         self.assertEqual(self._code('vehicles', v['id']), 'CLI-0001-V01')
         self.assertEqual(again.one('SELECT COUNT(*) FROM logical_codes')[0], 3)

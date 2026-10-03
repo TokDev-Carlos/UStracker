@@ -60,3 +60,41 @@ td>.ui-code:first-child{margin-left:0}
 .vehicle-breakdown-compact .vehicle-breakdown-label{font-size:.68rem;max-width:100%;overflow:hidden;text-overflow:ellipsis}
 .mobility-table td:first-child{min-width:160px}
 .ui-vehicle{flex-wrap:nowrap;white-space:nowrap}
+
+/* AJ-06 — subscription count + detail menu */
+.subs-count{min-width:32px;height:28px;padding:0 10px;border-radius:var(--us-radius-pill);border:1px solid var(--us-blue-600);background:var(--us-blue-50);color:var(--us-blue-700);font-weight:700;cursor:pointer;font-variant-numeric:tabular-nums}
+.subs-count:hover,.subs-count[aria-expanded="true"]{background:var(--us-blue-600);color:var(--us-white)}
+.subs-count-zero{display:inline-block;min-width:32px;text-align:center;color:var(--us-gray-500);border:1px dashed var(--us-gray-300);border-radius:var(--us-radius-pill);background:transparent;cursor:default}
+.subs-popover{position:fixed;z-index:1200;overflow:auto;padding:var(--us-space-3);background:var(--us-white);border:1px solid var(--us-gray-200);border-radius:var(--us-radius-md);box-shadow:var(--us-shadow-lg,0 12px 32px rgba(16,24,40,.18))}
+.subs-popover-head{display:flex;justify-content:space-between;gap:var(--us-space-2);align-items:flex-start}
+.subs-client{display:block;font-size:.8rem}
+.subs-total{margin:var(--us-space-2) 0;font-weight:600;color:var(--us-gray-700)}
+.subs-item{border:1px solid var(--us-gray-200);border-radius:var(--us-radius-sm);padding:var(--us-space-2) var(--us-space-3);margin-top:var(--us-space-2)}
+.subs-item header{display:flex;gap:.5em;align-items:center;flex-wrap:wrap}
+.subs-status{margin-left:auto;font-size:.75rem;padding:0 .5em;border-radius:var(--us-radius-pill);background:var(--us-green-50);color:var(--us-green-700)}
+.subs-paused .subs-status,.subs-cancelled .subs-status,.subs-ended .subs-status{background:var(--us-gray-100);color:var(--us-gray-600)}
+.subs-facts{display:grid;grid-template-columns:auto 1fr;gap:2px 12px;margin:var(--us-space-2) 0;font-size:.85rem}
+.subs-facts dt{color:var(--us-gray-600)}.subs-facts dd{margin:0}
+.subs-plans{min-width:0;width:100%;font-size:.8rem}.subs-plans th,.subs-plans td{padding:4px 6px}
+.subs-others summary{cursor:pointer;margin-top:var(--us-space-2);color:var(--us-gray-600)}
+.subs-popover .actions{margin-top:var(--us-space-2)}
+
+/* AJ-05 — Cliente › Empresa › Frota › Grupo */
+.fleet-group{display:inline-flex;align-items:center;gap:.3em;padding:1px .55em;border-radius:var(--us-radius-pill);background:var(--us-blue-50);color:var(--us-blue-700);font-size:.78rem;font-weight:600;white-space:nowrap}
+.fleet-group .vehicle-category-icon{width:16px;height:16px}
+.fleet-group-mixed{background:var(--us-gray-100);color:var(--us-gray-700)}
+.mobility-tree{display:grid;gap:var(--us-space-3)}
+.tree-client{border:1px solid var(--us-gray-200);border-radius:var(--us-radius-md);background:var(--us-white);padding:var(--us-space-3)}
+.tree-client>header,.tree-company>header{display:flex;align-items:center;gap:.5em}
+.tree-client>header strong{font-size:1.05rem}
+.tree-total{margin-left:auto;font-weight:700;color:var(--us-gray-700);font-variant-numeric:tabular-nums}
+.tree-company{margin:var(--us-space-2) 0 0 var(--us-space-4);padding-left:var(--us-space-3);border-left:2px solid var(--us-gray-200)}
+.tree-label{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--us-gray-500)}
+.tree-fleets{list-style:none;margin:var(--us-space-2) 0 0;padding:0;display:grid;gap:var(--us-space-1)}
+.tree-fleets li{display:flex;flex-wrap:wrap;align-items:center;gap:var(--us-space-2);padding:var(--us-space-1) var(--us-space-2);border-radius:var(--us-radius-sm);background:var(--us-gray-50)}
+.tree-fleet{display:flex;align-items:center;gap:.5em;flex:1 1 320px;min-width:0;background:transparent;color:inherit;padding:2px 0;text-align:left;cursor:pointer}
+.tree-fleet:hover strong{text-decoration:underline}
+.tree-groups{display:flex;gap:var(--us-space-2);flex-wrap:wrap;font-size:.8rem;color:var(--us-gray-700)}
+.tree-group{display:inline-flex;align-items:center;gap:.25em}
+.tree-group .vehicle-category-icon{width:18px;height:18px}
+.subs-cell{text-align:center}

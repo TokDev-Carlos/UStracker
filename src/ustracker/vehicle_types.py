@@ -89,3 +89,26 @@ def vehicle_breakdown(db, client_id: str | None = None) -> dict:
         args = (client_id,)
     sql += ' GROUP BY type'
     return breakdown_from_rows((row['type'], row['n']) for row in db.query(sql, args))
+
+
+# AJ-05 — fleet group (declared category of a fleet). MIXED accepts every category.
+FLEET_GROUPS = CATEGORY_KEYS + ('MIXED',)
+
+
+def fleet_group_label(group: str | None, plural: bool = True) -> str:
+    if not group or group == 'MIXED':
+        return 'Misto'
+    return category_label(group, plural)
+
+
+def validate_fleet_group(value) -> str:
+    group = str(value or 'MIXED').strip().upper() or 'MIXED'
+    if group not in FLEET_GROUPS:
+        raise ValueError('invalid fleet group')
+    return group
+
+
+def ensure_vehicle_fits_fleet(fleet_group: str | None, vehicle_type) -> None:
+    group = fleet_group or 'MIXED'
+    if group != 'MIXED' and normalize_vehicle_category(vehicle_type) != group:
+        raise ValueError('vehicle category does not match fleet group')

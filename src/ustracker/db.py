@@ -8,7 +8,7 @@ from contextlib import closing, contextmanager
 from pathlib import Path
 from typing import Iterator
 
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 
 
 def fold_text(value) -> str:
@@ -345,6 +345,12 @@ class Database:
                 # AJ-04 logical public codes: additive columns, registry, deterministic backfill, triggers.
                 from .codes import migrate as migrate_logical_codes
                 migrate_logical_codes(con)
+            if current_version < 11:
+                # AJ-05 fleet group: additive column; existing fleets stay MIXED (accept every category).
+                fleet_cols = {r[1] for r in con.execute("PRAGMA table_info(fleets)").fetchall()}
+                if 'vehicle_group' not in fleet_cols:
+                    con.execute("ALTER TABLE fleets ADD COLUMN vehicle_group TEXT NOT NULL DEFAULT 'MIXED'")
+                con.execute("CREATE INDEX IF NOT EXISTS ix_fleets_group ON fleets(client_company_id,vehicle_group,archived)")
             con.execute("INSERT OR REPLACE INTO meta(key,value) VALUES('schema_version',?)", (str(SCHEMA_VERSION),))
             con.commit()
 

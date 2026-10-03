@@ -7,7 +7,7 @@ from typing import Any
 
 from .db import Database
 from .services import audit, now, uid
-from .vehicle_types import annotate_vehicle, breakdown_from_rows
+from .vehicle_types import CATEGORY_KEYS, annotate_vehicle, breakdown_from_rows, category_label, ensure_vehicle_fits_fleet, fleet_group_label, normalize_vehicle_category, validate_fleet_group
 
 STANDARD_VEHICLE_TYPES = ('Carro', 'Caminhão', 'Embarcação', 'Aeronave')
 DEFAULT_FLEET_MAX_ACTIVE = 100
@@ -37,12 +37,14 @@ def _company_for_client(con, client_id: str, company_id: str):
     ).fetchone()
 
 
-def _validate_fleet_for_client(con, fleet_id: str, client_id: str, *, require_company: bool = True):
+def _validate_fleet_for_client(con, fleet_id: str, client_id: str, *, require_company: bool = True, vehicle_type: Any = None):
     fleet = con.execute('SELECT * FROM fleets WHERE id=? AND archived=0', (fleet_id,)).fetchone()
     if not fleet or fleet['client_id'] != client_id:
         raise ValueError('fleet does not belong to client')
     if require_company and not fleet['client_company_id']:
         raise ValueError('fleet must be linked to a client company')
+    if vehicle_type is not None:
+        ensure_vehicle_fits_fleet(fleet['vehicle_group'], vehicle_type)
     return fleet
 
 
@@ -85,6 +87,7 @@ def create_fleet(db: Database, actor: int, p: dict) -> dict:
             'client_id': client_id,
             'client_company_id': company_id,
             'name': name,
+            'vehicle_group': validate_fleet_group(p.get('vehicle_group')),
             'sector_or_unit': str(p.get('sector_or_unit') or '').strip() or None,
             'archived': 0,
             'revision': 1,
@@ -92,8 +95,8 @@ def create_fleet(db: Database, actor: int, p: dict) -> dict:
             'updated_at': ts,
         }
         con.execute(
-            'INSERT INTO fleets(id,client_id,client_company_id,name,sector_or_unit,archived,revision,created_at,updated_at) '
-            'VALUES(:id,:client_id,:client_company_id,:name,:sector_or_unit,:archived,:revision,:created_at,:updated_at)',
+            'INSERT INTO fleets(id,client_id,client_company_id,name,vehicle_group,sector_or_unit,archived,revision,created_at,updated_at) '
+            'VALUES(:id,:client_id,:client_company_id,:name,:vehicle_group,:sector_or_unit,:archived,:revision,:created_at,:updated_at)',
             rec,
         )
         audit(con, actor, 'FLEET_CREATE', 'fleet', fid, None, rec)
@@ -118,10 +121,15 @@ def update_fleet(db: Database, actor: int, fleet_id: str, p: dict) -> dict:
         if not name:
             raise ValueError('name required')
         sector = p.get('sector_or_unit', row['sector_or_unit'])
+        group = validate_fleet_group(p.get('vehicle_group', row['vehicle_group']))
+        if group != 'MIXED':
+            for vehicle in con.execute('SELECT type FROM vehicles WHERE fleet_id=? AND archived=0', (fleet_id,)).fetchall():
+                if normalize_vehicle_category(vehicle['type']) != group:
+                    raise ValueError('fleet has vehicles of another category')
         ts = now()
         con.execute(
-            'UPDATE fleets SET client_company_id=?,name=?,sector_or_unit=?,revision=revision+1,updated_at=? WHERE id=?',
-            (company_id, name, str(sector).strip() or None if sector is not None else None, ts, fleet_id),
+            'UPDATE fleets SET client_company_id=?,name=?,vehicle_group=?,sector_or_unit=?,revision=revision+1,updated_at=? WHERE id=?',
+            (company_id, name, group, str(sector).strip() or None if sector is not None else None, ts, fleet_id),
         )
         after = dict(con.execute('SELECT * FROM fleets WHERE id=?', (fleet_id,)).fetchone())
         audit(con, actor, 'FLEET_UPDATE', 'fleet', fleet_id, before, after)
@@ -152,7 +160,7 @@ def create_vehicle(db: Database, actor: int, p: dict) -> dict:
         if not con.execute('SELECT id FROM clients WHERE id=? AND archived=0', (client_id,)).fetchone():
             raise ValueError('client not found')
         if fleet_id:
-            _validate_fleet_for_client(con, fleet_id, client_id)
+            _validate_fleet_for_client(con, fleet_id, client_id, vehicle_type=vtype)
             active = int(con.execute('SELECT COUNT(*) FROM vehicles WHERE fleet_id=? AND archived=0', (fleet_id,)).fetchone()[0])
             limit = _fleet_limit(con)
             if active >= limit:
@@ -202,10 +210,11 @@ def _vehicle_value_sql() -> str:
 
 
 def _active_subscription_summaries(
-    db: Database, *, vehicle_id: str | None = None, fleet_id: str | None = None
+    db: Database, *, vehicle_id: str | None = None, fleet_id: str | None = None, active_only: bool = True
 ) -> list[dict]:
     if not vehicle_id and not fleet_id:
         return []
+    status_sql = "s.lifecycle_status='ACTIVE'" if active_only else '1=1'
     context_company_name = None
     if vehicle_id:
         vehicle = db.one('''SELECT v.fleet_id,cc.legal_name AS company_name FROM vehicles v
@@ -214,11 +223,11 @@ def _active_subscription_summaries(
                             WHERE v.id=?''', (vehicle_id,))
         vehicle_fleet_id = vehicle['fleet_id'] if vehicle else None
         context_company_name = vehicle['company_name'] if vehicle else None
-        rows = db.query('''SELECT DISTINCT s.*,c.legal_name AS client_name,
+        rows = db.query(f'''SELECT DISTINCT s.*,c.legal_name AS client_name,
             (SELECT cc.legal_name FROM client_companies cc WHERE cc.client_id=s.client_id AND cc.archived=0
              ORDER BY cc.is_primary DESC,cc.created_at,cc.id LIMIT 1) AS company_name
             FROM subscriptions s JOIN clients c ON c.id=s.client_id
-            WHERE s.lifecycle_status='ACTIVE' AND (
+            WHERE {status_sql} AND (
               EXISTS(SELECT 1 FROM subscription_targets st WHERE st.subscription_id=s.id AND st.vehicle_id=?)
               OR (? IS NOT NULL AND EXISTS(SELECT 1 FROM subscription_targets st WHERE st.subscription_id=s.id AND st.fleet_id=?))
               OR EXISTS(SELECT 1 FROM subscription_items si WHERE si.subscription_id=s.id AND si.vehicle_id=?)
@@ -229,11 +238,11 @@ def _active_subscription_summaries(
         company = db.one('''SELECT cc.legal_name FROM fleets f LEFT JOIN client_companies cc
                             ON cc.id=f.client_company_id WHERE f.id=?''',(fleet_id,))
         context_company_name = company['legal_name'] if company else None
-        rows = db.query('''SELECT DISTINCT s.*,c.legal_name AS client_name,
+        rows = db.query(f'''SELECT DISTINCT s.*,c.legal_name AS client_name,
             (SELECT cc.legal_name FROM client_companies cc WHERE cc.client_id=s.client_id AND cc.archived=0
              ORDER BY cc.is_primary DESC,cc.created_at,cc.id LIMIT 1) AS company_name
             FROM subscriptions s JOIN clients c ON c.id=s.client_id
-            WHERE s.lifecycle_status='ACTIVE' AND (
+            WHERE {status_sql} AND (
               EXISTS(SELECT 1 FROM subscription_targets st WHERE st.subscription_id=s.id AND st.fleet_id=?)
               OR EXISTS(SELECT 1 FROM subscription_targets st JOIN vehicles v ON v.id=st.vehicle_id
                         WHERE st.subscription_id=s.id AND v.fleet_id=? AND v.archived=0)
@@ -265,63 +274,167 @@ def _active_subscription_summaries(
             'company_name':context_company_name or rec['company_name'],'plan_names':', '.join(names),
             'effective_total_cents':sum(int(item['quantity'])*int(item['unit_price_cents']) for item in items),
             'start_on':rec['start_on'],'lifecycle_status':rec['lifecycle_status'],'target_scope':scope,
+            'code':rec.get('code'),
         })
     return summaries
 
 
-def list_mobility(db: Database, *, client_id: str | None = None, fleet_id: str | None = None, plate: str | None = None) -> dict:
+def list_mobility(db: Database, *, client_id: str | None = None, fleet_id: str | None = None, plate: str | None = None,
+                  company_id: str | None = None, group: str | None = None) -> dict:
+    """Vehicles and fleets organized as Cliente → Empresa → Frota → Grupo (AJ-05).
+
+    ``group`` filters by vehicle category (CAR, TRUCK, BOAT, AIRCRAFT, OTHER); fleets are kept
+    when their declared group matches or when they contain matching vehicles (MIXED).
+    """
+    group = str(group or '').strip().upper() or None
+    if group and group not in CATEGORY_KEYS:
+        raise ValueError('invalid vehicle group')
     where = ['v.archived=0']
     args: list[Any] = []
     if client_id:
         where.append('v.client_id=?'); args.append(client_id)
     if fleet_id:
         where.append('v.fleet_id=?'); args.append(fleet_id)
+    if company_id:
+        where.append('f.client_company_id=?'); args.append(company_id)
     if plate:
         where.append('upper(v.plate) LIKE ?'); args.append('%' + _normalize_plate(plate) + '%')
     predicate = ' AND '.join(where)
     value_sql = _vehicle_value_sql()
     rows = [dict(r) for r in db.query(f'''SELECT v.*,c.legal_name AS client_name,c.code AS client_code,f.name AS fleet_name,f.code AS fleet_code,
+            f.vehicle_group AS fleet_group,f.client_company_id AS company_id,cc.legal_name AS company_name,
             {value_sql} AS total_value_cents
             FROM vehicles v JOIN clients c ON c.id=v.client_id
             LEFT JOIN fleets f ON f.id=v.fleet_id
+            LEFT JOIN client_companies cc ON cc.id=f.client_company_id
             WHERE {predicate} ORDER BY c.legal_name,v.plate''', tuple(args))]
     for row in rows:
         annotate_vehicle(row)
-        row['subscriptions'] = _active_subscription_summaries(db,vehicle_id=row['id'])
-    particulars = [row for row in rows if not row.get('fleet_id')]
+        row['subscriptions'] = _active_subscription_summaries(db, vehicle_id=row['id'])
+        row['subscriptions_count'] = len(row['subscriptions'])
+    if group:
+        rows = [row for row in rows if row['category'] == group]
+    particulars = [row for row in rows if not row.get('fleet_id')] if not company_id else []
     fleet_where = ['f.archived=0']
     fleet_args: list[Any] = []
     if client_id:
         fleet_where.append('f.client_id=?'); fleet_args.append(client_id)
     if fleet_id:
         fleet_where.append('f.id=?'); fleet_args.append(fleet_id)
-    if plate:
-        fleet_where.append('EXISTS(SELECT 1 FROM vehicles pv WHERE pv.fleet_id=f.id AND pv.archived=0 AND upper(pv.plate) LIKE ?)')
-        fleet_args.append('%' + _normalize_plate(plate) + '%')
+    if company_id:
+        fleet_where.append('f.client_company_id=?'); fleet_args.append(company_id)
     fleets = []
     for fleet in db.query(f'''SELECT f.*,c.legal_name AS client_name,c.code AS client_code,cc.legal_name AS company_name
                               FROM fleets f JOIN clients c ON c.id=f.client_id
                               LEFT JOIN client_companies cc ON cc.id=f.client_company_id
-                              WHERE {' AND '.join(fleet_where)} ORDER BY c.legal_name,f.name''', tuple(fleet_args)):
+                              WHERE {' AND '.join(fleet_where)} ORDER BY c.legal_name,cc.legal_name,f.name''', tuple(fleet_args)):
         rec = dict(fleet)
-        vehicles = [row for row in rows if row.get('fleet_id') == rec['id']]
-        if not vehicles and plate:
-            # When plate filtering is active rows already contain only matching vehicles.
+        matching = [row for row in rows if row.get('fleet_id') == rec['id']]
+        if (plate or group) and not matching and not (group and rec.get('vehicle_group') == group and not plate):
             continue
-        all_vehicle_rows = [dict(r) for r in db.query(f'''SELECT v.*, {value_sql} AS total_value_cents
+        all_vehicle_rows = [annotate_vehicle(dict(r)) for r in db.query(f'''SELECT v.*, {value_sql} AS total_value_cents
                                                          FROM vehicles v WHERE v.fleet_id=? AND v.archived=0 ORDER BY v.plate''', (rec['id'],))]
-        for vehicle_row in all_vehicle_rows: annotate_vehicle(vehicle_row)
+        rec['vehicle_group'] = rec.get('vehicle_group') or 'MIXED'
+        rec['vehicle_group_label'] = fleet_group_label(rec['vehicle_group'])
         rec['vehicle_breakdown'] = breakdown_from_rows((v.get('type'), 1) for v in all_vehicle_rows)
         rec['vehicles_count'] = len(all_vehicle_rows)
         rec['contracted_on'] = min((v.get('contracted_on') for v in all_vehicle_rows if v.get('contracted_on')), default=None)
         rec['review_on'] = max((v.get('review_on') for v in all_vehicle_rows if v.get('review_on')), default=None)
         rec['total_value_cents'] = sum(int(v.get('total_value_cents') or 0) for v in all_vehicle_rows)
-        rec['subscriptions'] = _active_subscription_summaries(db,fleet_id=rec['id'])
+        rec['subscriptions'] = _active_subscription_summaries(db, fleet_id=rec['id'])
+        rec['subscriptions_count'] = len(rec['subscriptions'])
         fleets.append(rec)
     with closing(db.connect()) as con:
         limit = _fleet_limit(con)
     return {'particulars': particulars, 'fleets': fleets, 'fleet_limit': limit,
-            'vehicle_breakdown': breakdown_from_rows((row.get('type'), 1) for row in rows)}
+            'vehicle_breakdown': breakdown_from_rows((row.get('type'), 1) for row in rows),
+            'hierarchy': mobility_hierarchy(rows, fleets)}
+
+
+def mobility_hierarchy(vehicles: list[dict], fleets: list[dict]) -> list[dict]:
+    """Cliente → Empresa → Frota → Grupo with counts at every level. Totals are sums of children."""
+    clients: dict[str, dict] = {}
+
+    def client_node(cid, name, code):
+        return clients.setdefault(cid, {'client_id': cid, 'client_name': name, 'client_code': code,
+                                        'total': 0, 'particulars': 0, 'companies': {}})
+
+    for fleet in fleets:
+        node = client_node(fleet['client_id'], fleet.get('client_name'), fleet.get('client_code'))
+        company_key = fleet.get('client_company_id') or ''
+        company = node['companies'].setdefault(company_key, {'company_id': company_key or None,
+                                                             'company_name': fleet.get('company_name') or 'Sem empresa',
+                                                             'total': 0, 'fleets': []})
+        company['fleets'].append({'fleet_id': fleet['id'], 'fleet_name': fleet['name'], 'fleet_code': fleet.get('code'),
+                                  'vehicle_group': fleet['vehicle_group'], 'vehicle_group_label': fleet['vehicle_group_label'],
+                                  'total': 0, 'groups': {}})
+    fleet_nodes = {f['fleet_id']: f for n in clients.values() for c in n['companies'].values() for f in c['fleets']}
+    for vehicle in vehicles:
+        node = client_node(vehicle['client_id'], vehicle.get('client_name'), vehicle.get('client_code'))
+        node['total'] += 1
+        fleet_node = fleet_nodes.get(vehicle.get('fleet_id'))
+        if not fleet_node:
+            node['particulars'] += 1
+            continue
+        fleet_node['total'] += 1
+        fleet_node['groups'][vehicle['category']] = fleet_node['groups'].get(vehicle['category'], 0) + 1
+        company = next(c for c in node['companies'].values() if fleet_node in c['fleets'])
+        company['total'] += 1
+    result = []
+    for node in clients.values():
+        companies = []
+        for company in node['companies'].values():
+            for fleet in company['fleets']:
+                fleet['groups'] = [{'key': key, 'label': category_label(key, True), 'count': fleet['groups'].get(key, 0)}
+                                   for key in CATEGORY_KEYS if fleet['groups'].get(key)]
+            companies.append(company)
+        node['companies'] = companies
+        result.append(node)
+    return result
+
+
+def mobility_subscription_detail(db: Database, *, vehicle_id: str | None = None, fleet_id: str | None = None) -> dict:
+    """AJ-06 — full subscription detail for one vehicle or fleet (active first, others collapsed in the UI)."""
+    from .projections import monthly_equivalent_sql
+    if bool(vehicle_id) == bool(fleet_id):
+        raise ValueError('vehicle_id or fleet_id required')
+    if vehicle_id:
+        target = db.one('''SELECT v.id,v.code,v.type,v.brand,v.model,v.plate,v.client_id,c.legal_name AS client_name,c.code AS client_code
+                           FROM vehicles v JOIN clients c ON c.id=v.client_id WHERE v.id=?''', (vehicle_id,))
+        if not target: raise KeyError('vehicle not found')
+        target = annotate_vehicle(dict(target)); target['kind'] = 'VEHICLE'
+    else:
+        target = db.one('''SELECT f.id,f.code,f.name,f.vehicle_group,f.client_id,c.legal_name AS client_name,c.code AS client_code,
+                           cc.legal_name AS company_name FROM fleets f JOIN clients c ON c.id=f.client_id
+                           LEFT JOIN client_companies cc ON cc.id=f.client_company_id WHERE f.id=?''', (fleet_id,))
+        if not target: raise KeyError('fleet not found')
+        target = dict(target); target['kind'] = 'FLEET'; target['vehicle_group_label'] = fleet_group_label(target.get('vehicle_group'))
+    competence = date.today().strftime('%Y-%m')
+    items_out = []
+    for summary in _active_subscription_summaries(db, vehicle_id=vehicle_id, fleet_id=fleet_id, active_only=False):
+        sub = db.one('SELECT * FROM subscriptions WHERE id=?', (summary['id'],))
+        plans = [dict(r) for r in db.query('''SELECT COALESCE(c.name,si.description) AS name,si.quantity,si.unit_price_cents,
+                                                     si.quantity*si.unit_price_cents AS total_cents
+                                              FROM subscription_items si LEFT JOIN catalog c ON c.id=si.catalog_id
+                                              WHERE si.subscription_id=? ORDER BY si.rowid''', (summary['id'],))]
+        monthly = db.one(f'''SELECT {monthly_equivalent_sql('s')} FROM subscriptions s JOIN subscription_items si ON si.subscription_id=s.id
+                              WHERE s.id=? GROUP BY s.id,s.billing_cycle''', (summary['id'],))
+        charge = db.one('''SELECT ch.amount_cents+ch.adjustment_cents AS amount_cents,ch.status,ch.due_on,
+                                  (SELECT COALESCE(SUM(pa.amount_cents),0) FROM payment_allocations pa WHERE pa.charge_id=ch.id AND pa.active=1)
+                                  +(SELECT COALESCE(SUM(ca.amount_cents),0) FROM credit_allocations ca WHERE ca.charge_id=ch.id AND ca.active=1) AS paid_cents
+                           FROM charges ch WHERE ch.subscription_id=? AND ch.status<>'VOID' AND substr(ch.competence,1,7)=?''',
+                        (summary['id'], competence))
+        received = db.one('''SELECT COALESCE(SUM(pa.amount_cents),0) FROM payment_allocations pa JOIN charges ch ON ch.id=pa.charge_id
+                             JOIN payments p ON p.id=pa.payment_id
+                             WHERE ch.subscription_id=? AND pa.active=1 AND p.reversed_at IS NULL''', (summary['id'],))
+        items_out.append({**summary, 'code': sub['code'], 'due_day': sub['due_day'], 'billing_cycle': sub['billing_cycle'],
+                          'end_on': sub['end_on'], 'plans': plans, 'monthly_cents': int((monthly[0] if monthly else 0) or 0),
+                          'current_charge': dict(charge) if charge else None, 'competence': competence,
+                          'received_cents': int((received[0] if received else 0) or 0)})
+    items_out.sort(key=lambda x: (x['lifecycle_status'] != 'ACTIVE', x.get('start_on') or ''))
+    active = [x for x in items_out if x['lifecycle_status'] == 'ACTIVE']
+    return {'target': target, 'items': items_out, 'active_count': len(active),
+            'active_monthly_cents': sum(x['monthly_cents'] for x in active)}
 
 
 def fleet_profile(db: Database, fleet_id: str) -> dict:
@@ -338,6 +451,9 @@ def fleet_profile(db: Database, fleet_id: str) -> dict:
     for vehicle in vehicles:
         annotate_vehicle(vehicle)
         vehicle['subscriptions'] = _active_subscription_summaries(db,vehicle_id=vehicle['id'])
+        vehicle['subscriptions_count'] = len(vehicle['subscriptions'])
+    fleet['vehicle_group'] = fleet.get('vehicle_group') or 'MIXED'
+    fleet['vehicle_group_label'] = fleet_group_label(fleet['vehicle_group'])
     media = [dict(r) for r in db.query("SELECT id,entity_type,entity_id,mime,width,height,sha256,created_at FROM media WHERE entity_type='fleet' AND entity_id=? ORDER BY created_at DESC", (fleet_id,))]
     company = dict(db.one('SELECT * FROM client_companies WHERE id=?', (fleet['client_company_id'],))) if fleet.get('client_company_id') and db.one('SELECT * FROM client_companies WHERE id=?', (fleet['client_company_id'],)) else None
     with closing(db.connect()) as con:
@@ -379,7 +495,7 @@ def create_transfer_case(db: Database, actor: int, vehicle_id: str, p: dict) -> 
             raise ValueError('target client not found')
         target_fleet = str(p.get('fleet_id') or '').strip() or None
         if target_fleet:
-            _validate_fleet_for_client(con, target_fleet, target_client)
+            _validate_fleet_for_client(con, target_fleet, target_client, vehicle_type=vehicle['type'])
             active = int(con.execute('SELECT COUNT(*) FROM vehicles WHERE fleet_id=? AND archived=0', (target_fleet,)).fetchone()[0])
             if active >= _fleet_limit(con):
                 raise ValueError('fleet active vehicle limit reached')
@@ -442,7 +558,7 @@ def complete_transfer_case(db: Database, actor: int, case_id: str) -> dict:
         if not con.execute('SELECT id FROM clients WHERE id=? AND archived=0', (case['to_client_id'],)).fetchone():
             raise ValueError('target client not found')
         if case['to_fleet_id']:
-            _validate_fleet_for_client(con, case['to_fleet_id'], case['to_client_id'])
+            _validate_fleet_for_client(con, case['to_fleet_id'], case['to_client_id'], vehicle_type=vehicle['type'])
             active = int(con.execute('SELECT COUNT(*) FROM vehicles WHERE fleet_id=? AND archived=0', (case['to_fleet_id'],)).fetchone()[0])
             if active >= _fleet_limit(con):
                 raise ValueError('fleet active vehicle limit reached')

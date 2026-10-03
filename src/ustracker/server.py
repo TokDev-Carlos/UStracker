@@ -45,6 +45,7 @@ from .mobility import (
     create_transfer_case,
     fleet_profile,
     list_mobility,
+    mobility_subscription_detail,
     list_transfer_cases,
     update_fleet,
 )
@@ -342,9 +343,15 @@ def create_app(root: Path | str) -> FastAPI:
         return mutation(request, session, 'POST /clients/archive', p, action)
 
     @app.get('/api/v1/mobility')
-    def mobility(request: Request, client_id: str | None = None, fleet_id: str | None = None, plate: str | None = None):
+    def mobility(request: Request, client_id: str | None = None, fleet_id: str | None = None, plate: str | None = None,
+                 company_id: str | None = None, group: str | None = None):
         db = get_db(session_required(request, True))
-        return list_mobility(db, client_id=client_id, fleet_id=fleet_id, plate=plate)
+        return list_mobility(db, client_id=client_id, fleet_id=fleet_id, plate=plate, company_id=company_id, group=group)
+
+    @app.get('/api/v1/mobility/subscriptions')
+    def mobility_subscriptions(request: Request, vehicle_id: str | None = None, fleet_id: str | None = None):
+        db = get_db(session_required(request, True))
+        return mobility_subscription_detail(db, vehicle_id=vehicle_id, fleet_id=fleet_id)
 
     @app.get('/api/v1/fleets/{fid}/profile')
     def fleet_profile_route(fid: str, request: Request):

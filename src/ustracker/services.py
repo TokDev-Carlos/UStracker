@@ -528,7 +528,16 @@ def client_profile(db:Database, client_id:str)->dict:
     expenses_generated=int(db.one('SELECT COALESCE(SUM(expected_amount_cents),0) FROM expenses WHERE client_id=?',(client_id,))[0])
     generated_total=subscription_received+direct_paid-expenses_generated
     projection=client_projection(db,[client_id])[client_id]
-    return {'client':dict(row),'documents':documents,'companies':companies,'contacts':contacts,
+    from .mobility import list_mobility
+    mobility=list_mobility(db,client_id=client_id)
+    from .mobility import _active_subscription_summaries
+    for vehicle in vehicles:
+        vehicle['subscriptions_count']=len(_active_subscription_summaries(db,vehicle_id=vehicle['id']))
+    fleet_meta={f['id']:f for f in mobility['fleets']}
+    for fleet in fleets:
+        meta=fleet_meta.get(fleet['id'],{})
+        fleet.update({k:meta.get(k) for k in ('vehicle_group','vehicle_group_label','vehicles_count','subscriptions_count','company_name')})
+    return {'client':dict(row),'documents':documents,'companies':companies,'contacts':contacts,'mobility':mobility,
             'client_media':client_media,'fleets':fleets,'vehicles':vehicles,'vehicle_media':vehicle_media,
             'subscriptions':subscriptions,'attachments':attachments,'direct_sales':direct_sales,
             'summary':{'vehicles_count':len(vehicles),

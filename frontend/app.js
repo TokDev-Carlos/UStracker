@@ -11,6 +11,7 @@ import { formatBRL, formatDateBR } from './ui/formatters.js';
 import { bindMoneyInputs, renderMoneyInput } from './ui/money-input.js';
 import { bindSubscriptionWorkflow, renderSubscriptionWorkflow } from './ui/subscription-workflow.js';
 import { bindEntityAutocomplete } from './ui/entity-autocomplete.js';
+import { closeSubscriptionPopover, openSubscriptionPopover } from './ui/subscription-popover.js';
 import { bindActionButton, bindActionForm, runDomAction } from './ui/action-state.js';
 import { buildClientCreatePayload, clientTableDefinition, renderClientEditor } from './pages/clients.js';
 import { buildMobilityQuery, buildVehiclePayload, renderFleetProfile, renderMobilityPage, renderTransferCaseForm } from './pages/mobility.js';
@@ -39,6 +40,14 @@ const tableStore=new Map();
 const esc=s=>String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 const sessionProfileLabel=user=>user?.role||(user?.slot?'Administrador':'Usuário');
 async function requestSystemShutdown(){const bridge=window.chrome?.webview;if(bridge){bridge.postMessage('system-shutdown');return}await api('/system/shutdown',{method:'POST',body:'{}'});alert('Sistema encerrado com segurança.')}
+// AJ-06 — one delegated handler for every subscription count (pages and drawers).
+document.addEventListener('click',event=>{
+  const button=event.target.closest?.('[data-subs-vehicle],[data-subs-fleet]');
+  if(button){event.preventDefault();const query=button.dataset.subsVehicle?'vehicle_id='+encodeURIComponent(button.dataset.subsVehicle):'fleet_id='+encodeURIComponent(button.dataset.subsFleet);
+    openSubscriptionPopover(button,()=>api('/mobility/subscriptions?'+query),{onCommercial:(tab,code)=>{closeOverlay();history.replaceState(null,'','#commercial/'+tab+(code?'/'+encodeURIComponent(code):''));show('commercial')}});return}
+  if(!event.target.closest?.('#subsPopover'))closeSubscriptionPopover();
+});
+document.addEventListener('keydown',event=>{if(event.key==='Escape'&&document.querySelector('#subsPopover')){event.stopPropagation();closeSubscriptionPopover()}},true);
 function formData(form){const o={};for(const [k,v] of new FormData(form).entries())o[k]=v;return o}
 function enableAutoUpload(form){const input=form?.querySelector('input[type="file"]');if(input)input.onchange=()=>{if(input.files?.length)form.requestSubmit()};return form}
 function msg(text,type='success'){return `<div class="${type}">${esc(text)}</div>`}
@@ -157,14 +166,18 @@ async function mobilityPage(filters={},lease=null){
     if(!clientId){selectEl.innerHTML='<option value="">Selecione o cliente primeiro</option>';selectEl.disabled=true;return []}
     const result=await api('/fleets?client_id='+encodeURIComponent(clientId)+'&limit=100');
     const rows=result.items||[];
-    selectEl.innerHTML='<option value="">—</option>'+rows.map(row=>`<option value="${esc(row.id)}" ${row.id===selected?'selected':''}>${esc(row.name)}</option>`).join('');
+    const groupName={CAR:'Carros',TRUCK:'Caminhões',BOAT:'Embarcações',AIRCRAFT:'Aeronaves',OTHER:'Outros',MIXED:'Misto'};
+    selectEl.innerHTML='<option value="">— Particular (sem frota) —</option>'+rows.map(row=>`<option value="${esc(row.id)}" data-group="${esc(row.vehicle_group||'MIXED')}" ${row.id===selected?'selected':''}>${esc(row.name)} · ${esc(groupName[row.vehicle_group||'MIXED'])}</option>`).join('');
     selectEl.disabled=false;
     return rows;
   };
 
   const filterFleet=filterForm.querySelector('[name=fleet_id]');
   let filterClientName=filters.client_name||'';
-  bindEntityAutocomplete(filterForm,{search:searchClientEntities,onSelection:client=>{filterClientName=client?.display_name||'';loadFleets(filterFleet,client?.id||'').catch(error=>toast({type:'error',message:error.message}))}});
+  const filterCompany=filterForm.querySelector('[name=company_id]');
+  const loadFilterCompanies=async(clientId,selected='')=>{if(!filterCompany)return;if(!clientId){filterCompany.innerHTML='<option value="">— selecione o cliente —</option>';filterCompany.disabled=true;return}const result=await api('/clients/'+encodeURIComponent(clientId)+'/companies');filterCompany.innerHTML='<option value="">Todas</option>'+(result.items||[]).map(row=>`<option value="${esc(row.id)}" ${row.id===selected?'selected':''}>${esc(row.trade_name||row.legal_name)}</option>`).join('');filterCompany.disabled=false};
+  loadFilterCompanies(filters.client_id||'',filters.company_id||'').catch(()=>{});
+  bindEntityAutocomplete(filterForm,{search:searchClientEntities,onSelection:client=>{filterClientName=client?.display_name||'';loadFleets(filterFleet,client?.id||'').catch(error=>toast({type:'error',message:error.message}));loadFilterCompanies(client?.id||'').catch(error=>toast({type:'error',message:error.message}))}});
   filterForm.onsubmit=async event=>{event.preventDefault();const payload=formData(event.target);if(filterClientName)payload.client_name=filterClientName;await mobilityPage(payload)};
 
   const openVehicleDrawer=async(prefill={})=>{
