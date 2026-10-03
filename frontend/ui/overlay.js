@@ -9,9 +9,12 @@ export function openDrawer({ title, subtitle = '', content = '', actions = '', d
   const host = documentRef.createElement('div');
   host.id = 'uiOverlay';
   host.className = 'ui-overlay';
-  host.innerHTML = `<div class="ui-overlay-backdrop" data-close-overlay></div><section class="ui-drawer" role="dialog" aria-modal="true" aria-labelledby="uiDrawerTitle"><header class="ui-drawer-head"><div><h2 id="uiDrawerTitle">${escapeHtml(title)}</h2>${subtitle ? `<p class="muted">${escapeHtml(subtitle)}</p>` : ''}</div><button type="button" class="ui-icon-btn" data-close-overlay aria-label="Fechar">×</button></header><div class="ui-drawer-body">${content}</div>${actions ? `<footer class="ui-drawer-actions">${actions}</footer>` : ''}</section>`;
+  host.innerHTML = `<div class="ui-overlay-backdrop" data-close-overlay></div><section class="ui-drawer" tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="uiDrawerTitle"><header class="ui-drawer-head"><div><h2 id="uiDrawerTitle">${escapeHtml(title)}</h2>${subtitle ? `<p class="muted">${escapeHtml(subtitle)}</p>` : ''}</div><button type="button" class="ui-icon-btn" data-close-overlay aria-label="Fechar">×</button></header><div class="ui-drawer-body">${content}</div>${actions ? `<footer class="ui-drawer-actions">${actions}</footer>` : ''}</section>`;
   documentRef.body.append(host);
   host.querySelectorAll('[data-close-overlay]').forEach(element => { element.onclick = () => closeOverlay(documentRef); });
+  // AJ-15: Esc closes; focus moves into the drawer.
+  host.addEventListener('keydown', event => { if (event.key === 'Escape' && !event.defaultPrevented && !documentRef.querySelector('#uiActionMenu')) closeOverlay(documentRef); });
+  globalThis.setTimeout?.(() => { const first = host.querySelector('.ui-drawer-body input:not([type=hidden]):not([disabled]),.ui-drawer-body select,.ui-drawer-body button'); (first || host.querySelector('.ui-drawer'))?.focus?.({ preventScroll: true }); }, 30);
   return host;
 }
 
@@ -27,7 +30,10 @@ export function toast({ type = 'success', message, documentRef = globalThis.docu
   const item = documentRef.createElement('div');
   item.className = `ui-toast ui-toast-${type}`;
   item.textContent = message;
+  item.setAttribute('role', type === 'error' ? 'alert' : 'status');
   region.append(item);
-  globalThis.setTimeout(() => item.remove(), 3500);
+  const leave = () => { item.classList.add('is-leaving'); globalThis.setTimeout(() => item.remove(), 220); };
+  item.onclick = leave;
+  globalThis.setTimeout(leave, type === 'error' ? 6000 : 3500);
   return item;
 }

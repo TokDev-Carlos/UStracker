@@ -45,14 +45,14 @@ export function renderClientProfile(profile = {}, options = {}) {
 
   // Cabeçalho compacto
   const avatar = `<form id="clientPhotoForm" class="cp-avatar" data-auto-upload><label title="Trocar foto" aria-label="Trocar foto do cliente">${media
-    ? `<img src="/api/v1/media/${esc(encodeURIComponent(media.id))}/thumb" alt="Foto do Cliente">`
+    ? `<img src="/api/v1/media/${esc(encodeURIComponent(media.id))}/operational" alt="Foto do Cliente">`
     : `<span class="cp-initials">${esc(initials(client.legal_name))}</span>`}<span class="cp-avatar-edit">${media ? 'Trocar' : 'Adicionar'}</span><input name="file" type="file" accept="image/jpeg,image/png,image/webp" required></label>${media ? `<button type="button" class="cp-photo-remove cp-avatar-remove" data-remove-photo="${esc(media.id)}" aria-label="Remover foto do cliente" title="Remover foto">×</button>` : ''}</form>`;
   const contact = [client.phone, client.email].filter(Boolean).join(' · ');
   const chips = [
     ['Veículos', vehicles.length], ['Frotas', fleets.length], ['Assinaturas ativas', activeSubs],
     ['Contratado/mês', formatBRL(summary.contracted_active_cents || 0)], ['Receita realizada', formatBRL(summary.realized_revenue_cents || 0)],
   ].map(([label, value]) => `<div class="cp-chip"><strong>${esc(value)}</strong><span>${esc(label)}</span></div>`).join('');
-  const head = `<header class="cp-head">${avatar}<div class="cp-id"><h3>${esc(client.legal_name || 'Cliente')} ${codeTag(client.code)} <span class="cp-status cp-status-${esc(String(client.status || 'ACTIVE').toLowerCase())}">${esc(STATUS[client.status] || 'Ativo')}</span></h3>
+  const head = `<header class="cp-head"><div class="cp-id"><h3>${esc(client.legal_name || 'Cliente')} ${codeTag(client.code)} <span class="cp-status cp-status-${esc(String(client.status || 'ACTIVE').toLowerCase())}">${esc(STATUS[client.status] || 'Ativo')}</span></h3>
     <p class="muted">${esc(contact || 'Sem contato')}${primaryCompany ? ` · ${esc(primaryCompany.trade_name || primaryCompany.legal_name)}` : ''}${document.number ? ` · ${esc(document.type || '')} ${esc(document.number)}` : ''}</p></div>
     <div class="cp-chips">${chips}</div></header>`;
 
@@ -126,7 +126,7 @@ export function renderClientProfile(profile = {}, options = {}) {
     const place = fleet ? `${esc(company?.trade_name || company?.legal_name || '—')} › ${esc(fleet.name)}` : '<span class="muted">Particular</span>';
     const thumb = profile.vehicle_media?.[vehicle.id]?.[0];
     const photo = `<span class="cp-photo-actions"><label class="cp-photo-btn" title="${thumb ? 'Trocar foto' : 'Adicionar foto'}" aria-label="${thumb ? 'Trocar foto do veículo' : 'Adicionar foto do veículo'}">${thumb ? `<img class="cp-thumb" src="/api/v1/media/${esc(encodeURIComponent(thumb.id))}/thumb" alt="">` : '<span class="cp-photo-plus">+ Foto</span>'}<input type="file" accept="image/jpeg,image/png,image/webp" data-vehicle-photo="${esc(vehicle.id)}"></label>${thumb ? `<button type="button" class="cp-photo-remove" data-remove-photo="${esc(thumb.id)}" aria-label="Remover foto do veículo" title="Remover foto">×</button>` : ''}</span>`;
-    return `<tr><td>${photo}${vehicleCell(vehicle)}</td><td>${esc(vehicleDetail(vehicle) || '—')}</td><td>${place}</td><td class="subs-cell">${subscriptionCountCell(vehicle.subscriptions_count, { vehicleId: vehicle.id, label: vehicle.plate })}</td><td><button type="button" class="ui-btn ui-btn-subtle ui-btn-sm" data-open-vehicle-transfer="${esc(vehicle.id)}" data-cp-select-vehicle="${esc(vehicle.id)}">Mover</button></td></tr>`;
+    return `<tr data-cp-select-vehicle="${esc(vehicle.id)}" class="cp-vehicle-row" tabindex="0" title="Clique para ver a foto"><td>${photo}${vehicleCell(vehicle)}</td><td>${esc(vehicleDetail(vehicle) || '—')}</td><td>${place}</td><td class="subs-cell">${subscriptionCountCell(vehicle.subscriptions_count, { vehicleId: vehicle.id, label: vehicle.plate })}</td><td><button type="button" class="ui-btn ui-btn-subtle ui-btn-sm" data-open-vehicle-transfer="${esc(vehicle.id)}">Mover</button></td></tr>`;
   });
   const fleetRows = fleets.map(fleet => {
     const company = companyById.get(fleet.client_company_id);
@@ -168,7 +168,17 @@ export function renderClientProfile(profile = {}, options = {}) {
   const signatureForm = subscriptions.length ? `<form id="clientSignatureForm" class="cp-inline" data-auto-upload><div class="field"><label>Anexar assinatura eletrônica a</label><select name="subscription_id" required><option value="">Selecione a assinatura</option>${subscriptions.map(sub => `<option value="${esc(sub.id)}">${esc(sub.code || 'Assinatura')}</option>`).join('')}</select></div><label class="ui-btn ui-btn-secondary ui-file-action">Escolher e anexar arquivo<input type="file" name="file" accept=".jpg,.jpeg,.png,.webp,.pdf" required></label></form>` : '<p class="muted">Cadastre uma assinatura antes de anexar o documento eletrônico.</p>';
   const arquivos = panel('arquivos', 'Arquivos', '', signatureForm + table(['Arquivo', 'Vinculado a', 'Data'], fileRows, 'Nenhum arquivo anexado.'));
 
-  const html = `<div class="cp" data-cp-active="${esc(activeTab)}" data-client-id="${esc(client.id || '')}">${head}${journey}${tabs}${resumo}${dados}${empresas}${veiculos}${assinaturas}${financeiro}${arquivos}</div>`;
+  // AJ-09 — photos live in their own column: client on top, selected vehicle at the bottom.
+  const withPhoto = vehicles.find(vehicle => profile.vehicle_media?.[vehicle.id]?.[0]);
+  const selectedVehicle = (withPhoto || vehicles[0] || {}).id || '';
+  const vehicleCards = vehicles.map(vehicle => {
+    const media = profile.vehicle_media?.[vehicle.id]?.[0];
+    return `<figure class="cp-vehicle-card" data-cp-vehicle-card="${esc(vehicle.id)}"${vehicle.id === selectedVehicle ? '' : ' hidden'}>
+      <label class="cp-vehicle-photo" title="${media ? 'Trocar foto do veículo' : 'Adicionar foto do veículo'}">${media ? `<img src="/api/v1/media/${esc(encodeURIComponent(media.id))}/operational" alt="Foto do veículo">` : `<span class="cp-vehicle-empty">${vehicleCell(vehicle)}<small>+ Adicionar foto</small></span>`}<input type="file" accept="image/jpeg,image/png,image/webp" data-vehicle-photo="${esc(vehicle.id)}" aria-label="Foto do veículo"></label>
+      <figcaption><strong>${esc([vehicle.brand, vehicle.model].filter(Boolean).join(' ') || vehicleCategory(vehicle.type, vehicle.category_label))}</strong><span>${esc(vehicle.plate || '')} ${codeTag(vehicle.code)}</span></figcaption></figure>`;
+  }).join('');
+  const side = `<aside class="cp-side"><div class="cp-photo-card">${avatar}</div><div class="cp-side-fill"></div>${vehicles.length ? `<div class="cp-vehicle-slot"><span class="cp-side-label">Veículo selecionado</span>${vehicleCards}${vehicles.length > 1 ? '<p class="muted cp-side-hint">Clique em um veículo na aba Veículos para trocar.</p>' : ''}</div>` : ''}</aside>`;
+  const html = `<div class="cp" data-cp-active="${esc(activeTab)}" data-client-id="${esc(client.id || '')}">${side}<div class="cp-main">${head}${journey}${tabs}${resumo}${dados}${empresas}${veiculos}${assinaturas}${financeiro}${arquivos}</div></div>`;
   return html.replace(`data-cp-panel="${activeTab}" role="tabpanel" hidden`, `data-cp-panel="${activeTab}" role="tabpanel"`);
 }
 
@@ -197,5 +207,15 @@ export function bindClientProfileUi(root) {
   root.querySelectorAll('[data-cp-cancel]').forEach(button => { button.onclick = () => { const form = root.querySelector('#' + button.dataset.cpCancel); form?.reset?.(); reveal(button.dataset.cpCancel, false); }; });
   root.querySelectorAll('[data-journey="mobility"]').forEach(button => { button.onclick = () => reveal('clientVehicleForm', true); });
   root.querySelectorAll('[data-journey="purchase"]').forEach(button => { button.onclick = () => reveal('clientPurchaseForm', true); });
-  return { selectTab, reveal };
+  const selectVehicle = id => {
+    root.querySelectorAll('[data-cp-vehicle-card]').forEach(card => { card.hidden = card.dataset.cpVehicleCard !== id; });
+    root.querySelectorAll('[data-cp-select-vehicle]').forEach(row => row.classList.toggle('is-selected', row.dataset.cpSelectVehicle === id));
+  };
+  root.querySelectorAll('[data-cp-select-vehicle]').forEach(row => {
+    row.addEventListener('click', event => { if (!event.target.closest('input,label,a')) selectVehicle(row.dataset.cpSelectVehicle); });
+    row.addEventListener('keydown', event => { if (event.key === 'Enter' && event.target === row) selectVehicle(row.dataset.cpSelectVehicle); });
+  });
+  const first = root.querySelector('[data-cp-vehicle-card]:not([hidden])');
+  if (first) selectVehicle(first.dataset.cpVehicleCard);
+  return { selectTab, reveal, selectVehicle };
 }

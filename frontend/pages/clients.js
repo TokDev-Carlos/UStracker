@@ -14,9 +14,11 @@ export function renderClientEditor(row = {}) {
       <div class="field"><label>Documento*</label><input name="document" value="${esc(row.document || '')}" required></div>
       <div class="field"><label>E-mail</label><input name="email" type="email" value="${esc(row.email || '')}"></div>
       <div class="field"><label>Telefone</label><input name="phone" value="${esc(row.phone || '')}"></div>
-      <div class="field"><label>Nome Fantasia ou Razão Social (opcional)</label><input name="company_legal_name" value=""></div>
-      <div class="field"><label>CNPJ <span class="muted">(não obrigatório)</span></label><input name="company_document" value=""></div>
     </div>
+    <details class="more-options"><summary>Tem empresa? (opcional)</summary><div class="row">
+      <div class="field"><label>Nome Fantasia ou Razão Social</label><input name="company_legal_name" value=""></div>
+      <div class="field"><label>CNPJ <span class="muted">(não obrigatório)</span></label><input name="company_document" value=""></div>
+    </div></details>
     <p class="muted">Informe ao menos e-mail ou telefone.</p>
   </form>`;
 }

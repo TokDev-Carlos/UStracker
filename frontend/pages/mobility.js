@@ -122,11 +122,12 @@ export function renderMobilityPage(data = {}, context = {}) {
       <div class="field"><label>Série/Modelo*</label><input name="model" required></div>
       <div class="field"><label>Ano*</label><input name="year" inputmode="numeric" required></div>
       <div class="field"><label>Placa*</label><input name="plate" required></div>
+    </div><details class="more-options"><summary>Mais opções</summary><div class="row">
       <div class="field"><label>Data Contratação</label><input name="contracted_on" type="date"></div>
       <div class="field"><label>Data Revisão</label><input name="review_on" type="date"></div>
       <div class="field"><label>RENAVAM</label><input name="renavam"></div>
       <div class="field"><label>Serial/IMEI</label><input name="tracker_serial_imei"></div>
-    </div><div class="actions"><button class="ui-btn ui-btn-primary" type="submit">Salvar veículo</button></div></form></template>
+    </div></details><div class="actions"><button class="ui-btn ui-btn-primary" type="submit">Salvar veículo</button></div></form></template>
     <template id="fleetFormTemplate"><form id="fleetForm"><div class="row">
       ${renderEntityAutocomplete({name:'client_id',label:'Cliente',required:true})}
       <div class="field"><label>Empresa*</label><select name="client_company_id" required><option value="">Selecione o cliente primeiro</option></select></div>

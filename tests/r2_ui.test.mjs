@@ -80,7 +80,8 @@ test('A ficha do cliente usa abas enxutas (AJ-07) e reutiliza miniaturas', async
   });
   const tabs = [...html.matchAll(/data-cp-tab="[^"]+"[^>]*>([^<]+)/g)].map(match => match[1]);
   assert.deepEqual(tabs, ['Resumo', 'Dados Básicos', 'Empresas', 'Veículos e Frotas', 'Assinaturas e Compras', 'Financeiro', 'Arquivos']);
-  assert.match(html, /\/api\/v1\/media\/m1\/thumb/);
+  assert.match(html, /\/api\/v1\/media\/m1\/operational/); // AJ-09: large client photo in the side column
+  assert.match(html, /data-cp-vehicle-card="v1"/);
   assert.match(html, /\/api\/v1\/media\/m2\/thumb/);
   assert.match(html, /&lt;Empresa&gt;/);
   assert.doesNotMatch(html, /<Empresa>/);

@@ -14,6 +14,8 @@ import { bindEntityAutocomplete } from './ui/entity-autocomplete.js';
 import { closeSubscriptionPopover, openSubscriptionPopover } from './ui/subscription-popover.js';
 import { bindClientProfileUi } from './ui/client-profile.js';
 import { bindActionButton, bindActionForm, runDomAction } from './ui/action-state.js';
+import { installInteractions, navigationFinished, navigationStarted } from './ui/interactions.js';
+installInteractions();
 import { buildClientCreatePayload, clientTableDefinition, renderClientEditor } from './pages/clients.js';
 import { buildMobilityQuery, buildVehiclePayload, renderFleetProfile, renderMobilityPage, renderMoveVehicleForm } from './pages/mobility.js';
 import { bindCatalogForm, catalogPayload, renderCatalogEditForm, renderCatalogPage } from './pages/catalog.js';
@@ -117,13 +119,18 @@ function openMoveVehicle(vehicle,{onDone=()=>{}}={}){
   const form=drawer.querySelector('#moveVehicleForm');const fleetSelect=form.querySelector('[name=fleet_id]');const warning=form.querySelector('[data-move-warning]');
   const groupName={CAR:'Carros',TRUCK:'Caminhões',BOAT:'Embarcações',AIRCRAFT:'Aeronaves',OTHER:'Outros',MIXED:'Misto'};
   let clientId=vehicle.client_id||'';
+  const category=vehicle.category||({Carro:'CAR','Caminhão':'TRUCK','Embarcação':'BOAT',Aeronave:'AIRCRAFT'}[vehicle.type]||'');
   const load=async id=>{
     clientId=id||'';warning.hidden=!clientId||clientId===vehicle.client_id;
     if(!clientId){fleetSelect.innerHTML='<option value="">Selecione o cliente</option>';fleetSelect.disabled=true;return}
     const rows=(await api('/fleets?client_id='+encodeURIComponent(clientId)+'&limit=100')).items||[];
-    fleetSelect.innerHTML='<option value="">Particular (sem frota)</option>'+rows.filter(row=>row.id!==vehicle.fleet_id||clientId!==vehicle.client_id).map(row=>`<option value="${esc(row.id)}">${esc(row.name)} · ${esc(groupName[row.vehicle_group||'MIXED'])}</option>`).join('');
+    // Only fleets that accept this vehicle's category can be chosen (group "Misto" accepts all).
+    const fits=row=>!category||(row.vehicle_group||'MIXED')==='MIXED'||row.vehicle_group===category;
+    const others=rows.filter(row=>row.id!==vehicle.fleet_id);
+    fleetSelect.innerHTML='<option value="">Particular (sem frota)</option>'+others.map(row=>`<option value="${esc(row.id)}"${fits(row)?'':' disabled'}>${esc(row.name)} · ${esc(groupName[row.vehicle_group||'MIXED'])}${fits(row)?'':' (não aceita este tipo)'}</option>`).join('');
     fleetSelect.disabled=false;
-    if(clientId===vehicle.client_id&&!vehicle.fleet_id&&rows.length)fleetSelect.selectedIndex=1;
+    const firstFit=others.findIndex(fits);
+    if(!vehicle.fleet_id&&clientId===vehicle.client_id&&firstFit>=0)fleetSelect.selectedIndex=firstFit+1;
   };
   bindEntityAutocomplete(form,{search:searchClientEntities,onSelection:client=>load(client?.id||'').catch(error=>toast({type:'error',message:error.message}))});
   load(clientId).catch(error=>toast({type:'error',message:error.message}));
@@ -155,7 +162,7 @@ async function openClientProfile(clientId,options={}){
   drawer.querySelectorAll('[data-client-payment]').forEach(button=>button.onclick=()=>{const tab=drawer.querySelector('.cp')?.dataset.cpActive;openPaymentDialog({api,search:searchClientEntities,client:{id:clientId,display_name:profile.client?.legal_name},subscriptionId:button.dataset.subscriptionId||'',notify:toast,onSuccess:()=>openClientProfile(clientId,{tab})})});
   return drawer;
 }
-async function show(page){if(page==='fleets'||page==='vehicles')page='mobility';const lease=++navigationSequence;pageReload=()=>show(page);systemNavigationLease=page==='system'?lease:null;current=page;tableStore.clear();document.querySelectorAll('[data-page]').forEach(b=>b.classList.toggle('active',b.dataset.page===page));try{const fn={dashboard:()=>dashboardPage('',lease),clients:()=>clientsPage(lease),mobility:()=>mobilityPage({},lease),catalog:()=>catalogPage(lease),commercial:()=>commercialPage(lease),subscriptions:()=>commercialPage(lease),purchases:()=>commercialPage(lease),charges:()=>commercialPage(lease),credits:()=>commercialPage(lease),finance:()=>financePage(lease),payments:()=>financePage(lease),expenses:()=>financePage(lease),fiscal:()=>financePage(lease),files:()=>filesPage(lease),media:()=>filesPage(lease),reports:()=>reportsPage(lease),system:()=>systemPage(lease)}[page];if(fn)await fn()}catch(e){content(`<div class="error">${esc(e.message)}</div>`,lease)}}
+async function show(page){if(page==='fleets'||page==='vehicles')page='mobility';const lease=++navigationSequence;navigationStarted();pageReload=()=>show(page);systemNavigationLease=page==='system'?lease:null;current=page;tableStore.clear();document.querySelectorAll('[data-page]').forEach(b=>b.classList.toggle('active',b.dataset.page===page));try{const fn={dashboard:()=>dashboardPage('',lease),clients:()=>clientsPage(lease),mobility:()=>mobilityPage({},lease),catalog:()=>catalogPage(lease),commercial:()=>commercialPage(lease),subscriptions:()=>commercialPage(lease),purchases:()=>commercialPage(lease),charges:()=>commercialPage(lease),credits:()=>commercialPage(lease),finance:()=>financePage(lease),payments:()=>financePage(lease),expenses:()=>financePage(lease),fiscal:()=>financePage(lease),files:()=>filesPage(lease),media:()=>filesPage(lease),reports:()=>reportsPage(lease),system:()=>systemPage(lease)}[page];if(fn)await fn()}catch(e){content(`<div class="error">${esc(e.message)}</div>`,lease)}finally{if(lease===navigationSequence)navigationFinished()}}
 async function dashboardPage(query='',lease=null,year=''){
   const params=new URLSearchParams();if(query)params.set('q',query);if(year)params.set('year',year);
   const d=await api('/dashboard'+(params.size?'?'+params.toString():''));
