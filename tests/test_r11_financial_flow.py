@@ -59,7 +59,7 @@ class R11FinancialFlowTests(unittest.TestCase):
         })
         charge = generate_charge(self.db, 1, subscription['id'], '2026-10')
         payment = create_payment(self.db, 1, {
-            'client_id': self.client['id'], 'paid_on': '2026-10-05', 'amount': '125.00',
+            'client_id': self.client['id'], 'paid_on': '2026-10-01', 'amount': '125.00',
             'method': 'PIX', 'allocations': [{'charge_id': charge['id'], 'amount': '125.00'}],
         })
 

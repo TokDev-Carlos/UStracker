@@ -37,6 +37,11 @@
     "action.logout": "actions/logout",
     "action.shutdown": "actions/shutdown",
     "action.columns": "actions/columns",
-    "action.more": "actions/more"
+    "action.more": "actions/more",
+    "vehicle.car": "vehicles/car",
+    "vehicle.truck": "vehicles/truck",
+    "vehicle.boat": "vehicles/boat",
+    "vehicle.aircraft": "vehicles/aircraft",
+    "vehicle.other": "vehicles/other"
   }
 }

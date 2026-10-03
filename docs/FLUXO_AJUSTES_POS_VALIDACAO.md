@@ -1,6 +1,6 @@
 # Fluxo de ajustes pós-validação básica
 
-Estado: AJ-04 implementado (schema 10) e aguardando validação humana; AJ-02, AJ-03 e AJ-01 capturados, ainda não implementados. Este fluxo inicia depois da validação
+Estado: AJ-04, AJ-02, AJ-03 e AJ-01 implementados (schema 10) e aguardando validação humana. Roteiro: `docs/VALIDACAO_HUMANA_AJ01_AJ04.md`. Este fluxo inicia depois da validação
 humana do candidato `1.003`; não promove versão por si só.
 
 ## AJ-01 — Visão Geral: realizado acumulado e previsão mensal

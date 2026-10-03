@@ -42,6 +42,11 @@
     "nav.subscriptions": "/assets/icons/default/menu/subscriptions.png",
     "nav.system": "/assets/icons/default/menu/system.png",
     "nav.vehicles": "/assets/icons/default/menu/vehicles.png",
-    "nav.purchases": "/assets/icons/default/menu/catalog.png"
+    "nav.purchases": "/assets/icons/default/menu/catalog.png",
+    "vehicle.car": "/assets/icons/default/vehicles/car.svg",
+    "vehicle.truck": "/assets/icons/default/vehicles/truck.svg",
+    "vehicle.boat": "/assets/icons/default/vehicles/boat.svg",
+    "vehicle.aircraft": "/assets/icons/default/vehicles/aircraft.svg",
+    "vehicle.other": "/assets/icons/default/vehicles/other.svg"
   }
 }

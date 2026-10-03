@@ -10,6 +10,8 @@ from typing import Any
 
 from .db import Database, fold_text
 from .money import due_date, parse_money_api
+from .vehicle_types import annotate_vehicle, vehicle_breakdown
+from .projections import client_projection, month_forecast, realized_expenses, realized_revenue
 from .clients import companies_from_payload, documents_from_payload, has_contact, infer_document_type, normalize_document_number, validate_document
 
 UTC=timezone.utc
@@ -217,7 +219,14 @@ def list_clients(db:Database, *, include_archived:bool=False, limit:int=500)->li
         (SELECT COALESCE(SUM(p.amount_cents),0) FROM payments p WHERE p.client_id=c.id AND p.reversed_at IS NULL)
         +(SELECT COALESCE(SUM(ds.total_cents),0) FROM direct_sales ds WHERE ds.client_id=c.id AND ds.status='PAID') AS generated_value_cents
         FROM clients c {where} ORDER BY c.archived,c.legal_name LIMIT ?''',(limit,))
-    return [dict(row) for row in rows]
+    items=[dict(row) for row in rows]
+    projection=client_projection(db,[row['id'] for row in items])
+    for row in items:
+        p=projection[row['id']]
+        row['contracted_active_cents']=p['contracted_active_cents']
+        row['realized_revenue_cents']=p['realized_revenue_cents']
+        row['generated_value_cents']=p['realized_revenue_cents']
+    return items
 
 
 def search_client_entities(db:Database, query:str, *, limit:int=20)->list[dict]:
@@ -317,6 +326,7 @@ def _hydrate_subscription(con, row)->dict:
         WHERE st.subscription_id=? ORDER BY st.created_at,st.rowid''',(rec['id'],)).fetchall():
         item=dict(target)
         item['target_name']=item['vehicle_plate'] if item['target_type']=='VEHICLE' else item['fleet_name']
+        if item['target_type']=='VEHICLE': annotate_vehicle(item,'vehicle_type','vehicle_')
         targets.append(item)
     rec['items']=items
     rec['subscription_items']=items
@@ -491,7 +501,7 @@ def client_profile(db:Database, client_id:str)->dict:
     if row['email']: contacts.append({'type':'EMAIL','value':row['email'],'is_primary':1})
     if row['phone']: contacts.append({'type':'PHONE','value':row['phone'],'is_primary':0 if row['email'] else 1})
     fleets=[dict(r) for r in db.query('SELECT * FROM fleets WHERE client_id=? AND archived=0 ORDER BY name',(client_id,))]
-    vehicles=[dict(r) for r in db.query('SELECT * FROM vehicles WHERE client_id=? AND archived=0 ORDER BY plate',(client_id,))]
+    vehicles=[annotate_vehicle(dict(r)) for r in db.query('SELECT * FROM vehicles WHERE client_id=? AND archived=0 ORDER BY plate',(client_id,))]
     subscriptions=list_subscriptions(db,client_id=client_id)
     direct_sales=[dict(r) for r in db.query('SELECT * FROM direct_sales WHERE client_id=? ORDER BY sold_on DESC,created_at DESC',(client_id,))]
     for sale in direct_sales:
@@ -517,13 +527,19 @@ def client_profile(db:Database, client_id:str)->dict:
                                JOIN expenses e ON e.id=d.expense_id WHERE e.client_id=? AND d.reversed_at IS NULL''',(client_id,))[0])
     expenses_generated=int(db.one('SELECT COALESCE(SUM(expected_amount_cents),0) FROM expenses WHERE client_id=?',(client_id,))[0])
     generated_total=subscription_received+direct_paid-expenses_generated
+    projection=client_projection(db,[client_id])[client_id]
     return {'client':dict(row),'documents':documents,'companies':companies,'contacts':contacts,
             'client_media':client_media,'fleets':fleets,'vehicles':vehicles,'vehicle_media':vehicle_media,
             'subscriptions':subscriptions,'attachments':attachments,'direct_sales':direct_sales,
             'summary':{'vehicles_count':len(vehicles),
                        'particular_vehicles_count':sum(1 for vehicle in vehicles if not vehicle.get('fleet_id')),
                        'fleet_vehicles_count':sum(1 for vehicle in vehicles if vehicle.get('fleet_id')),
-                       'generated_value_cents':generated_total},
+                       'generated_value_cents':generated_total,
+                       'vehicle_breakdown':vehicle_breakdown(db,client_id),
+                       'contracted_active_cents':projection['contracted_active_cents'],
+                       'realized_revenue_cents':projection['realized_revenue_cents'],
+                       'open_purchases_cents':projection['open_purchases_cents'],
+                       'active_subscriptions':projection['active_subscriptions']},
             'financial':{'subscription_received_cents':subscription_received,
                          'direct_sales_paid_cents':direct_paid,'client_expenses_paid_cents':expenses_paid,
                          'client_expenses_generated_cents':expenses_generated,'generated_total_cents':generated_total}}
@@ -694,12 +710,9 @@ def dashboard(db:Database, as_of:date|None=None, year:int|None=None)->dict:
         raise ValueError('year must be between 2000 and 2100')
     period_start = date(int(year), 1, 1) if year is not None else None
     period_end = date(int(year) + 1, 1, 1) if year is not None else None
-    if period_start:
-        period_revenue = realized(period_start, period_end)
-        period_expenses = spent(period_start, period_end)
-    else:
-        period_revenue = int(payment_total) + int(q("SELECT COALESCE(SUM(total_cents),0) FROM direct_sales WHERE status='PAID'"))
-        period_expenses = int(disb_total)
+    # AJ-01: Receita Geral = realized only (paid, not reversed, paid_on <= today). Forecast is separate.
+    period_revenue = realized_revenue(db, period_start, period_end, today)
+    period_expenses = realized_expenses(db, period_start, period_end, today)
     available_years = sorted({
         int(row['year']) for row in db.query("""SELECT substr(paid_on,1,4) AS year FROM payments WHERE reversed_at IS NULL
         UNION SELECT substr(paid_on,1,4) FROM direct_sales WHERE status='PAID' AND paid_on IS NOT NULL
@@ -716,6 +729,8 @@ def dashboard(db:Database, as_of:date|None=None, year:int|None=None)->dict:
             'expenses_paid_cents':disb_total,'cash_result_cents':payment_total-disb_total,'overdue_charges':overdue,
             'period':{'year':year,'label':str(year) if year is not None else 'Geral','revenue_cents':period_revenue,
                       'expenses_cents':period_expenses,'result_cents':period_revenue-period_expenses},
+            'month_forecast':month_forecast(db,today),
+            'vehicle_breakdown':vehicle_breakdown(db),
             'available_years':available_years,
             'integrations':{'drive':'PREPARED_DISABLED','tracking':'PREPARED_DISABLED','fiscal_official':'PREPARED_DISABLED'}}
 

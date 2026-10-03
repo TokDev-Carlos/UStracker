@@ -2,6 +2,7 @@ import { getIconPath } from './icon-registry.js';
 import { formatBRL, formatDateBR } from './formatters.js';
 import { renderMoneyInput } from './money-input.js';
 import { codeTag, vehicleCategory, vehicleDetail } from './logical-codes.js';
+import { VEHICLE_CATEGORIES, categoryIcon, renderVehicleBreakdown } from './vehicle-breakdown.js';
 
 const escapeHtml = value => String(value ?? '').replace(/[&<>'"]/g, character => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
@@ -62,7 +63,7 @@ export function formatSubscriptionRates(row = {}) {
   return rates.length ? rates.map(([key, suffix]) => formatBRL(row[key]) + suffix).join(' · ') : '—';
 }
 
-export function renderClientProfile(profile = {}) {
+export function renderClientProfile(profile = {}, options = {}) {
   const client = profile.client || {};
   const documents = profile.documents || [];
   const companies = profile.companies || [];
@@ -87,21 +88,36 @@ export function renderClientProfile(profile = {}) {
     return `${escapeHtml(name)}${cnpj}${company.is_primary ? ' · Principal' : ''}`;
   });
 
-  const pluralType = type => ({ 'Carro': 'Carros', 'Caminhão': 'Caminhões', 'Embarcação': 'Embarcações', 'Aeronave': 'Aeronaves' })[type] || type || 'Outros';
-  const typeOrder = new Map(['Carro', 'Caminhão', 'Embarcação', 'Aeronave'].map((type, index) => [type, index]));
-  const grouped = new Map();
-  for (const vehicle of profile.vehicles || []) {
-    const type = vehicle.type || 'Outros';
-    if (!grouped.has(type)) grouped.set(type, []);
-    grouped.get(type).push(vehicle);
-  }
-  const vehicleGroups = [...grouped.entries()]
-    .sort(([a], [b]) => (typeOrder.get(a) ?? 99) - (typeOrder.get(b) ?? 99) || String(a).localeCompare(String(b), 'pt-BR'))
-    .map(([type, vehicles]) => `<section class="r2-profile-vehicle-group"><h4>${escapeHtml(pluralType(type))}</h4>${list(vehicles, vehicle => {
+  const vehicles = profile.vehicles || [];
+  const fleets = profile.fleets || [];
+  const directSales = profile.direct_sales || [];
+  const vehicleGroups = VEHICLE_CATEGORIES.map(category => {
+    const rows = vehicles.filter(vehicle => (vehicle.category || 'OTHER') === category.key);
+    if (!rows.length) return '';
+    return `<section class="r2-profile-vehicle-group"><h4>${categoryIcon(category.key, '')} ${escapeHtml(category.label)} <span class="muted">(${rows.length})</span></h4>${list(rows, vehicle => {
       const media = profile.vehicle_media?.[vehicle.id]?.[0];
-      const description = vehicleDetail(vehicle) || vehicleCategory(vehicle.type);
-      return `<div class="r2-profile-vehicle">${media ? thumb(media) : ''}<span>${escapeHtml(description)} ${codeTag(vehicle.code)}</span></div>`;
-    })}</section>`).join('') || '<p class="muted">Nenhum veículo.</p>';
+      const custom = vehicle.category === 'OTHER' && vehicle.type ? ` · ${escapeHtml(vehicle.type)}` : '';
+      const description = vehicleDetail(vehicle) || vehicleCategory(vehicle.type, vehicle.category_label);
+      return `<div class="r2-profile-vehicle">${media ? thumb(media) : ''}<span>${escapeHtml(description)}${custom} ${codeTag(vehicle.code)}</span></div>`;
+    })}</section>`;
+  }).join('') || '<p class="muted">Nenhum veículo.</p>';
+  const typeOptions = ['Carro', 'Caminhão', 'Embarcação', 'Aeronave'].map(type => `<option value="${type}">${type}</option>`).join('') + '<option value="__custom__">Outro tipo…</option>';
+  const fleetOptions = '<option value="">Particular (sem frota)</option>' + fleets.map(fleet => `<option value="${escapeHtml(fleet.id)}">${escapeHtml([fleet.name, fleet.code].filter(Boolean).join(' · '))}</option>`).join('');
+  const companyOptions = companies.map(company => `<option value="${escapeHtml(company.id)}" ${company.is_primary ? 'selected' : ''}>${escapeHtml(company.trade_name || company.legal_name)}</option>`).join('');
+  const vehicleForm = `<form id="clientVehicleForm" class="r2-profile-inline-form"><h4>Adicionar veículo</h4><div class="row">
+      <div class="field"><label>Tipo*</label><select name="type" required>${typeOptions}</select></div>
+      <div class="field custom-type-field" hidden><label>Qual tipo?*</label><input name="custom_type"></div>
+      <div class="field"><label>Marca*</label><input name="brand" required></div>
+      <div class="field"><label>Série/Modelo*</label><input name="model" required></div>
+      <div class="field"><label>Ano*</label><input name="year" inputmode="numeric" required></div>
+      <div class="field"><label>Placa/Registro*</label><input name="plate" required></div>
+      <div class="field"><label>Frota</label><select name="fleet_id">${fleetOptions}</select></div>
+    </div><div class="actions"><button type="submit" class="ui-btn ui-btn-primary">Salvar veículo</button></div></form>`;
+  const fleetForm = companies.length ? `<form id="clientFleetForm" class="r2-profile-inline-form"><h4>Adicionar frota</h4><div class="row">
+      <div class="field"><label>Empresa*</label><select name="client_company_id" required>${companyOptions}</select></div>
+      <div class="field"><label>Nome da frota*</label><input name="name" required></div>
+      <div class="field"><label>Setor/Unidade</label><input name="sector_or_unit"></div>
+    </div><div class="actions"><button type="submit" class="ui-btn ui-btn-secondary">Salvar frota</button></div></form>` : '<p class="muted r2-profile-inline-form">Para criar uma frota, adicione antes uma empresa ao cliente.</p>';
 
   const signatureAttachments = attachments.filter(attachment => attachment.entity_type === 'subscription');
   const signatureList = list(signatureAttachments, attachment => attachment.origin === 'LINK'
@@ -110,10 +126,31 @@ export function renderClientProfile(profile = {}) {
   const signatureUpload = subscriptions.length ? `<form id="clientSignatureForm" data-auto-upload><div class="row"><div class="field"><label>Assinatura</label><select name="subscription_id" required><option value="">Selecione</option>${subscriptions.map(subscription => `<option value="${escapeHtml(subscription.id)}">${escapeHtml(subscription.code || 'Assinatura')}</option>`).join('')}</select></div></div><div class="actions"><label class="ui-btn ui-btn-secondary ui-file-action">Escolher e anexar arquivo<input type="file" name="file" accept=".jpg,.jpeg,.png,.webp,.pdf" required></label></div></form>` : '<p class="muted">Cadastre uma assinatura comercial antes de anexar o documento eletrônico.</p>';
   const subscriptionList = list(subscriptions, subscription => {
     const plans = (subscription.items || subscription.subscription_items || []).map(item => item.plan_name || item.description).filter(Boolean).join(', ') || 'Plano';
-    return `<strong>${escapeHtml(plans)}</strong> ${codeTag(subscription.code)} · ${escapeHtml(formatDateBR(subscription.start_on, false))} · ${escapeHtml(formatBRL(subscription.effective_total_cents || 0))} · ${escapeHtml(subscription.lifecycle_status || '')}`;
+    return `<strong>${escapeHtml(plans)}</strong> ${codeTag(subscription.code)} · ${escapeHtml(formatDateBR(subscription.start_on, false))} · ${escapeHtml(formatBRL(subscription.effective_total_cents || 0))} · ${escapeHtml(subscription.lifecycle_status || '')} <button type="button" class="ui-btn ui-btn-subtle" data-open-commercial="subscriptions" data-code="${escapeHtml(subscription.code || '')}">Abrir no Comercial</button>`;
   }, 'Nenhuma assinatura comercial.');
+  const saleStatus = { OPEN: 'Em aberto', PAID: 'Paga', CANCELLED: 'Cancelada' };
+  const directSaleList = list(directSales, sale => {
+    const items = (sale.direct_sale_items || []).map(item => item.description).filter(Boolean).join(', ') || 'Compra direta';
+    return `<strong>${escapeHtml(items)}</strong> ${codeTag(sale.code)} · ${escapeHtml(formatDateBR(sale.sold_on, false))} · ${escapeHtml(formatBRL(sale.total_cents || 0))} · ${escapeHtml(saleStatus[sale.status] || sale.status || '')} <button type="button" class="ui-btn ui-btn-subtle" data-open-commercial="purchases" data-code="${escapeHtml(sale.code || '')}">Abrir no Comercial</button>`;
+  }, 'Nenhuma compra direta.');
+  const vehicleOptions = '<option value="">— sem veículo —</option>' + vehicles.map(vehicle => `<option value="${escapeHtml(vehicle.id)}">${escapeHtml([vehicleCategory(vehicle.type, vehicle.category_label), vehicle.code, vehicleDetail(vehicle)].filter(Boolean).join(' · '))}</option>`).join('');
+  const purchaseForm = `<form id="clientPurchaseForm" class="r2-profile-inline-form"><h4>Nova compra direta</h4><div class="row">
+      <div class="field"><label>Produto avulso*</label><select name="catalog_id" required data-avulsa-catalog><option value="">Carregando…</option></select></div>
+      <div class="field"><label>Veículo</label><select name="vehicle_id">${vehicleOptions}</select></div>
+      <div class="field"><label>Quantidade</label><input type="number" min="1" name="quantity" value="1"></div>
+      <div class="field"><label>Data</label><input type="date" name="sold_on"></div>
+    </div><div class="actions"><button type="submit" class="ui-btn ui-btn-secondary">Registrar compra</button></div></form>`;
+  const hasMobility = vehicles.length + fleets.length > 0;
+  const hasCommercial = subscriptions.length + directSales.length > 0;
+  const stepClass = (done, isCurrent) => done ? 'done' : (isCurrent ? 'current' : '');
+  const journey = `<ol class="client-journey" aria-label="Jornada do cliente">
+    <li class="done"><span class="step">1 · Cliente</span><strong>${escapeHtml(client.legal_name || 'Cliente')} ${codeTag(client.code)}</strong><span class="muted">Cadastro concluído</span></li>
+    <li class="${stepClass(hasMobility, !hasMobility)}"><span class="step">2 · Mobilidade</span><strong>${vehicles.length} veículo(s) · ${fleets.length} frota(s)</strong><button type="button" class="ui-btn ui-btn-subtle" data-journey="mobility">${hasMobility ? 'Adicionar mais' : 'Adicionar veículo ou frota'}</button></li>
+    <li class="${stepClass(hasCommercial, hasMobility && !hasCommercial)}"><span class="step">3 · Plano ou compra</span><strong>${subscriptions.length} assinatura(s) · ${directSales.length} compra(s)</strong><span class="actions"><button type="button" class="ui-btn ui-btn-subtle" data-journey-subscription>Assinar plano</button><button type="button" class="ui-btn ui-btn-subtle" data-journey="purchase">Compra direta</button></span></li>
+  </ol>`;
 
   return `<div class="r2-profile">
+    ${journey}
     ${card('Dados Básicos', `<div class="r2-profile-basic-media">${photo}</div><form id="clientBasicsForm"><div class="row">
       <div class="field"><label>Nome*</label><input name="legal_name" value="${escapeHtml(client.legal_name || '')}" required></div>
       <div class="field"><label>E-mail</label><input name="email" type="email" value="${escapeHtml(client.email || '')}"></div>
@@ -123,9 +160,9 @@ export function renderClientProfile(profile = {}) {
       <div class="field"><label>Número do documento*</label><input name="document" value="${escapeHtml(document.number || '')}" required><span class="muted">Ao salvar, substitui o documento atual; não cria acúmulo.</span></div>
     </div><div class="actions"><button type="submit" class="ui-btn ui-btn-primary">Salvar dados</button></div></form>`, true)}
     ${card('Empresas', `${companyList}<form id="clientCompanyForm"><div class="row"><div class="field"><label>Nome Fantasia ou Razão Social*</label><input name="legal_name" required></div><div class="field"><label>CNPJ <span class="muted">(não obrigatório)</span></label><input name="document"></div><label><input type="checkbox" name="is_primary" value="true"> Principal</label></div><div class="actions"><button type="submit" class="ui-btn ui-btn-secondary">Adicionar</button></div></form>`)}
-    ${card('Veículos', vehicleGroups)}
-    ${card('Financeiro', `<dl><dt>Quantidade de Veículos</dt><dd>${Number(summary.vehicles_count || 0)}</dd><dt>Valor Gerado Total</dt><dd>${escapeHtml(formatBRL(summary.generated_value_cents))}</dd><dt>Compras Pagas</dt><dd>${escapeHtml(formatBRL(financial.direct_sales_paid_cents))}</dd><dt>Despesas Geradas</dt><dd>${escapeHtml(formatBRL(financial.client_expenses_generated_cents))}</dd></dl>`)}
-    ${card('Assinaturas', `<div class="actions"><button type="button" class="ui-btn ui-btn-primary" data-client-new-subscription>Nova Assinatura</button></div>${subscriptionList}${signatureList}${signatureUpload}`)}
+    ${card('Veículos', `${renderVehicleBreakdown(summary.vehicle_breakdown || {}, { title: 'Veículos', compact: true })}${vehicleGroups}${vehicleForm}${fleetForm}`, options.focus === 'mobility')}
+    ${card('Financeiro', `<dl><dt>Valor contratado ativo</dt><dd>${escapeHtml(formatBRL(summary.contracted_active_cents || 0))}</dd><dt>Receita realizada</dt><dd>${escapeHtml(formatBRL(summary.realized_revenue_cents || 0))}</dd><dt>Compras em aberto</dt><dd>${escapeHtml(formatBRL(summary.open_purchases_cents || 0))}</dd><dt>Compras Pagas</dt><dd>${escapeHtml(formatBRL(financial.direct_sales_paid_cents))}</dd><dt>Despesas Geradas</dt><dd>${escapeHtml(formatBRL(financial.client_expenses_generated_cents))}</dd><dt>Resultado do cliente</dt><dd>${escapeHtml(formatBRL(summary.generated_value_cents))}</dd></dl>`)}
+    ${card('Assinaturas', `<div class="actions"><button type="button" class="ui-btn ui-btn-primary" data-client-new-subscription>Nova Assinatura</button></div><h4>Assinaturas</h4>${subscriptionList}<h4>Compras diretas</h4>${directSaleList}${purchaseForm}${signatureList}${signatureUpload}`, options.focus === 'commercial')}
   </div>`;
 }
 

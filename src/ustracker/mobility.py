@@ -7,6 +7,7 @@ from typing import Any
 
 from .db import Database
 from .services import audit, now, uid
+from .vehicle_types import annotate_vehicle, breakdown_from_rows
 
 STANDARD_VEHICLE_TYPES = ('Carro', 'Caminhão', 'Embarcação', 'Aeronave')
 DEFAULT_FLEET_MAX_ACTIVE = 100
@@ -285,6 +286,7 @@ def list_mobility(db: Database, *, client_id: str | None = None, fleet_id: str |
             LEFT JOIN fleets f ON f.id=v.fleet_id
             WHERE {predicate} ORDER BY c.legal_name,v.plate''', tuple(args))]
     for row in rows:
+        annotate_vehicle(row)
         row['subscriptions'] = _active_subscription_summaries(db,vehicle_id=row['id'])
     particulars = [row for row in rows if not row.get('fleet_id')]
     fleet_where = ['f.archived=0']
@@ -308,6 +310,8 @@ def list_mobility(db: Database, *, client_id: str | None = None, fleet_id: str |
             continue
         all_vehicle_rows = [dict(r) for r in db.query(f'''SELECT v.*, {value_sql} AS total_value_cents
                                                          FROM vehicles v WHERE v.fleet_id=? AND v.archived=0 ORDER BY v.plate''', (rec['id'],))]
+        for vehicle_row in all_vehicle_rows: annotate_vehicle(vehicle_row)
+        rec['vehicle_breakdown'] = breakdown_from_rows((v.get('type'), 1) for v in all_vehicle_rows)
         rec['vehicles_count'] = len(all_vehicle_rows)
         rec['contracted_on'] = min((v.get('contracted_on') for v in all_vehicle_rows if v.get('contracted_on')), default=None)
         rec['review_on'] = max((v.get('review_on') for v in all_vehicle_rows if v.get('review_on')), default=None)
@@ -316,7 +320,8 @@ def list_mobility(db: Database, *, client_id: str | None = None, fleet_id: str |
         fleets.append(rec)
     with closing(db.connect()) as con:
         limit = _fleet_limit(con)
-    return {'particulars': particulars, 'fleets': fleets, 'fleet_limit': limit}
+    return {'particulars': particulars, 'fleets': fleets, 'fleet_limit': limit,
+            'vehicle_breakdown': breakdown_from_rows((row.get('type'), 1) for row in rows)}
 
 
 def fleet_profile(db: Database, fleet_id: str) -> dict:
@@ -331,6 +336,7 @@ def fleet_profile(db: Database, fleet_id: str) -> dict:
     vehicles = [dict(r) for r in db.query(f'''SELECT v.*,{value_sql} AS total_value_cents
                                               FROM vehicles v WHERE v.fleet_id=? AND v.archived=0 ORDER BY v.plate''', (fleet_id,))]
     for vehicle in vehicles:
+        annotate_vehicle(vehicle)
         vehicle['subscriptions'] = _active_subscription_summaries(db,vehicle_id=vehicle['id'])
     media = [dict(r) for r in db.query("SELECT id,entity_type,entity_id,mime,width,height,sha256,created_at FROM media WHERE entity_type='fleet' AND entity_id=? ORDER BY created_at DESC", (fleet_id,))]
     company = dict(db.one('SELECT * FROM client_companies WHERE id=?', (fleet['client_company_id'],))) if fleet.get('client_company_id') and db.one('SELECT * FROM client_companies WHERE id=?', (fleet['client_company_id'],)) else None
@@ -344,6 +350,7 @@ def fleet_profile(db: Database, fleet_id: str) -> dict:
         'media': media,
         'summary': {
             'active_vehicles': len(vehicles),
+            'vehicle_breakdown': breakdown_from_rows((v.get('type'), 1) for v in vehicles),
             'vehicle_limit': limit,
             'total_value_cents': sum(int(v.get('total_value_cents') or 0) for v in vehicles),
         },

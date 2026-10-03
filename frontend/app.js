@@ -24,9 +24,16 @@ const app=document.querySelector('#app');
 let csrf=''; let me=null; let current='dashboard'; let navigationSequence=0; let systemNavigationLease=null;
 const apiClient=createApi({csrfState:{get:()=>csrf,set:value=>{csrf=value}}});
 const session=createSession({api:apiClient,onUserChange:user=>{me=user}});
-const api=(path,opt)=>path==='/auth/logout'?session.logout():apiClient.request(path,opt).then(result=>{if(path==='/auth/login')session.authenticate(result);return result});
+// AJ-03: every successful mutation re-reads the page behind any open drawer, so projections never need F5.
+let pageReload=null,projectionTimer=null;
+function scheduleProjectionRefresh(path,method){
+  if(!method||['GET','HEAD','OPTIONS'].includes(String(method).toUpperCase())||/^\/(auth|system\/shutdown)/.test(path))return;
+  const seq=navigationSequence;clearTimeout(projectionTimer);
+  projectionTimer=setTimeout(()=>{if(seq!==navigationSequence||typeof pageReload!=='function')return;Promise.resolve(pageReload()).catch(()=>{})},300);
+}
+const api=(path,opt)=>path==='/auth/logout'?session.logout():apiClient.request(path,opt).then(result=>{if(path==='/auth/login')session.authenticate(result);scheduleProjectionRefresh(path,opt?.method);return result});
 const getCsrf=()=>apiClient.acquireCsrf();
-const apiForm=(path,form,method='POST')=>apiClient.requestForm(path,form,method);
+const apiForm=(path,form,method='POST')=>apiClient.requestForm(path,form,method).then(result=>{scheduleProjectionRefresh(path,method);return result});
 const searchClientEntities=async(query,limit=30)=>(await api('/entities/clients?q='+encodeURIComponent(query)+'&limit='+Math.min(Number(limit)||30,30))).items||[];
 const tableStore=new Map();
 const esc=s=>String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
@@ -60,9 +67,30 @@ function publicCard(p){const b=p.brand||{};return `<div class="public-card">${b.
 function loginScreen(st,pub){app.innerHTML=renderLoginScreen(st,pub);document.querySelector('#login').onsubmit=async e=>{e.preventDefault();try{await getCsrf();const r=await api('/auth/login',{method:'POST',body:JSON.stringify(formData(e.target))});csrf=r.csrf;me=r;renderShell();await show('dashboard');if(r.backup_warning)alert('Backup automático: '+r.backup_warning)}catch(err){document.querySelector('#loginOut').innerHTML=msg(err.message,'error')}}}
 const nav=[['dashboard','Visão geral'],['clients','Clientes'],['mobility','Frotas/Veículos'],['catalog','Planos/Produtos'],['commercial','Comercial'],['finance','Financeiro'],['files','Fotos/Arquivos'],['reports','Relatórios'],['system','Sistema']];
 function renderShell(){renderAppShell({me,nav,onNavigate:show,onSearch:async query=>{const d=await api('/search?q='+encodeURIComponent(query));tableStore.clear();content(pageHeader('Pesquisa','Resultados da busca global')+dt(d.items,'searchTable'))},onHelp:()=>{const help=helpFor(current);openDrawer({title:help.title,subtitle:'Ajuda contextual',content:`<p>${esc(help.body)}</p>${HELP[current]?.fields?`<dl>${Object.entries(HELP[current].fields).map(([key,value])=>`<dt><strong>${esc(key.replaceAll('_',' '))}</strong></dt><dd>${esc(value)}</dd>`).join('')}</dl>`:''}`})},onUser:()=>content(pageHeader('Usuário','Sessão atual')+`<div class="panel"><strong>${esc(me.name)}</strong><p class="muted">Perfil: ${esc(sessionProfileLabel(me))}</p><p class="muted">Ambiente: ${esc(me.environment)}</p></div>`),onLogout:async()=>{await session.logout();await boot()},onShutdown:requestSystemShutdown})}
-async function openClientProfile(clientId){
+function bindClientJourney(drawer,profile,clientId){
+  const reopen=focus=>async()=>{closeOverlay();await openClientProfile(clientId,{focus})};
+  const openCard=(selector,focusSelector)=>{const target=drawer.querySelector(selector);const details=target?.closest('details');if(details)details.open=true;target?.scrollIntoView({behavior:'smooth',block:'start'});target?.querySelector(focusSelector||'input,select')?.focus()};
+  drawer.querySelectorAll('[data-journey="mobility"]').forEach(button=>button.onclick=()=>openCard('#clientVehicleForm'));
+  drawer.querySelectorAll('[data-journey="purchase"]').forEach(button=>button.onclick=()=>openCard('#clientPurchaseForm'));
+  drawer.querySelectorAll('[data-open-commercial]').forEach(button=>button.onclick=()=>{closeOverlay();history.replaceState(null,'','#commercial/'+button.dataset.openCommercial+(button.dataset.code?'/'+encodeURIComponent(button.dataset.code):''));show('commercial')});
+  const vehicleForm=drawer.querySelector('#clientVehicleForm');
+  if(vehicleForm){
+    const typeSelect=vehicleForm.querySelector('[name=type]');const customField=vehicleForm.querySelector('.custom-type-field');
+    typeSelect.onchange=()=>{customField.hidden=typeSelect.value!=='__custom__';customField.querySelector('input').required=!customField.hidden};
+    bindActionForm(vehicleForm,{key:`client-vehicle:${clientId}`,action:async()=>{const payload=buildVehiclePayload({...formData(vehicleForm),client_id:clientId});await api('/vehicles',{method:'POST',body:JSON.stringify(payload)})},refresh:reopen('mobility'),successMessage:'Veículo cadastrado. Próximo passo: plano ou compra.',notify:toast});
+  }
+  const fleetForm=drawer.querySelector('#clientFleetForm');
+  if(fleetForm)bindActionForm(fleetForm,{key:`client-fleet:${clientId}`,action:async()=>{await api('/fleets',{method:'POST',body:JSON.stringify({...formData(fleetForm),client_id:clientId})})},refresh:reopen('mobility'),successMessage:'Frota cadastrada.',notify:toast});
+  const purchaseForm=drawer.querySelector('#clientPurchaseForm');
+  if(purchaseForm){
+    const catalogSelect=purchaseForm.querySelector('[data-avulsa-catalog]');
+    api('/catalog').then(result=>{const rows=(result.items||[]).filter(row=>Number(row.active??1)===1&&String(row.category||'').toUpperCase()==='AVULSA');catalogSelect.innerHTML=rows.length?'<option value="">Selecione</option>'+rows.map(row=>`<option value="${esc(row.id)}">${esc(row.name||row.description)} · ${esc(formatBRL(Number(row.price_cents||0)))}</option>`).join(''):'<option value="">Nenhum produto avulso ativo</option>'}).catch(error=>toast({type:'error',message:error.message}));
+    bindActionForm(purchaseForm,{key:`client-purchase:${clientId}`,action:async()=>{const p=formData(purchaseForm);if(!p.catalog_id)throw new Error('Selecione o produto avulso.');await api('/direct-sales',{method:'POST',body:JSON.stringify({client_id:clientId,sold_on:p.sold_on||new Date().toISOString().slice(0,10),items:[{catalog_id:p.catalog_id,vehicle_id:p.vehicle_id||null,quantity:Number(p.quantity||1)}]})})},refresh:reopen('commercial'),successMessage:'Compra direta registrada.',notify:toast});
+  }
+}
+async function openClientProfile(clientId,options={}){
   const profile=await api('/clients/'+encodeURIComponent(clientId)+'/profile');
-  const drawer=openDrawer({title:'Ficha do Cliente',subtitle:[profile.client?.legal_name,profile.client?.code].filter(Boolean).join(' · '),content:renderClientProfile(profile)});
+  const drawer=openDrawer({title:'Ficha do Cliente',subtitle:[profile.client?.legal_name,profile.client?.code].filter(Boolean).join(' · '),content:renderClientProfile(profile,options)});
   drawer.querySelector('.ui-drawer').classList.add('r2-profile-wide');
   const refresh=async()=>{closeOverlay();await openClientProfile(clientId)};
   const basics=drawer.querySelector('#clientBasicsForm');
@@ -75,15 +103,19 @@ async function openClientProfile(clientId){
   const signatureForm=drawer.querySelector('#clientSignatureForm');
   enableAutoUpload(signatureForm);
   bindActionForm(signatureForm,{key:`client-signature:${clientId}`,action:async()=>{const input=signatureForm.querySelector('[name=file]');const subscriptionId=signatureForm.querySelector('[name=subscription_id]')?.value;if(!subscriptionId||!input.files?.[0])throw new Error('Selecione a assinatura e o arquivo.');const body=new FormData();body.append('file',input.files[0]);await apiForm('/attachments/subscription/'+encodeURIComponent(subscriptionId),body)},refresh,successMessage:'Assinatura anexada.',notify:toast});
+  bindClientJourney(drawer,profile,clientId,options);
   const newSubscription=drawer.querySelector('[data-client-new-subscription]');
-  if(newSubscription)newSubscription.onclick=async()=>{const catalog=await api('/catalog');openSubscriptionWorkflow({context:'CLIENT_PROFILE',clientId,clients:[profile.client],catalog:catalog.items||[],vehicles:profile.vehicles||[],fleets:profile.fleets||[]},{onSuccess:()=>openClientProfile(clientId),onCancel:()=>openClientProfile(clientId)})};
+  const journeySubscription=drawer.querySelector('[data-journey-subscription]');
+  if(journeySubscription&&newSubscription)journeySubscription.onclick=()=>newSubscription.click();
+  if(newSubscription)newSubscription.onclick=async()=>{const catalog=await api('/catalog');openSubscriptionWorkflow({context:'CLIENT_PROFILE',clientId,clients:[profile.client],catalog:catalog.items||[],vehicles:profile.vehicles||[],fleets:profile.fleets||[]},{onSuccess:()=>openClientProfile(clientId,{focus:'commercial'}),onCancel:()=>openClientProfile(clientId)})};
   return drawer;
 }
-async function show(page){if(page==='fleets'||page==='vehicles')page='mobility';const lease=++navigationSequence;systemNavigationLease=page==='system'?lease:null;current=page;tableStore.clear();document.querySelectorAll('[data-page]').forEach(b=>b.classList.toggle('active',b.dataset.page===page));try{const fn={dashboard:()=>dashboardPage('',lease),clients:()=>clientsPage(lease),mobility:()=>mobilityPage({},lease),catalog:()=>catalogPage(lease),commercial:()=>commercialPage(lease),subscriptions:()=>commercialPage(lease),purchases:()=>commercialPage(lease),charges:()=>commercialPage(lease),credits:()=>commercialPage(lease),finance:()=>financePage(lease),payments:()=>financePage(lease),expenses:()=>financePage(lease),fiscal:()=>financePage(lease),files:()=>filesPage(lease),media:()=>filesPage(lease),reports:()=>reportsPage(lease),system:()=>systemPage(lease)}[page];if(fn)await fn()}catch(e){content(`<div class="error">${esc(e.message)}</div>`,lease)}}
+async function show(page){if(page==='fleets'||page==='vehicles')page='mobility';const lease=++navigationSequence;pageReload=()=>show(page);systemNavigationLease=page==='system'?lease:null;current=page;tableStore.clear();document.querySelectorAll('[data-page]').forEach(b=>b.classList.toggle('active',b.dataset.page===page));try{const fn={dashboard:()=>dashboardPage('',lease),clients:()=>clientsPage(lease),mobility:()=>mobilityPage({},lease),catalog:()=>catalogPage(lease),commercial:()=>commercialPage(lease),subscriptions:()=>commercialPage(lease),purchases:()=>commercialPage(lease),charges:()=>commercialPage(lease),credits:()=>commercialPage(lease),finance:()=>financePage(lease),payments:()=>financePage(lease),expenses:()=>financePage(lease),fiscal:()=>financePage(lease),files:()=>filesPage(lease),media:()=>filesPage(lease),reports:()=>reportsPage(lease),system:()=>systemPage(lease)}[page];if(fn)await fn()}catch(e){content(`<div class="error">${esc(e.message)}</div>`,lease)}}
 async function dashboardPage(query='',lease=null,year=''){
   const params=new URLSearchParams();if(query)params.set('q',query);if(year)params.set('year',year);
   const d=await api('/dashboard'+(params.size?'?'+params.toString():''));
   if(!content(renderOverviewPage(d,query,year),lease))return;
+  pageReload=()=>dashboardPage(query,null,year);
   const form=document.querySelector('#overviewSearch');if(form)form.onsubmit=async event=>{event.preventDefault();await dashboardPage(formData(form).q||'',null,year)};
   const period=document.querySelector('#overviewPeriod [name=year]');if(period)period.onchange=()=>dashboardPage(query,null,period.value);
   const clear=document.querySelector('#overviewClear');if(clear)clear.onclick=()=>dashboardPage('',null,year);
@@ -98,7 +130,7 @@ async function clientsPage(lease=null){
     const drawer=openDrawer({title:'Novo cliente',subtitle:'Cadastre documento e ao menos um contato.',content:renderClientEditor(),actions:'<button type="button" class="ui-btn ui-btn-secondary" data-close-overlay>Cancelar</button><button type="submit" form="clientDrawerForm" class="ui-btn ui-btn-primary">Salvar</button>'});
     drawer.querySelectorAll('[data-close-overlay]').forEach(button=>button.onclick=()=>closeOverlay());
     const createForm=drawer.querySelector('#clientDrawerForm');
-    bindActionForm(createForm,{key:'client-create',action:async()=>{const flat=formData(createForm);if(!flat.email?.trim()&&!flat.phone?.trim())throw new Error('Informe ao menos e-mail ou telefone.');const payload=buildClientCreatePayload(flat);await api('/clients',{method:'POST',body:JSON.stringify(payload)});closeOverlay()},refresh:()=>show('clients'),successMessage:'Cliente cadastrado.',notify:toast});
+    bindActionForm(createForm,{key:'client-create',action:async()=>{const flat=formData(createForm);if(!flat.email?.trim()&&!flat.phone?.trim())throw new Error('Informe ao menos e-mail ou telefone.');const payload=buildClientCreatePayload(flat);const created=await api('/clients',{method:'POST',body:JSON.stringify(payload)});closeOverlay();return created},refresh:async created=>{await show('clients');if(created?.id)await openClientProfile(created.id,{focus:'mobility'})},successMessage:'Cliente cadastrado. Continue com veículo/frota e plano.',notify:toast});
   };
   const definition=clientTableDefinition(row=>openClientProfile(row.id).catch(error=>toast({type:'error',message:error.message})));
   const controller=createTableController({...definition,rows:d.items});
@@ -112,6 +144,7 @@ async function mobilityPage(filters={},lease=null){
     filters.client_id?api('/fleets?client_id='+encodeURIComponent(filters.client_id)+'&limit=100'):Promise.resolve({items:[]})
   ]);
   if(!content(renderMobilityPage(data,{fleets:initialFleets.items||[],filters}),lease))return;
+  pageReload=()=>mobilityPage(filters);
 
   const filterForm=document.querySelector('#mobilityFilter');
   document.querySelector('#mobilityClear').onclick=()=>mobilityPage({});
@@ -232,10 +265,12 @@ async function commercialPage(lease=null){
   const data=await api('/commercial');
   let purchaseClient=null;
   const legacyTab=current==='purchases'?'purchases':current==='credits'?'credits':'subscriptions';
-  let active=(location.hash.match(/^#commercial\/(subscriptions|purchases|credits)$/)?.[1])||legacyTab;
+  const deepLink=location.hash.match(/^#commercial\/(subscriptions|purchases|credits)(?:\/([^/]+))?$/);
+  let active=deepLink?.[1]||legacyTab;let focusCode=deepLink?.[2]?decodeURIComponent(deepLink[2]):'';
   current='commercial'; document.querySelectorAll('[data-page]').forEach(b=>b.classList.toggle('active',b.dataset.page==='commercial'));
   const draw=()=>{
     if(!content(renderCommercialPage({...data,purchase_client:purchaseClient},active),lease))return;
+    if(focusCode){const row=[...document.querySelectorAll('[data-row-code]')].find(item=>item.dataset.rowCode===focusCode);if(row){row.classList.add('commercial-focus');row.scrollIntoView({block:'center'})}focusCode=''}
     document.querySelectorAll('[data-commercial-tab]').forEach(button=>button.onclick=()=>{active=button.dataset.commercialTab;history.replaceState(null,'','#commercial/'+active);draw()});
     document.querySelectorAll('[data-buy-client]').forEach(button=>button.onclick=()=>{purchaseClient={id:button.dataset.buyClient,display_name:button.dataset.buyClientName};active='purchases';history.replaceState(null,'','#commercial/purchases');draw()});
     const newSubscription=document.querySelector('[data-new-subscription]');if(newSubscription)newSubscription.onclick=()=>openSubscriptionWorkflow({context:'COMMERCIAL',catalog:data.catalog_mensal||[],vehicles:data.vehicles||[],fleets:data.fleets||[]},{onSuccess:()=>show('commercial')});

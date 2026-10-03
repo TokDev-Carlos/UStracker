@@ -1,6 +1,7 @@
 import { formatBRL, formatDateBR } from '../ui/formatters.js';
 import { renderEntityAutocomplete } from '../ui/entity-autocomplete.js';
 import { codeTag, vehicleCell } from '../ui/logical-codes.js';
+import { renderVehicleBreakdown } from '../ui/vehicle-breakdown.js';
 
 export const MOBILITY_TYPES = ['Carro', 'Caminhão', 'Embarcação', 'Aeronave'];
 
@@ -78,6 +79,7 @@ export function renderMobilityPage(data = {}, context = {}) {
       <div class="field"><label>Placa</label><input name="plate" value="${esc(filters.plate || '')}"></div>
     </div><div class="actions"><button class="ui-btn ui-btn-primary" type="submit">Pesquisar</button><button class="ui-btn ui-btn-secondary" type="button" id="mobilityClear">Limpar</button></div></form></div>
     <div class="panel"><div class="mobility-toolbar"><button type="button" class="ui-btn ui-btn-primary" id="newVehicle">Novo Veículo</button><button type="button" class="ui-btn ui-btn-secondary" id="newFleet">Nova Frota</button><span class="muted">Limite por frota: ${Number(data.fleet_limit || 100)} veículos ativos</span></div></div>
+    ${data.vehicle_breakdown ? `<div class="panel">${renderVehicleBreakdown(data.vehicle_breakdown, { title: 'Veículos', compact: true })}</div>` : ''}
     <div class="mobility-tabs" role="tablist"><button type="button" class="mobility-tab active" data-mobility-tab="particulares">Particulares</button><button type="button" class="mobility-tab" data-mobility-tab="frotas">Frotas</button></div>
     <section data-mobility-panel="particulares">${mobilityTable(data.particulars || [], false)}</section>
     <section data-mobility-panel="frotas" hidden>${mobilityTable(data.fleets || [], true)}</section>
@@ -115,6 +117,7 @@ export function renderFleetProfile(profile = {}, context = {}) {
     </tr>`).join('') : '<tr><td colspan="8">Nenhum veículo.</td></tr>';
   return `<div class="fleet-profile">
     <div class="fleet-profile-summary"><h3>${esc(fleet.name || 'Frota')}</h3><p class="muted">${esc(company.legal_name || 'Empresa não vinculada')}</p><dl><dt>Veículos ativos</dt><dd>${Number(summary.active_vehicles || 0)} / ${Number(summary.vehicle_limit || 100)}</dd><dt>Valor Total</dt><dd>${esc(formatBRL(Number(summary.total_value_cents || 0)))}</dd></dl></div>
+    ${summary.vehicle_breakdown ? renderVehicleBreakdown(summary.vehicle_breakdown, { title: 'Veículos da frota', compact: true }) : ''}
     <section class="panel"><h4>Assinaturas ativas da frota</h4>${subscriptionSummaries(profile.subscriptions)}</section>
     <form id="fleetEditForm"><input type="hidden" name="expected_revision" value="${esc(fleet.revision || 0)}"><div class="row">
       <div class="field"><label>Empresa*</label><select name="client_company_id" required>${options(companies, 'id', 'legal_name', false, fleet.client_company_id)}</select></div>

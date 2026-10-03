@@ -31,10 +31,10 @@ R22-03,R22,Updater creates no arbitrary install clones,Filesystem integration te
 R23-01,R23,Every menu passes functional audit,Audit report,AWAITING_HUMAN
 R23-02,R23,Backup/restore covers all active domains,Restore integration test,AWAITING_HUMAN
 R23-03,R23,Windows physical smoke completed,Windows homologation evidence,AWAITING_HUMAN
-AJ-01-01,POST_VALIDATION,Receita Geral contains realized values only and excludes future forecast,Finance integration test,REQUIREMENT_CAPTURED
-AJ-01-02,POST_VALIDATION,Previsão do Mês is visible but excluded from Resultado,API and frontend test,REQUIREMENT_CAPTURED
-AJ-02-01,POST_VALIDATION,Vehicle total reconciles with five visual type categories,Domain aggregate and visual test,REQUIREMENT_CAPTURED
-AJ-03-01,POST_VALIDATION,Client creation can continue through mobility and plan assignment,End-to-end workflow test,REQUIREMENT_CAPTURED
-AJ-03-02,POST_VALIDATION,Client Commercial Mobility and Overview share synchronized projections,Integration and stale-state test,REQUIREMENT_CAPTURED
+AJ-01-01,POST_VALIDATION,Receita Geral contains realized values only and excludes future forecast,Finance integration test,IMPLEMENTED_AWAITING_HUMAN
+AJ-01-02,POST_VALIDATION,Previsão do Mês is visible but excluded from Resultado,API and frontend test,IMPLEMENTED_AWAITING_HUMAN
+AJ-02-01,POST_VALIDATION,Vehicle total reconciles with five visual type categories,Domain aggregate and visual test,IMPLEMENTED_AWAITING_HUMAN
+AJ-03-01,POST_VALIDATION,Client creation can continue through mobility and plan assignment,End-to-end workflow test,IMPLEMENTED_AWAITING_HUMAN
+AJ-03-02,POST_VALIDATION,Client Commercial Mobility and Overview share synchronized projections,Integration and stale-state test,IMPLEMENTED_AWAITING_HUMAN
 AJ-04-01,POST_VALIDATION,Technical UUID remains internal while logical codes are compact and immutable,Migration and API test,IMPLEMENTED_AWAITING_HUMAN
 AJ-04-02,POST_VALIDATION,Vehicle columns use normalized type as primary display,Frontend table and accessibility test,IMPLEMENTED_AWAITING_HUMAN

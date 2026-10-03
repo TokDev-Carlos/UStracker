@@ -6,6 +6,7 @@ from datetime import date
 from .db import Database
 from .money import parse_money_api
 from .services import audit, now, uid, list_direct_sales, list_subscriptions
+from .vehicle_types import annotate_vehicle
 
 
 def add_months(value:date, months:int)->date:
@@ -50,6 +51,7 @@ def commercial_snapshot(db:Database)->dict:
         rec['total_cents']=rec['effective_total_cents']
         rec['vehicles']=[{
             'id':target['vehicle_id'],'code':target['vehicle_code'],'type':target['vehicle_type'],
+            'category':target.get('vehicle_category'),'category_label':target.get('vehicle_category_label'),
             'brand':target['vehicle_brand'],'model':target['vehicle_model'],
             'plate':target['vehicle_plate'],'fleet_id':target['vehicle_fleet_id'],
         } for target in rec['targets'] if target['target_type']=='VEHICLE']
@@ -67,6 +69,6 @@ def commercial_snapshot(db:Database)->dict:
         'catalog_avulsa':[dict(r) for r in db.query("SELECT * FROM catalog WHERE active=1 AND category='AVULSA' ORDER BY name")],
         'catalog_mensal':[dict(r) for r in db.query("SELECT * FROM catalog WHERE active=1 AND category='MENSAL' ORDER BY name")],
         'payments':[dict(r) for r in db.query('SELECT * FROM payments WHERE reversed_at IS NULL ORDER BY paid_on DESC,created_at DESC')],
-        'vehicles':[dict(r) for r in db.query('SELECT id,code,client_id,plate,type,brand,model,fleet_id FROM vehicles WHERE archived=0 ORDER BY plate')],
+        'vehicles':[annotate_vehicle(dict(r)) for r in db.query('SELECT id,code,client_id,plate,type,brand,model,fleet_id FROM vehicles WHERE archived=0 ORDER BY plate')],
         'fleets':[dict(r) for r in db.query('SELECT id,code,client_id,client_company_id,name FROM fleets WHERE archived=0 ORDER BY name')],
     }
