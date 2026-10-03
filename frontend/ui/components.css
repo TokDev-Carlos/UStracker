@@ -155,3 +155,10 @@ td>.ui-code:first-child{margin-left:0}
 .cp .tree-company{margin-left:var(--us-space-2)}
 @media (max-width:760px){.cp-head{grid-template-columns:auto 1fr}.cp-chips{grid-column:1/-1}.cp-chip{min-width:0;flex:1 1 40%}}
 .cp [hidden],.mobility-page [hidden],.subs-popover [hidden]{display:none!important}
+.ui-file-action.is-disabled{opacity:.5;pointer-events:none}
+.cp-photo-actions{display:inline-flex;align-items:center;gap:2px;margin-right:.4em;vertical-align:middle}
+.cp-photo-btn{position:relative;display:inline-flex;align-items:center;cursor:pointer}
+.cp-photo-btn input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%}
+.cp-photo-plus{font-size:.7rem;padding:2px 6px;border:1px dashed var(--us-gray-300);border-radius:6px;color:var(--us-gray-600)}
+.cp-photo-remove{width:20px;height:20px;padding:0;border-radius:50%;background:var(--us-red-50);color:var(--us-red-700);font-size:.8rem;line-height:1}
+.cp-avatar{position:relative}.cp-avatar-remove{position:absolute;top:0;right:-4px}

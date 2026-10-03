@@ -156,7 +156,7 @@ export function renderFleetProfile(profile = {}, context = {}) {
       <div class="field"><label>Grupo (tipo de veículo)</label><select name="vehicle_group">${fleetGroupOptions(fleet.vehicle_group)}</select></div>
       <div class="field"><label>Setor/Unidade</label><input name="sector_or_unit" value="${esc(fleet.sector_or_unit || '')}"></div>
     </div><div class="actions"><button type="submit" class="ui-btn ui-btn-primary">Salvar frota</button></div></form>
-    <div class="actions"><button type="button" class="ui-btn ui-btn-secondary" data-add-vehicle-fleet="${esc(fleet.id)}">Adicionar veículo</button><button type="button" class="ui-btn ui-btn-secondary" data-upload-fleet-photo="${esc(fleet.id)}">Adicionar foto</button></div>
+    <div class="actions"><button type="button" class="ui-btn ui-btn-secondary" data-add-vehicle-fleet="${esc(fleet.id)}">Adicionar veículo</button><label class="ui-btn ui-btn-secondary ui-file-action">Adicionar foto<input type="file" accept="image/jpeg,image/png,image/webp" data-fleet-photo="${esc(fleet.id)}"></label></div>
     <div class="table-wrap"><table class="ui-table"><thead><tr><th>Veículo</th><th>Placa</th><th>Marca</th><th>Modelo</th><th>Ano</th><th>Valor</th><th>Assinaturas</th><th>Ação</th></tr></thead><tbody>${vehicleRows}</tbody></table></div>
   </div>`;
 }

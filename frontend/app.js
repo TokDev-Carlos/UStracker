@@ -20,7 +20,7 @@ import { catalogPayload, renderCatalogEditForm, renderCatalogPage } from './page
 import { renderCommercialPage } from './pages/commercial.js';
 import { renderFinancePage } from './pages/finance.js';
 import { renderOverviewPage } from './pages/dashboard.js';
-import { renderFilesPage } from './pages/files.js';
+import { entityChoices, renderFilesPage } from './pages/files.js';
 
 const app=document.querySelector('#app');
 let csrf=''; let me=null; let current='dashboard'; let navigationSequence=0; let systemNavigationLease=null;
@@ -47,6 +47,18 @@ document.addEventListener('click',event=>{
   if(button){event.preventDefault();const query=button.dataset.subsVehicle?'vehicle_id='+encodeURIComponent(button.dataset.subsVehicle):'fleet_id='+encodeURIComponent(button.dataset.subsFleet);
     openSubscriptionPopover(button,()=>api('/mobility/subscriptions?'+query),{onCommercial:(tab,code)=>{closeOverlay();history.replaceState(null,'','#commercial/'+tab+(code?'/'+encodeURIComponent(code):''));show('commercial')}});return}
   if(!event.target.closest?.('#subsPopover'))closeSubscriptionPopover();
+});
+// R14 — one visible action: choosing the file uploads it; removal always asks for confirmation.
+async function refreshAfterMedia(){const profile=document.querySelector('.cp');if(profile){const clientId=profile.dataset.clientId;const tab=profile.dataset.cpActive;closeOverlay();if(clientId)await openClientProfile(clientId,{tab})}else if(typeof pageReload==='function')await pageReload()}
+document.addEventListener('change',event=>{
+  const input=event.target;const kind=input?.dataset?.vehiclePhoto?'vehicle':input?.dataset?.fleetPhoto?'fleet':null;if(!kind||!input.files?.[0])return;
+  const id=input.dataset.vehiclePhoto||input.dataset.fleetPhoto;const body=new FormData();body.append('file',input.files[0]);
+  runDomAction({key:`${kind}-photo:${id}`,scope:input.closest('label')||input,action:()=>apiForm(`/media/${kind}/${encodeURIComponent(id)}`,body),refresh:refreshAfterMedia,successMessage:'Foto enviada.',notify:toast}).finally(()=>{input.value=''});
+});
+document.addEventListener('click',event=>{
+  const button=event.target.closest?.('[data-remove-photo]');if(!button)return;event.preventDefault();
+  if(!confirm('Remover esta foto? Esta ação não pode ser desfeita.'))return;
+  runDomAction({key:`media-remove:${button.dataset.removePhoto}`,scope:button,action:()=>api('/media/'+encodeURIComponent(button.dataset.removePhoto),{method:'DELETE'}),refresh:refreshAfterMedia,successMessage:'Foto removida.',notify:toast});
 });
 document.addEventListener('keydown',event=>{if(event.key==='Escape'&&document.querySelector('#subsPopover')){event.stopPropagation();closeSubscriptionPopover()}},true);
 function formData(form){const o={};for(const [k,v] of new FormData(form).entries())o[k]=v;return o}
@@ -238,13 +250,6 @@ async function mobilityPage(filters={},lease=null){
     bindActionForm(edit,{key:`fleet-edit:${fleetId}`,action:async()=>{const payload=formData(edit);payload.expected_revision=Number(payload.expected_revision);await api('/fleets/'+encodeURIComponent(fleetId),{method:'PATCH',body:JSON.stringify(payload)});closeOverlay()},refresh:()=>mobilityPage(filters),successMessage:'Frota atualizada.',notify:toast});
     const addVehicle=drawer.querySelector('[data-add-vehicle-fleet]');
     if(addVehicle)addVehicle.onclick=()=>{closeOverlay();openVehicleDrawer({client_id:profile.fleet.client_id,client_name:profile.fleet.client_name||profile.company?.legal_name,fleet_id:fleetId})};
-    const upload=drawer.querySelector('[data-upload-fleet-photo]');
-    if(upload)upload.onclick=()=>{
-      const photoDrawer=openDrawer({title:'Foto da Frota',subtitle:profile.fleet.name||'',content:'<form id="fleetPhotoForm" data-auto-upload><div class="actions"><label class="ui-btn ui-btn-primary ui-file-action">Escolher e enviar foto<input name="file" type="file" accept="image/jpeg,image/png,image/webp" required></label></div></form>'});
-      const fleetPhotoForm=photoDrawer.querySelector('#fleetPhotoForm');
-      enableAutoUpload(fleetPhotoForm);
-      bindActionForm(fleetPhotoForm,{key:`fleet-photo:${fleetId}`,action:async()=>{const body=new FormData();body.append('file',new FormData(fleetPhotoForm).get('file'));await apiForm(`/media/fleet/${encodeURIComponent(fleetId)}`,body);closeOverlay()},refresh:()=>mobilityPage(filters),successMessage:'Foto da frota adicionada.',notify:toast});
-    };
     drawer.querySelectorAll('[data-open-vehicle-transfer]').forEach(button=>button.onclick=()=>{const vehicle=profile.vehicles.find(row=>row.id===button.dataset.openVehicleTransfer);if(vehicle)openTransfer(vehicle)});
   };
 
@@ -315,6 +320,17 @@ async function financePage(lease=null){
 async function filesPage(lease=null){
   const [media,attachments]=await Promise.all([api('/media'),api('/attachments')]);
   if(!content(renderFilesPage({media:media.items||[],attachments:attachments.items||[]}),lease))return;
+  // R14 — choose the record once (client search + record list); every upload/link below uses it.
+  const target=document.querySelector('#filesTargetForm');const targetSelect=target.querySelector('[name=target]');const targetLabel=document.querySelector('[data-files-target-label]');
+  target.onsubmit=event=>event.preventDefault();
+  const applyTarget=()=>{const [type,id]=String(targetSelect.value||'').split(':');document.querySelectorAll('#mediaForm,#attachmentUploadForm,#attachmentLinkForm').forEach(form=>{form.querySelector('[name=entity_type]').value=type||'';form.querySelector('[name=entity_id]').value=id||''});
+    const ok=Boolean(id);const mediaOk=ok&&type!=='subscription';
+    document.querySelector('#mediaForm input[type=file]').disabled=!mediaOk;document.querySelector('[data-needs-target="media"]').classList.toggle('is-disabled',!mediaOk);
+    document.querySelectorAll('#attachmentUploadForm input[type=file],#attachmentLinkForm button').forEach(el=>el.disabled=!ok);document.querySelector('#attachmentUploadForm [data-needs-target]').classList.toggle('is-disabled',!ok);
+    targetLabel.textContent=ok?'Selecionado: '+targetSelect.selectedOptions[0].textContent+(mediaOk?'':' (assinatura aceita apenas anexos)'):'Nenhum registro selecionado.'};
+  targetSelect.onchange=applyTarget;
+  bindEntityAutocomplete(target,{search:searchClientEntities,onSelection:async client=>{if(!client?.id){targetSelect.innerHTML='<option value="">Selecione o cliente primeiro</option>';targetSelect.disabled=true;applyTarget();return}
+    const profile=await api('/clients/'+encodeURIComponent(client.id)+'/profile');targetSelect.innerHTML='<option value="">Selecione o registro</option>'+entityChoices(profile).map(row=>`<option value="${esc(row.value)}">${esc(row.label)}</option>`).join('');targetSelect.disabled=false;targetSelect.value=`client:${client.id}`;applyTarget()}});
   const mediaForm=document.querySelector('#mediaForm');
   enableAutoUpload(mediaForm);
   bindActionForm(mediaForm,{key:'media-upload',action:async()=>{const fd=new FormData(mediaForm),type=fd.get('entity_type'),id=fd.get('entity_id'),file=fd.get('file'),retain=fd.get('retain_original')==='true';const body=new FormData();body.append('file',file);await apiForm(`/media/${encodeURIComponent(type)}/${encodeURIComponent(id)}?retain_original=${retain}`,body)},refresh:filesPage,successMessage:'Foto adicionada.',notify:toast});

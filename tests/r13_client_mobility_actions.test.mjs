@@ -22,11 +22,14 @@ test('ficha e cadastro de cliente usam ação compartilhada com refresh explíci
 });
 
 test('mobilidade usa ação compartilhada em criação, edição, upload e transferência', () => {
-  for (const key of ['vehicle-create', 'fleet-create', 'transfer-create', 'transfer-complete', 'transfer-cancel', 'fleet-edit', 'fleet-photo']) {
+  for (const key of ['vehicle-create', 'fleet-create', 'transfer-create', 'transfer-complete', 'transfer-cancel', 'fleet-edit']) {
     assert.match(mobility, new RegExp(key));
   }
-  assert.ok((mobility.match(/bindActionForm/g) || []).length >= 5);
+  assert.ok((mobility.match(/bindActionForm/g) || []).length >= 4); // fleet photo form replaced by the shared R14 handler
   assert.ok((mobility.match(/bindActionButton/g) || []).length >= 2);
   assert.match(mobility, /successMessage/);
   assert.match(mobility, /notify:toast/);
+  // R14: photo upload/removal moved to one shared, delegated single-action handler.
+  assert.match(app, /dataset\?\.fleetPhoto[\s\S]{0,400}runDomAction/);
+  assert.match(app, /data-remove-photo[\s\S]{0,200}confirm\(/);
 });

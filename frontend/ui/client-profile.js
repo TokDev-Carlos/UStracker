@@ -46,7 +46,7 @@ export function renderClientProfile(profile = {}, options = {}) {
   // Cabeçalho compacto
   const avatar = `<form id="clientPhotoForm" class="cp-avatar" data-auto-upload><label title="Trocar foto" aria-label="Trocar foto do cliente">${media
     ? `<img src="/api/v1/media/${esc(encodeURIComponent(media.id))}/thumb" alt="Foto do Cliente">`
-    : `<span class="cp-initials">${esc(initials(client.legal_name))}</span>`}<span class="cp-avatar-edit">Trocar</span><input name="file" type="file" accept="image/jpeg,image/png,image/webp" required></label></form>`;
+    : `<span class="cp-initials">${esc(initials(client.legal_name))}</span>`}<span class="cp-avatar-edit">${media ? 'Trocar' : 'Adicionar'}</span><input name="file" type="file" accept="image/jpeg,image/png,image/webp" required></label>${media ? `<button type="button" class="cp-photo-remove cp-avatar-remove" data-remove-photo="${esc(media.id)}" aria-label="Remover foto do cliente" title="Remover foto">×</button>` : ''}</form>`;
   const contact = [client.phone, client.email].filter(Boolean).join(' · ');
   const chips = [
     ['Veículos', vehicles.length], ['Frotas', fleets.length], ['Assinaturas ativas', activeSubs],
@@ -125,7 +125,8 @@ export function renderClientProfile(profile = {}, options = {}) {
     const company = fleet ? companyById.get(fleet.client_company_id) : null;
     const place = fleet ? `${esc(company?.trade_name || company?.legal_name || '—')} › ${esc(fleet.name)}` : '<span class="muted">Particular</span>';
     const thumb = profile.vehicle_media?.[vehicle.id]?.[0];
-    return `<tr><td>${thumb ? `<img class="cp-thumb" src="/api/v1/media/${esc(encodeURIComponent(thumb.id))}/thumb" alt="">` : ''}${vehicleCell(vehicle)}</td><td>${esc(vehicleDetail(vehicle) || '—')}</td><td>${place}</td><td class="subs-cell">${subscriptionCountCell(vehicle.subscriptions_count, { vehicleId: vehicle.id, label: vehicle.plate })}</td></tr>`;
+    const photo = `<span class="cp-photo-actions"><label class="cp-photo-btn" title="${thumb ? 'Trocar foto' : 'Adicionar foto'}" aria-label="${thumb ? 'Trocar foto do veículo' : 'Adicionar foto do veículo'}">${thumb ? `<img class="cp-thumb" src="/api/v1/media/${esc(encodeURIComponent(thumb.id))}/thumb" alt="">` : '<span class="cp-photo-plus">+ Foto</span>'}<input type="file" accept="image/jpeg,image/png,image/webp" data-vehicle-photo="${esc(vehicle.id)}"></label>${thumb ? `<button type="button" class="cp-photo-remove" data-remove-photo="${esc(thumb.id)}" aria-label="Remover foto do veículo" title="Remover foto">×</button>` : ''}</span>`;
+    return `<tr><td>${photo}${vehicleCell(vehicle)}</td><td>${esc(vehicleDetail(vehicle) || '—')}</td><td>${place}</td><td class="subs-cell">${subscriptionCountCell(vehicle.subscriptions_count, { vehicleId: vehicle.id, label: vehicle.plate })}</td></tr>`;
   });
   const fleetRows = fleets.map(fleet => {
     const company = companyById.get(fleet.client_company_id);
@@ -167,7 +168,7 @@ export function renderClientProfile(profile = {}, options = {}) {
   const signatureForm = subscriptions.length ? `<form id="clientSignatureForm" class="cp-inline" data-auto-upload><div class="field"><label>Anexar assinatura eletrônica a</label><select name="subscription_id" required><option value="">Selecione a assinatura</option>${subscriptions.map(sub => `<option value="${esc(sub.id)}">${esc(sub.code || 'Assinatura')}</option>`).join('')}</select></div><label class="ui-btn ui-btn-secondary ui-file-action">Escolher e anexar arquivo<input type="file" name="file" accept=".jpg,.jpeg,.png,.webp,.pdf" required></label></form>` : '<p class="muted">Cadastre uma assinatura antes de anexar o documento eletrônico.</p>';
   const arquivos = panel('arquivos', 'Arquivos', '', signatureForm + table(['Arquivo', 'Vinculado a', 'Data'], fileRows, 'Nenhum arquivo anexado.'));
 
-  const html = `<div class="cp" data-cp-active="${esc(activeTab)}">${head}${journey}${tabs}${resumo}${dados}${empresas}${veiculos}${assinaturas}${financeiro}${arquivos}</div>`;
+  const html = `<div class="cp" data-cp-active="${esc(activeTab)}" data-client-id="${esc(client.id || '')}">${head}${journey}${tabs}${resumo}${dados}${empresas}${veiculos}${assinaturas}${financeiro}${arquivos}</div>`;
   return html.replace(`data-cp-panel="${activeTab}" role="tabpanel" hidden`, `data-cp-panel="${activeTab}" role="tabpanel"`);
 }
 
