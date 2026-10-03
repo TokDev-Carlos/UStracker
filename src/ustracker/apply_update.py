@@ -87,7 +87,9 @@ def apply(root: Path, package: Path) -> dict:
     try:
         safe_extract(package,stage,public)
         journal['to_schema']=_schema_version(stage)
-        if journal['to_schema'] < journal['from_schema'] or journal['to_schema'] > journal['from_schema'] + 1:
+        # R22: migrations are sequential, additive and reentrant (db.py), so forward jumps (e.g. 9→11)
+        # are applied step by step on next authenticated open. Downgrades are never allowed.
+        if journal['to_schema'] < journal['from_schema']:
             raise RuntimeError('update schema is not compatible with the installed schema')
         _write_journal(root,journal,'STAGED')
         journal['migration_mode']='AUTHENTICATED_RUNTIME_ON_NEXT_OPEN'; _write_journal(root,journal,'MIGRATED')
