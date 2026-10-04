@@ -33,5 +33,7 @@ test('mobilidade usa ação compartilhada em criação, edição, upload e movim
   assert.match(mobility, /notify:toast/);
   // R14: photo upload/removal moved to one shared, delegated single-action handler.
   assert.match(app, /dataset\?\.fleetPhoto[\s\S]{0,400}runDomAction/);
-  assert.match(app, /data-remove-photo[\s\S]{0,200}confirm\(/);
+  // V-05: "×" remove at once (photo goes to the 14-day Lixeira, toast offers Desfazer) — no browser confirm()
+  assert.match(app, /data-remove-photo[\s\S]{0,400}undoToast\(/);
+  assert.doesNotMatch(app, /[^.\w]confirm\(/);
 });

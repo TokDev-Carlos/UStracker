@@ -5,10 +5,11 @@ import sqlite3
 import threading
 import unicodedata
 from contextlib import closing, contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator
 
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 14
 
 
 def fold_text(value) -> str:
@@ -386,6 +387,12 @@ class Database:
                     payload TEXT NOT NULL DEFAULT '{}', deleted_at TEXT NOT NULL, purge_after TEXT NOT NULL,
                     restored_at TEXT, purged_at TEXT, actor_slot INTEGER)''')
                 con.execute("CREATE INDEX IF NOT EXISTS ix_trash_due ON trash(purged_at,restored_at,purge_after)")
+            if current_version < 14:
+                # V-01: no orphan fleets/vehicles — archived clients take their fleets and vehicles with them.
+                ts = datetime.now(timezone.utc).isoformat()
+                con.execute("UPDATE vehicles SET archived=1,revision=revision+1,updated_at=? WHERE archived=0 AND client_id IN (SELECT id FROM clients WHERE archived=1)", (ts,))
+                con.execute("UPDATE fleets SET archived=1,revision=revision+1,updated_at=? WHERE archived=0 AND client_id IN (SELECT id FROM clients WHERE archived=1)", (ts,))
+                con.execute("UPDATE ownerships SET effective_to=? WHERE effective_to IS NULL AND vehicle_id IN (SELECT id FROM vehicles WHERE archived=1)", (ts[:10],))
             # R23: indexes on tables created by migrations (idempotent, every open)
             con.execute("CREATE INDEX IF NOT EXISTS ix_logical_codes_client ON logical_codes(client_id,code)")
             con.execute("INSERT OR REPLACE INTO meta(key,value) VALUES('schema_version',?)", (str(SCHEMA_VERSION),))

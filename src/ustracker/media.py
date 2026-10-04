@@ -161,7 +161,7 @@ def remove(root: Path | str, db: Database, actor: int, mid: str) -> dict:
     from .trash import put as trash_put
     label = {'client': 'Foto do cliente', 'vehicle': 'Foto do veículo', 'fleet': 'Foto da frota'}.get(row['entity_type'], 'Foto')
     with db.transaction() as con:
-        trash_put(con, actor, 'media', mid, label, {'row': dict(row)})
+        trash_id = trash_put(con, actor, 'media', mid, label, {'row': dict(row)})
         con.execute('DELETE FROM media WHERE id=?', (mid,))
         audit(con, actor, 'MEDIA_DELETE', 'media', mid, public, None)
-    return {'id': mid, 'removed': True}
+    return {'id': mid, 'removed': True, 'trash_id': trash_id}

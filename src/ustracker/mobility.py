@@ -159,6 +159,10 @@ def create_vehicle(db: Database, actor: int, p: dict) -> dict:
     with db.transaction() as con:
         if not con.execute('SELECT id FROM clients WHERE id=? AND archived=0', (client_id,)).fetchone():
             raise ValueError('client not found')
+        from .mobility_delete import PlateExists, plate_owner
+        owner = plate_owner(con, plate)
+        if owner:
+            raise PlateExists(owner)
         if fleet_id:
             _validate_fleet_for_client(con, fleet_id, client_id, vehicle_type=vtype)
             active = int(con.execute('SELECT COUNT(*) FROM vehicles WHERE fleet_id=? AND archived=0', (fleet_id,)).fetchone()[0])

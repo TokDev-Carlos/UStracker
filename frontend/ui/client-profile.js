@@ -120,22 +120,29 @@ export function renderClientProfile(profile = {}, options = {}) {
     : '<p class="muted cp-form" id="clientFleetForm" hidden>Para criar uma frota, adicione antes uma empresa na aba Empresas.</p>';
   const fleetById = new Map(fleets.map(fleet => [fleet.id, fleet]));
   const companyById = new Map(companies.map(company => [company.id, company]));
+  // V-04 — clean, aligned columns; the photo lives only in the side card (with "×" to remove).
   const vehicleRows = vehicles.map(vehicle => {
     const fleet = fleetById.get(vehicle.fleet_id);
     const company = fleet ? companyById.get(fleet.client_company_id) : null;
     const place = fleet ? `${esc(company?.trade_name || company?.legal_name || '—')} › ${esc(fleet.name)}` : '<span class="muted">Particular</span>';
-    const thumb = profile.vehicle_media?.[vehicle.id]?.[0];
-    const photo = `<span class="cp-photo-actions"><label class="cp-photo-btn" title="${thumb ? 'Trocar foto' : 'Adicionar foto'}" aria-label="${thumb ? 'Trocar foto do veículo' : 'Adicionar foto do veículo'}">${thumb ? `<img class="cp-thumb" src="/api/v1/media/${esc(encodeURIComponent(thumb.id))}/thumb" alt="">` : '<span class="cp-photo-plus">+ Foto</span>'}<input type="file" accept="image/jpeg,image/png,image/webp" data-vehicle-photo="${esc(vehicle.id)}"></label>${thumb ? `<button type="button" class="cp-photo-remove" data-remove-photo="${esc(thumb.id)}" aria-label="Remover foto do veículo" title="Remover foto">×</button>` : ''}</span>`;
-    return `<tr data-cp-select-vehicle="${esc(vehicle.id)}" class="cp-vehicle-row" tabindex="0" title="Clique para ver a foto"><td>${photo}${vehicleCell(vehicle)}</td><td>${esc(vehicleDetail(vehicle) || '—')}</td><td>${place}</td><td class="subs-cell">${subscriptionCountCell(vehicle.subscriptions_count, { vehicleId: vehicle.id, label: vehicle.plate })}</td><td><button type="button" class="ui-btn ui-btn-subtle ui-btn-sm" data-open-vehicle-transfer="${esc(vehicle.id)}">Mover</button></td></tr>`;
+    const name = [vehicle.brand, vehicle.model].filter(Boolean).join(' ');
+    const label = [vehicle.plate, name].filter(Boolean).join(' · ');
+    return `<tr data-cp-select-vehicle="${esc(vehicle.id)}" class="cp-vehicle-row" tabindex="0" title="Clique para ver a foto">
+      <td class="cp-plate"><strong>${esc(vehicle.plate || '—')}</strong>${codeTag(vehicle.code)}</td>
+      <td>${esc(name || '—')}${vehicle.year ? ` <span class="muted">${esc(vehicle.year)}</span>` : ''}</td>
+      <td>${esc(vehicleCategory(vehicle.type, vehicle.category_label))}</td>
+      <td>${place}</td>
+      <td class="subs-cell">${subscriptionCountCell(vehicle.subscriptions_count, { vehicleId: vehicle.id, label: vehicle.plate })}</td>
+      <td><div class="row-actions"><button type="button" class="ui-btn ui-btn-subtle ui-btn-sm" data-open-vehicle-transfer="${esc(vehicle.id)}">Mover</button><button type="button" class="ui-btn ui-btn-subtle ui-btn-sm ui-btn-del" data-delete-vehicle="${esc(vehicle.id)}" data-label="${esc(label)}">Excluir</button></div></td></tr>`;
   });
   const fleetRows = fleets.map(fleet => {
     const company = companyById.get(fleet.client_company_id);
-    return `<tr><td><strong>${esc(fleet.name)}</strong> ${codeTag(fleet.code)}</td><td>${esc(company?.trade_name || company?.legal_name || '—')}</td><td>${esc(fleet.vehicle_group_label || 'Misto')}</td><td class="money">${Number(fleet.vehicles_count || 0)}</td><td class="subs-cell">${subscriptionCountCell(fleet.subscriptions_count, { fleetId: fleet.id, label: fleet.name })}</td></tr>`;
+    return `<tr><td><strong>${esc(fleet.name)}</strong> ${codeTag(fleet.code)}</td><td>${esc(company?.trade_name || company?.legal_name || '—')}</td><td>${esc(fleet.vehicle_group_label || 'Misto')}</td><td class="money">${Number(fleet.vehicles_count || 0)}</td><td class="subs-cell">${subscriptionCountCell(fleet.subscriptions_count, { fleetId: fleet.id, label: fleet.name })}</td><td><button type="button" class="ui-btn ui-btn-subtle ui-btn-sm ui-btn-del" data-delete-fleet="${esc(fleet.id)}" data-label="${esc(fleet.name)}" data-vehicles="${Number(fleet.vehicles_count || 0)}">Excluir</button></td></tr>`;
   });
   const veiculos = panel('veiculos', 'Veículos e Frotas', addButton('clientVehicleForm', 'Veículo') + addButton('clientFleetForm', 'Frota'),
     `${vehicleForm}${fleetForm}${renderVehicleBreakdown(summary.vehicle_breakdown || {}, { title: 'Veículos', compact: true })}
-     <h4 class="cp-sub">Veículos</h4>${table(['Veículo', 'Marca/Modelo · Placa', 'Empresa › Frota', 'Assinaturas', ''], vehicleRows, 'Nenhum veículo cadastrado.')}
-     <h4 class="cp-sub">Frotas</h4>${table(['Frota', 'Empresa', 'Grupo', 'Veículos', 'Assinaturas'], fleetRows, 'Nenhuma frota cadastrada.')}`);
+     <h4 class="cp-sub">Veículos</h4>${table(['Placa', 'Marca/Modelo', 'Tipo', 'Empresa › Frota', 'Assinaturas', ''], vehicleRows, 'Nenhum veículo cadastrado.')}
+     <h4 class="cp-sub">Frotas</h4>${table(['Frota', 'Empresa', 'Grupo', 'Veículos', 'Assinaturas', ''], fleetRows, 'Nenhuma frota cadastrada.')}`);
 
   // Assinaturas e compras
   const subRows = subscriptions.map(sub => {
@@ -165,7 +172,7 @@ export function renderClientProfile(profile = {}, options = {}) {
   const fileRows = attachments.map(attachment => `<tr><td>${attachment.origin === 'LINK'
       ? `<a href="${esc(attachment.url)}" target="_blank" rel="noopener">${esc(attachment.filename || 'Abrir link')}</a>`
       : `<a href="/api/v1/attachments/${esc(encodeURIComponent(attachment.id))}">${esc(attachment.filename || 'Baixar')}</a>`}</td><td>${esc({ client: 'Cliente', subscription: 'Assinatura', vehicle: 'Veículo', fleet: 'Frota' }[attachment.entity_type] || attachment.entity_type)}</td><td>${esc(formatDateBR(attachment.created_at, true) || '')}</td></tr>`);
-  const signatureForm = subscriptions.length ? `<form id="clientSignatureForm" class="cp-inline" data-auto-upload><div class="field"><label>Anexar assinatura eletrônica a</label><select name="subscription_id" required><option value="">Selecione a assinatura</option>${subscriptions.map(sub => `<option value="${esc(sub.id)}">${esc(sub.code || 'Assinatura')}</option>`).join('')}</select></div><label class="ui-btn ui-btn-secondary ui-file-action">Escolher e anexar arquivo<input type="file" name="file" accept=".jpg,.jpeg,.png,.webp,.pdf" required></label></form>` : '<p class="muted">Cadastre uma assinatura antes de anexar o documento eletrônico.</p>';
+  const signatureForm = subscriptions.length ? `<form id="clientSignatureForm" class="cp-inline" data-auto-upload><div class="field"><label>Anexar contrato assinado do plano</label><select name="subscription_id" required><option value="">Selecione o plano (assinatura)</option>${subscriptions.map(sub => `<option value="${esc(sub.id)}">${esc(sub.code || 'Assinatura')}</option>`).join('')}</select></div><label class="ui-btn ui-btn-secondary ui-file-action">Escolher e anexar arquivo<input type="file" name="file" accept=".jpg,.jpeg,.png,.webp,.pdf" required></label></form>` : '<p class="muted">Cadastre um plano (assinatura) antes de anexar o contrato assinado.</p>';
   const arquivos = panel('arquivos', 'Arquivos', '', signatureForm + table(['Arquivo', 'Vinculado a', 'Data'], fileRows, 'Nenhum arquivo anexado.'));
 
   // AJ-09 — photos live in their own column: client on top, selected vehicle at the bottom.
@@ -174,10 +181,10 @@ export function renderClientProfile(profile = {}, options = {}) {
   const vehicleCards = vehicles.map(vehicle => {
     const media = profile.vehicle_media?.[vehicle.id]?.[0];
     return `<figure class="cp-vehicle-card" data-cp-vehicle-card="${esc(vehicle.id)}"${vehicle.id === selectedVehicle ? '' : ' hidden'}>
-      <label class="cp-vehicle-photo" title="${media ? 'Trocar foto do veículo' : 'Adicionar foto do veículo'}">${media ? `<img src="/api/v1/media/${esc(encodeURIComponent(media.id))}/operational" alt="Foto do veículo">` : `<span class="cp-vehicle-empty">${vehicleCell(vehicle)}<small>+ Adicionar foto</small></span>`}<input type="file" accept="image/jpeg,image/png,image/webp" data-vehicle-photo="${esc(vehicle.id)}" aria-label="Foto do veículo"></label>
+      <div class="cp-vehicle-frame"><label class="cp-vehicle-photo" title="${media ? 'Trocar foto do veículo' : 'Adicionar foto do veículo'}">${media ? `<img src="/api/v1/media/${esc(encodeURIComponent(media.id))}/operational" alt="Foto do veículo">` : `<span class="cp-vehicle-empty">${vehicleCell(vehicle)}</span>`}<span class="cp-avatar-edit">${media ? 'Trocar foto' : '+ Adicionar foto'}</span><input type="file" accept="image/jpeg,image/png,image/webp" data-vehicle-photo="${esc(vehicle.id)}" aria-label="Foto do veículo"></label>${media ? `<button type="button" class="cp-photo-remove cp-vehicle-remove" data-remove-photo="${esc(media.id)}" aria-label="Remover foto do veículo" title="Remover foto">×</button>` : ''}</div>
       <figcaption><strong>${esc([vehicle.brand, vehicle.model].filter(Boolean).join(' ') || vehicleCategory(vehicle.type, vehicle.category_label))}</strong><span>${esc(vehicle.plate || '')} ${codeTag(vehicle.code)}</span></figcaption></figure>`;
   }).join('');
-  const side = `<aside class="cp-side"><div class="cp-photo-card">${avatar}</div><div class="cp-side-fill"></div>${vehicles.length ? `<div class="cp-vehicle-slot"><span class="cp-side-label">Veículo selecionado</span>${vehicleCards}${vehicles.length > 1 ? '<p class="muted cp-side-hint">Clique em um veículo na aba Veículos para trocar.</p>' : ''}</div>` : ''}</aside>`;
+  const side = `<aside class="cp-side"><div class="cp-photo-card">${avatar}</div><div class="cp-side-fill"></div>${vehicles.length ? `<div class="cp-vehicle-slot"><span class="cp-side-label">Veículo selecionado</span>${vehicleCards}${vehicles.length > 1 ? '<p class="muted cp-side-hint">Clique em um veículo da lista para ver a foto dele.</p>' : ''}</div>` : ''}</aside>`;
   const html = `<div class="cp" data-cp-active="${esc(activeTab)}" data-client-id="${esc(client.id || '')}">${side}<div class="cp-main">${head}${journey}${tabs}${resumo}${dados}${empresas}${veiculos}${assinaturas}${financeiro}${arquivos}</div></div>`;
   return html.replace(`data-cp-panel="${activeTab}" role="tabpanel" hidden`, `data-cp-panel="${activeTab}" role="tabpanel"`);
 }
@@ -212,7 +219,7 @@ export function bindClientProfileUi(root) {
     root.querySelectorAll('[data-cp-select-vehicle]').forEach(row => row.classList.toggle('is-selected', row.dataset.cpSelectVehicle === id));
   };
   root.querySelectorAll('[data-cp-select-vehicle]').forEach(row => {
-    row.addEventListener('click', event => { if (!event.target.closest('input,label,a')) selectVehicle(row.dataset.cpSelectVehicle); });
+    row.addEventListener('click', event => { if (!event.target.closest('input,label,a,button')) selectVehicle(row.dataset.cpSelectVehicle); });
     row.addEventListener('keydown', event => { if (event.key === 'Enter' && event.target === row) selectVehicle(row.dataset.cpSelectVehicle); });
   });
   const first = root.querySelector('[data-cp-vehicle-card]:not([hidden])');

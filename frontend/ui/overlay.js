@@ -18,7 +18,7 @@ export function openDrawer({ title, subtitle = '', content = '', actions = '', d
   return host;
 }
 
-export function toast({ type = 'success', message, documentRef = globalThis.document }) {
+export function toast({ type = 'success', message, action = null, documentRef = globalThis.document }) {
   let region = documentRef.querySelector('#uiToasts');
   if (!region) {
     region = documentRef.createElement('div');
@@ -34,6 +34,14 @@ export function toast({ type = 'success', message, documentRef = globalThis.docu
   region.append(item);
   const leave = () => { item.classList.add('is-leaving'); globalThis.setTimeout(() => item.remove(), 220); };
   item.onclick = leave;
-  globalThis.setTimeout(leave, type === 'error' ? 6000 : 3500);
+  if (action?.label && typeof action.onClick === 'function') {
+    const button = documentRef.createElement('button');
+    button.type = 'button';
+    button.className = 'ui-toast-action';
+    button.textContent = action.label;
+    button.onclick = event => { event.stopPropagation(); leave(); action.onClick(); };
+    item.append(button);
+  }
+  globalThis.setTimeout(leave, type === 'error' ? 6000 : action ? 8000 : 3500);
   return item;
 }

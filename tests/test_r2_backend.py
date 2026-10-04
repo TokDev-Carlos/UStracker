@@ -43,7 +43,7 @@ class R2BackendTests(unittest.TestCase):
         upgraded = Database(Path(self.tmp.name), 'test', b'0' * 32)
         row = upgraded.one('SELECT billing_cycle FROM subscriptions')
         self.assertEqual(row[0], 'ANNUAL')
-        self.assertEqual(upgraded.one("SELECT value FROM meta WHERE key='schema_version'")[0], '13')
+        self.assertEqual(upgraded.one("SELECT value FROM meta WHERE key='schema_version'")[0], '14')
         self.assertIsNotNone(upgraded.one("SELECT name FROM sqlite_master WHERE name='direct_sales'"))
 
     def test_package_metadata_is_synchronized_from_canonical_version(self):

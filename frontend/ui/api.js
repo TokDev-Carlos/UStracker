@@ -1,10 +1,12 @@
 import { messagePtBR } from './pt-br.js';
 
 export class ApiError extends Error {
-  constructor(status, message) {
+  constructor(status, message, data = null) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
+    this.code = data?.error || data?.detail?.code || '';
+    this.data = data;
   }
 }
 
@@ -15,6 +17,7 @@ const responseData = async response => {
 };
 const errorMessage = data => {
   if (data?.detail?.message && String(data.detail.code || '').startsWith('CLOUD_')) return `Nuvem: ${data.detail.message}`;
+  if (data?.error === 'PLATE_EXISTS' && data.vehicle) return `Placa ${data.vehicle.plate} já cadastrada (${data.vehicle.client_name || 'outro cliente'}).`;
   const message = typeof data === 'string' ? data : data?.detail?.code || data?.detail || data?.error || JSON.stringify(data);
   return messagePtBR(message);
 };
@@ -55,7 +58,7 @@ export function createApi({ fetchImpl, documentRef, operationId, csrfState } = {
         unauthorizedHandler();
         throw new ApiError(401, 'Sessão encerrada');
       }
-      if (!response.ok) throw new ApiError(response.status, errorMessage(data));
+      if (!response.ok) throw new ApiError(response.status, errorMessage(data), typeof data === 'object' ? data : null);
       return data;
     })();
     if (mutationKey) {
@@ -68,7 +71,7 @@ export function createApi({ fetchImpl, documentRef, operationId, csrfState } = {
   const acquireCsrf = async () => {
     const response = await fetchFor()('/api/v1/auth/csrf');
     const data = await responseData(response);
-    if (!response.ok) throw new ApiError(response.status, errorMessage(data));
+    if (!response.ok) throw new ApiError(response.status, errorMessage(data), typeof data === 'object' ? data : null);
     setCsrf(data.csrf);
     return getCsrf();
   };
@@ -88,7 +91,7 @@ export function createApi({ fetchImpl, documentRef, operationId, csrfState } = {
         unauthorizedHandler();
         throw new ApiError(401, 'Sessão encerrada');
       }
-      if (!response.ok) throw new ApiError(response.status, errorMessage(data));
+      if (!response.ok) throw new ApiError(response.status, errorMessage(data), typeof data === 'object' ? data : null);
       return data;
     })();
     mutationsInFlight.set(mutationKey, promise);

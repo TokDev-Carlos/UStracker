@@ -1,4 +1,7 @@
+import { confirmDialog } from './dialog.js';
+
 const normalizeError = error => error?.message || 'Não foi possível concluir a ação.';
+const defaultConfirm = (text, options = {}) => (globalThis.document?.body ? confirmDialog(text, { danger: options.danger !== false, okLabel: 'Confirmar' }) : (globalThis.confirm ? globalThis.confirm(text) : false));
 
 export function createActionRunner({ onState = () => {} } = {}) {
   const inFlight = new Map();
@@ -58,11 +61,19 @@ const domInFlight = new Map();
 
 export function runDomAction({
   key, scope, action, refresh, successMessage, notify = () => {}, runner = defaultRunner, confirm: confirmText = '',
-  confirmFn = globalThis.confirm,
+  confirmFn = defaultConfirm, danger = true,
 } = {}) {
   if (domInFlight.has(key)) return domInFlight.get(key);
   // R19: destructive actions declare `confirm`; cancelling performs no request and no notification.
-  if (confirmText && typeof confirmFn === 'function' && !confirmFn(confirmText)) return Promise.resolve({ ok: false, cancelled: true });
+  // V-05: the question is an in-app dialog (async) instead of the browser's confirm().
+  if (confirmText && typeof confirmFn === 'function') {
+    const asking = Promise.resolve(confirmFn(confirmText, { danger })).then(ok => ok
+      ? (domInFlight.delete(key), runDomAction({ key, scope, action, refresh, successMessage, notify, runner }))
+      : { ok: false, cancelled: true });
+    domInFlight.set(key, asking);
+    asking.finally(() => { if (domInFlight.get(key) === asking) domInFlight.delete(key); });
+    return asking;
+  }
   const controls = [
     ...(scope?.matches?.('button, input[type="submit"]') ? [scope] : []),
     ...(scope?.querySelectorAll?.('button, input[type="submit"]') || []),

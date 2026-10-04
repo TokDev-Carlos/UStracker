@@ -44,6 +44,7 @@ from .extensions import (
     update_catalog,
     verify_audit_chain,
 )
+from .mobility_delete import PlateExists, check_plate, delete_fleet, delete_vehicle
 from .mobility import (
     cancel_transfer_case,
     complete_transfer_case,
@@ -150,13 +151,18 @@ def create_app(root: Path | str) -> FastAPI:
     def _err(request: Request, code: str, detail: str):
         return {'error': code, 'detail': detail, 'correlation_id': getattr(request.state, 'correlation_id', '')}
 
+    @app.exception_handler(PlateExists)
+    async def plate_exists(request: Request, exc: PlateExists):
+        body = _err(request, 'PLATE_EXISTS', str(exc)); body['vehicle'] = exc.info
+        return JSONResponse(body, status_code=409)
+
     @app.exception_handler(ValueError)
     async def value_error(request: Request, exc: ValueError):
         return JSONResponse(_err(request, 'VALIDATION', str(exc)), status_code=422)
 
     @app.exception_handler(KeyError)
     async def key_error(request: Request, exc: KeyError):
-        return JSONResponse(_err(request, 'NOT_FOUND', str(exc)), status_code=404)
+        return JSONResponse(_err(request, 'NOT_FOUND', str(exc.args[0]) if exc.args else 'not found'), status_code=404)
 
     @app.exception_handler(PermissionError)
     async def permission_error(request: Request, exc: PermissionError):
@@ -432,6 +438,20 @@ def create_app(root: Path | str) -> FastAPI:
     def vehicles_create(request: Request, p: dict = Body(...)):
         session = session_required(request, True)
         return mutation(request, session, 'POST /vehicles', p, lambda db: create_vehicle(db, session.slot, p))
+
+    @app.get('/api/v1/vehicles/plate-check')
+    def vehicles_plate_check(request: Request, plate: str = ''):
+        return check_plate(get_db(session_required(request, True)), plate)
+
+    @app.delete('/api/v1/vehicles/{vid}')
+    def vehicles_delete(vid: str, request: Request):
+        session = session_required(request, True)
+        return mutation(request, session, f'DELETE /vehicles/{vid}', {}, lambda db: delete_vehicle(db, session.slot, vid))
+
+    @app.delete('/api/v1/fleets/{fid}')
+    def fleets_delete(fid: str, request: Request, mode: str = 'detach'):
+        session = session_required(request, True)
+        return mutation(request, session, f'DELETE /fleets/{fid}', {'mode': mode}, lambda db: delete_fleet(db, session.slot, fid, mode))
 
     @app.get('/api/v1/vehicles/{vid}/ownerships')
     def vehicle_ownerships(vid: str, request: Request):

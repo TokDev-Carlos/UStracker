@@ -283,7 +283,9 @@ def archive_clients(db:Database, actor:int, client_ids:list[str])->dict:
             before=dict(row)
             con.execute("UPDATE clients SET archived=1,status='INACTIVE',revision=revision+1,updated_at=? WHERE id=?",(ts,cid))
             from .trash import put as trash_put
-            trash_put(con,actor,'client',cid,f"{row['code'] or ''} {row['legal_name']}".strip(),{'id':cid})
+            from .mobility_delete import cascade_client_archive
+            taken=cascade_client_archive(con,cid,ts)
+            trash_put(con,actor,'client',cid,f"{row['code'] or ''} {row['legal_name']}".strip(),{'id':cid,**taken})
             after=dict(con.execute('SELECT * FROM clients WHERE id=?',(cid,)).fetchone())
             audit(con,actor,'CLIENT_ARCHIVE','client',cid,before,after)
             archived.append(cid)

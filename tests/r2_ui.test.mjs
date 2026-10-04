@@ -82,7 +82,10 @@ test('A ficha do cliente usa abas enxutas (AJ-07) e reutiliza miniaturas', async
   assert.deepEqual(tabs, ['Resumo', 'Dados Básicos', 'Empresas', 'Veículos e Frotas', 'Assinaturas e Compras', 'Financeiro', 'Arquivos']);
   assert.match(html, /\/api\/v1\/media\/m1\/operational/); // AJ-09: large client photo in the side column
   assert.match(html, /data-cp-vehicle-card="v1"/);
-  assert.match(html, /\/api\/v1\/media\/m2\/thumb/);
+  // V-04: no mini thumbnail in the vehicle rows; the side card shows the photo with an × to remove it
+  assert.doesNotMatch(html, /\/api\/v1\/media\/m2\/thumb/);
+  assert.match(html, /media\/m2\/operational[\s\S]{0,400}data-remove-photo="m2"/);
+  assert.match(html, /data-delete-vehicle="v1"/);
   assert.match(html, /&lt;Empresa&gt;/);
   assert.doesNotMatch(html, /<Empresa>/);
   assert.match(html, /<form id="clientBasicsForm" class="cp-form" hidden>/);

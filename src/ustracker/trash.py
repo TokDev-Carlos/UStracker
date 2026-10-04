@@ -8,7 +8,8 @@ Kinds:
 * ``expense``  — expense row (only deletable when unpaid)
 * ``catalog``  — never-used plan/product + cost components + price history
 * ``media``    — photo row; the encrypted files stay on disk until purge
-* ``client``   — archived client; restore = unarchive. Clients keep their financial history,
+* ``vehicle`` / ``fleet`` — archived vehicle/fleet (V-01); restore = unarchive.
+* ``client``   — archived client (takes its fleets and vehicles along); restore = unarchive. Clients keep their financial history,
                  so after 14 days they leave the trash but stay archived (never hard-deleted).
 """
 from __future__ import annotations
@@ -23,7 +24,7 @@ from .services import audit, now, uid
 
 RETENTION_DAYS = 14
 UTC = timezone.utc
-KIND_LABEL = {'expense': 'Despesa', 'catalog': 'Plano/Produto', 'media': 'Foto', 'client': 'Cliente'}
+KIND_LABEL = {'expense': 'Despesa', 'catalog': 'Plano/Produto', 'media': 'Foto', 'client': 'Cliente', 'vehicle': 'Veículo', 'fleet': 'Frota'}
 
 
 def _iso(dt: datetime) -> str:
@@ -68,6 +69,7 @@ def restore(db: Database, actor: int, trash_id: str) -> dict:
             raise ValueError('trash item is no longer restorable')
         payload = json.loads(item['payload'] or '{}')
         kind = item['entity_type']
+        extra: dict = {}
         if kind == 'expense':
             _insert(con, 'expenses', payload['row'])
         elif kind == 'catalog':
@@ -84,11 +86,21 @@ def restore(db: Database, actor: int, trash_id: str) -> dict:
             _insert(con, 'media', payload['row'])
         elif kind == 'client':
             con.execute("UPDATE clients SET archived=0,status='ACTIVE',revision=revision+1,updated_at=? WHERE id=?", (now(), item['entity_id']))
+            from .mobility_delete import restore_mobility
+            extra = restore_mobility(con, payload, client_id=item['entity_id'])
+        elif kind in ('vehicle', 'fleet'):
+            row = con.execute('SELECT client_id FROM %s WHERE id=?' % ('vehicles' if kind == 'vehicle' else 'fleets'), (item['entity_id'],)).fetchone()
+            if row and con.execute('SELECT 1 FROM clients WHERE id=? AND archived=1', (row['client_id'],)).fetchone():
+                raise ValueError('Restaure antes o cliente deste item (ele também está na Lixeira ou arquivado).')
+            from .mobility_delete import restore_mobility
+            extra = restore_mobility(con, payload)
+            if kind == 'vehicle' and extra['plates_in_use']:
+                raise ValueError('Placa ' + extra['plates_in_use'][0] + ' já foi cadastrada em outro veículo; não é possível restaurar.')
         else:
             raise ValueError('unknown trash kind')
         con.execute('UPDATE trash SET restored_at=? WHERE id=?', (now(), trash_id))
         audit(con, actor, 'TRASH_RESTORE', kind, item['entity_id'], None, {'trash_id': trash_id})
-        return {'id': trash_id, 'entity_type': kind, 'entity_id': item['entity_id'], 'restored': True}
+        return {'id': trash_id, 'entity_type': kind, 'entity_id': item['entity_id'], 'restored': True, **extra}
 
 
 def purge_due(root: Path | str, db: Database, actor: int = 0, at: datetime | None = None) -> dict:

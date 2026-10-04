@@ -1,5 +1,8 @@
 // R13 — backend validation messages in pt-BR (user-facing). Technical/internal messages stay as fallback text.
 export const ERROR_MESSAGES = Object.freeze({
+  'mode must be detach or with_vehicles': 'Escolha o que fazer com os veículos da frota.',
+  'trash item not found': 'Item da Lixeira não encontrado.',
+  'trash item is no longer restorable': 'Este item não pode mais ser restaurado.',
   'X-Operation-ID is required for mutating operations': 'Operação sem identificação. Recarregue a tela e tente novamente.',
   'active catalog item not found': 'Produto ativo não encontrado no catálogo.',
   'active monthly plan not found': 'Plano mensal ativo não encontrado.',

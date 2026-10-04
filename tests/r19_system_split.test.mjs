@@ -14,7 +14,7 @@ test('R19: Administração é a aba inicial e diagnósticos ficam em Desenvolvim
 
 test('R19: ações destrutivas pedem confirmação explícita', async () => {
   for (const key of ['sandbox-reset', 'admin-reset']) assert.match(app, new RegExp(`key:'${key}',confirm:'`));
-  assert.match(app, /confirm\('Restaurar este backup/);
+  assert.match(app, /confirmDialog\('Restaurar este backup/);
   let called = false;
   const result = await runDomAction({ key: 'x', confirm: 'Apagar?', confirmFn: () => false, action: () => { called = true; } });
   assert.equal(called, false);

@@ -1,5 +1,5 @@
 import { bindEntityAutocomplete, renderEntityAutocomplete } from './entity-autocomplete.js';
-import { vehicleCategory, vehicleRef } from './logical-codes.js';
+import { vehicleCategory } from './logical-codes.js';
 
 const escapeHtml = value => String(value ?? '').replace(/[&<>'"]/g, character => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;',
@@ -23,14 +23,25 @@ export function subscriptionOptionsForClient(model = {}, clientId = '') {
   };
 }
 
+// V-07 — vehicles as aligned cards with the photo thumbnail (when there is one).
+function vehicleThumb(model, vehicle) {
+  const media = model.vehicleMedia?.[vehicle.id]?.[0] || (vehicle.media_id ? { id: vehicle.media_id } : null);
+  return media
+    ? `<img src="/api/v1/media/${escapeHtml(encodeURIComponent(media.id))}/thumb" alt="">`
+    : `<span class="sw-thumb-empty" aria-hidden="true">${escapeHtml((vehicleCategory(vehicle.type, vehicle.category_label) || 'V').slice(0, 1))}</span>`;
+}
+
 function targetChoices(model, clientId) {
   const { vehicles, fleets } = subscriptionOptionsForClient(model, clientId);
-  const choices = (rows, type, label) => rows.length
-    ? rows.map(row => `<label class="ui-check"><input type="checkbox" data-subscription-target="${type}" value="${escapeHtml(row.id)}"> ${escapeHtml(label === 'plate' ? `${vehicleCategory(row.type, row.category_label)} · ${vehicleRef(row)}` : [row[label], row.code].filter(Boolean).join(' · ') || 'Registro')}</label>`).join('')
-    : '<p class="muted">Nenhum registro disponível para este cliente.</p>';
   if (!clientId) return '<p class="muted">Selecione o cliente para carregar veículos e frotas.</p>';
-  return `<div class="row"><fieldset class="field"><legend>Veículos</legend>${choices(vehicles, 'vehicle', 'plate')}</fieldset>
-    <fieldset class="field"><legend>Frotas</legend>${choices(fleets, 'fleet', 'name')}</fieldset></div>`;
+  const vehicleCards = vehicles.length
+    ? `<div class="sw-targets">${vehicles.map(row => `<label class="sw-target"><input type="checkbox" data-subscription-target="vehicle" value="${escapeHtml(row.id)}"><span class="sw-thumb">${vehicleThumb(model, row)}</span><span class="sw-text"><strong>${escapeHtml(row.plate || 'Sem placa')}</strong><small>${escapeHtml([[row.brand, row.model].filter(Boolean).join(' '), vehicleCategory(row.type, row.category_label)].filter(Boolean).join(' · '))}</small></span></label>`).join('')}</div>`
+    : '<p class="muted">Nenhum veículo deste cliente.</p>';
+  const fleetCards = fleets.length
+    ? `<div class="sw-targets">${fleets.map(row => `<label class="sw-target"><input type="checkbox" data-subscription-target="fleet" value="${escapeHtml(row.id)}"><span class="sw-thumb"><span class="sw-thumb-empty" aria-hidden="true">F</span></span><span class="sw-text"><strong>${escapeHtml(row.name || 'Frota')}</strong><small>${escapeHtml([row.code, row.vehicle_group_label].filter(Boolean).join(' · '))}</small></span></label>`).join('')}</div>`
+    : '<p class="muted">Nenhuma frota deste cliente.</p>';
+  return `<fieldset class="field sw-fieldset"><legend>Veículos (o plano cobre os marcados)</legend>${vehicleCards}</fieldset>
+    <fieldset class="field sw-fieldset"><legend>Frotas</legend>${fleetCards}</fieldset>`;
 }
 
 export function renderSubscriptionWorkflow(model = {}) {
@@ -49,6 +60,7 @@ export function renderSubscriptionWorkflow(model = {}) {
   const today = new Date(); const pad = n => String(n).padStart(2, '0');
   const startOn = escapeHtml(model.startOn || `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`); // local date, not UTC
   return `<form id="subscriptionWorkflowForm" data-subscription-context="${escapeHtml(context)}">
+    <p class="muted sw-help">Assinatura é o plano mensal do cliente: todo mês gera uma cobrança no dia do vencimento, para os veículos ou frotas marcados. Quando a cobrança é paga, vira receita.</p>
     <div class="row">${clientField}<div class="field"><label>Plano mensal*</label><select name="catalog_id" required><option value="">Selecione o plano</option>${plans.map(item => `<option value="${escapeHtml(item.id)}" data-price="${Number(item.price_cents || 0)}">${escapeHtml(item.name || item.description || item.id)}</option>`).join('')}</select></div></div>
     <div class="row"><div class="field"><label>Início*</label><input type="date" name="start_on" value="${startOn}" required></div><div class="field"><label>Dia do vencimento*</label><input type="number" name="due_day" min="1" max="31" value="10" required></div><div class="field"><label>Quantidade*</label><input type="number" name="quantity" min="1" value="1" required></div></div>
     <div data-subscription-targets>${targetChoices(model, selectedClientId)}</div>

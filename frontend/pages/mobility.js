@@ -67,7 +67,7 @@ function mobilityTable(rows = [], fleetMode = false) {
     <td>${esc(formatDateBR(row.review_on, false) || '—')}</td>
     <td class="money">${esc(formatBRL(Number(row.total_value_cents || 0)))}</td>
     <td class="subs-cell">${subscriptionCountCell(row.subscriptions_count, { fleetId: row.id, label: row.name })}</td>
-    <td><button type="button" class="ui-btn ui-btn-secondary" data-open-fleet="${esc(row.id)}">Abrir Ficha</button></td>
+    <td><div class="row-actions"><button type="button" class="ui-btn ui-btn-secondary ui-btn-sm" data-open-fleet="${esc(row.id)}">Abrir ficha</button><button type="button" class="ui-btn ui-btn-subtle ui-btn-sm ui-btn-del" data-delete-fleet="${esc(row.id)}" data-label="${esc(row.name || 'Frota')}" data-vehicles="${Number(row.vehicles_count || 0)}">Excluir</button></div></td>
   </tr>` : `<tr>
     <td>${vehicleCell(row)}</td>
     <td>${esc(row.client_name || '—')} ${codeTag(row.client_code)}</td>
@@ -76,7 +76,7 @@ function mobilityTable(rows = [], fleetMode = false) {
     <td>${esc(formatDateBR(row.review_on, false) || '—')}</td>
     <td class="money">${esc(formatBRL(Number(row.total_value_cents || 0)))}</td>
     <td class="subs-cell">${subscriptionCountCell(row.subscriptions_count, { vehicleId: row.id, label: row.plate })}</td>
-    <td><button type="button" class="ui-btn ui-btn-secondary" data-open-vehicle-transfer="${esc(row.id)}">Mover</button></td>
+    <td><div class="row-actions"><button type="button" class="ui-btn ui-btn-secondary ui-btn-sm" data-open-vehicle-transfer="${esc(row.id)}">Mover</button><button type="button" class="ui-btn ui-btn-subtle ui-btn-sm ui-btn-del" data-delete-vehicle="${esc(row.id)}" data-label="${esc([row.plate, row.brand, row.model].filter(Boolean).join(' · '))}">Excluir</button></div></td>
   </tr>`).join('') : `<tr><td colspan="${cols}" class="muted">Nenhum registro encontrado.</td></tr>`;
   return `<div class="table-wrap"><table class="ui-table mobility-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
 }
@@ -99,7 +99,7 @@ export function renderMobilityPage(data = {}, context = {}) {
   const selectedClient = context.selectedClient || (filters.client_id ? { id: filters.client_id, display_name: filters.client_name || filters.client_id } : null);
   const typeOptions = MOBILITY_TYPES.map(type => `<option value="${esc(type)}">${esc(type)}</option>`).join('') + '<option value="__custom__">Novo tipo…</option>';
   return `<section class="mobility-page">
-    <div class="page-header"><div><h2>Frotas/Veículos</h2><p class="muted">Veículos particulares e frotas. Use “Mover” para trocar de frota ou de cliente.</p></div></div>
+    <div class="page-header"><div><h2>Frotas/Veículos</h2><p class="muted">Veículos particulares e frotas. Use “Mover” para trocar de frota ou de cliente e “Excluir” para mandar à Lixeira (14 dias).</p></div></div>
     <div class="panel mobility-filters"><form id="mobilityFilter"><div class="row">
       ${renderEntityAutocomplete({name:'client_id',label:'Cliente',selected:selectedClient})}
       <div class="field"><label>Empresa</label><select name="company_id">${options(context.companies || [], 'id', 'legal_name', true, filters.company_id)}</select></div>
@@ -145,7 +145,7 @@ export function renderFleetProfile(profile = {}, context = {}) {
   const summary = profile.summary || {};
   const companies = context.companies || [];
   const vehicleRows = vehicles.length ? vehicles.map(vehicle => `<tr>
-      <td>${vehicleCell(vehicle)}</td><td>${esc(vehicle.plate)}</td><td>${esc(vehicle.brand || '—')}</td><td>${esc(vehicle.model || '—')}</td><td>${esc(vehicle.year || '—')}</td><td class="money">${esc(formatBRL(Number(vehicle.total_value_cents || 0)))}</td><td class="subs-cell">${subscriptionCountCell(vehicle.subscriptions_count, { vehicleId: vehicle.id, label: vehicle.plate })}</td><td><button type="button" class="ui-btn ui-btn-secondary" data-open-vehicle-transfer="${esc(vehicle.id)}">Mover</button></td>
+      <td>${vehicleCell(vehicle)}</td><td>${esc(vehicle.plate)}</td><td>${esc(vehicle.brand || '—')}</td><td>${esc(vehicle.model || '—')}</td><td>${esc(vehicle.year || '—')}</td><td class="money">${esc(formatBRL(Number(vehicle.total_value_cents || 0)))}</td><td class="subs-cell">${subscriptionCountCell(vehicle.subscriptions_count, { vehicleId: vehicle.id, label: vehicle.plate })}</td><td><div class="row-actions"><button type="button" class="ui-btn ui-btn-secondary ui-btn-sm" data-open-vehicle-transfer="${esc(vehicle.id)}">Mover</button><button type="button" class="ui-btn ui-btn-subtle ui-btn-sm ui-btn-del" data-delete-vehicle="${esc(vehicle.id)}" data-label="${esc([vehicle.plate, vehicle.brand, vehicle.model].filter(Boolean).join(' · '))}">Excluir</button></div></td>
     </tr>`).join('') : '<tr><td colspan="8">Nenhum veículo.</td></tr>';
   return `<div class="fleet-profile">
     <div class="fleet-profile-summary"><h3>${esc(fleet.name || 'Frota')} ${groupBadge(fleet.vehicle_group, fleet.vehicle_group_label)}</h3><p class="muted">${esc(company.legal_name || 'Empresa não vinculada')}</p><dl><dt>Veículos ativos</dt><dd>${Number(summary.active_vehicles || 0)} / ${Number(summary.vehicle_limit || 100)}</dd><dt>Valor Total</dt><dd>${esc(formatBRL(Number(summary.total_value_cents || 0)))}</dd></dl></div>
@@ -157,7 +157,7 @@ export function renderFleetProfile(profile = {}, context = {}) {
       <div class="field"><label>Grupo (tipo de veículo)</label><select name="vehicle_group">${fleetGroupOptions(fleet.vehicle_group)}</select></div>
       <div class="field"><label>Setor/Unidade</label><input name="sector_or_unit" value="${esc(fleet.sector_or_unit || '')}"></div>
     </div><div class="actions"><button type="submit" class="ui-btn ui-btn-primary">Salvar frota</button></div></form>
-    <div class="actions"><button type="button" class="ui-btn ui-btn-secondary" data-add-vehicle-fleet="${esc(fleet.id)}">Adicionar veículo</button><label class="ui-btn ui-btn-secondary ui-file-action">Adicionar foto<input type="file" accept="image/jpeg,image/png,image/webp" data-fleet-photo="${esc(fleet.id)}"></label></div>
+    <div class="actions"><button type="button" class="ui-btn ui-btn-secondary" data-add-vehicle-fleet="${esc(fleet.id)}">Adicionar veículo</button><label class="ui-btn ui-btn-secondary ui-file-action">Adicionar foto<input type="file" accept="image/jpeg,image/png,image/webp" data-fleet-photo="${esc(fleet.id)}"></label><button type="button" class="ui-btn ui-btn-subtle ui-btn-del" data-delete-fleet="${esc(fleet.id)}" data-label="${esc(fleet.name || 'Frota')}" data-vehicles="${vehicles.length}">Excluir frota</button></div>
     <div class="table-wrap"><table class="ui-table"><thead><tr><th>Veículo</th><th>Placa</th><th>Marca</th><th>Modelo</th><th>Ano</th><th>Valor</th><th>Assinaturas</th><th>Ação</th></tr></thead><tbody>${vehicleRows}</tbody></table></div>
   </div>`;
 }
