@@ -279,6 +279,64 @@ def _active_subscription_summaries(
     return summaries
 
 
+def _subscription_summaries_bulk(db: Database) -> tuple[dict[str, list[dict]], dict[str, list[dict]]]:
+    """R23 — the same summaries as ``_active_subscription_summaries`` for every vehicle and fleet at once.
+
+    A handful of set queries instead of several queries per vehicle (the per-row version took minutes
+    with a few thousand vehicles)."""
+    subs = {r['id']: dict(r) for r in db.query('''SELECT s.id,s.client_id,s.start_on,s.created_at,s.lifecycle_status,s.code,c.legal_name AS client_name,
+            (SELECT cc.legal_name FROM client_companies cc WHERE cc.client_id=s.client_id AND cc.archived=0
+             ORDER BY cc.is_primary DESC,cc.created_at,cc.id LIMIT 1) AS company_name
+            FROM subscriptions s JOIN clients c ON c.id=s.client_id WHERE s.lifecycle_status='ACTIVE' ''')}
+    if not subs:
+        return {}, {}
+    items: dict[str, list[dict]] = {}
+    for r in db.query('''SELECT si.subscription_id,si.quantity,si.unit_price_cents,si.description,c.name AS plan_name
+                         FROM subscription_items si JOIN subscriptions s ON s.id=si.subscription_id LEFT JOIN catalog c ON c.id=si.catalog_id
+                         WHERE s.lifecycle_status='ACTIVE' ORDER BY si.rowid'''):
+        items.setdefault(r['subscription_id'], []).append(dict(r))
+    direct: dict[str, set] = {}
+    for r in db.query('''SELECT st.subscription_id,st.vehicle_id FROM subscription_targets st JOIN subscriptions s ON s.id=st.subscription_id
+                         WHERE s.lifecycle_status='ACTIVE' AND st.vehicle_id IS NOT NULL
+                         UNION SELECT si.subscription_id,si.vehicle_id FROM subscription_items si JOIN subscriptions s ON s.id=si.subscription_id
+                         WHERE s.lifecycle_status='ACTIVE' AND si.vehicle_id IS NOT NULL'''):
+        direct.setdefault(r['vehicle_id'], set()).add(r['subscription_id'])
+    fleet_target: dict[str, set] = {}
+    for r in db.query('''SELECT st.subscription_id,st.fleet_id FROM subscription_targets st JOIN subscriptions s ON s.id=st.subscription_id
+                         WHERE s.lifecycle_status='ACTIVE' AND st.fleet_id IS NOT NULL'''):
+        fleet_target.setdefault(r['fleet_id'], set()).add(r['subscription_id'])
+    vehicles = [dict(r) for r in db.query('''SELECT v.id,v.fleet_id,cc.legal_name AS company_name FROM vehicles v LEFT JOIN fleets f ON f.id=v.fleet_id
+                                           LEFT JOIN client_companies cc ON cc.id=f.client_company_id WHERE v.archived=0''')]
+    fleet_company = {r['id']: r['company_name'] for r in db.query('''SELECT f.id,cc.legal_name AS company_name FROM fleets f
+                                                                 LEFT JOIN client_companies cc ON cc.id=f.client_company_id''')}
+    def summary(sid: str, scope: str, company: str | None) -> dict:
+        rec = subs[sid]; its = items.get(sid, [])
+        names = []
+        for item in its:
+            name = item.get('plan_name') or item.get('description')
+            if name and name not in names: names.append(name)
+        return {'id': sid, 'client_id': rec['client_id'], 'client_name': rec['client_name'], 'company_name': company or rec['company_name'],
+                'plan_names': ', '.join(names), 'effective_total_cents': sum(int(i['quantity']) * int(i['unit_price_cents']) for i in its),
+                'start_on': rec['start_on'], 'lifecycle_status': rec['lifecycle_status'], 'target_scope': scope, 'code': rec.get('code')}
+    order = lambda ids: sorted(ids, key=lambda sid: (subs[sid]['start_on'] or '', subs[sid]['created_at'] or ''), reverse=True)
+    by_vehicle: dict[str, list[dict]] = {}
+    fleet_vehicle_subs: dict[str, set] = {}
+    for v in vehicles:
+        d = direct.get(v['id'], set()); ft = fleet_target.get(v['fleet_id'], set()) if v['fleet_id'] else set()
+        out = []
+        for sid in order(d | ft):
+            scope = 'DIRECT_AND_FLEET' if sid in d and sid in ft else 'DIRECT' if sid in d else 'FLEET'
+            out.append(summary(sid, scope, v['company_name']))
+        by_vehicle[v['id']] = out
+        if v['fleet_id'] and d:
+            fleet_vehicle_subs.setdefault(v['fleet_id'], set()).update(d)
+    by_fleet: dict[str, list[dict]] = {}
+    for fid in set(fleet_target) | set(fleet_vehicle_subs):
+        ft = fleet_target.get(fid, set()); fv = fleet_vehicle_subs.get(fid, set())
+        by_fleet[fid] = [summary(sid, 'FLEET' if sid in ft else 'FLEET_VEHICLE', fleet_company.get(fid)) for sid in order(ft | fv)]
+    return by_vehicle, by_fleet
+
+
 def list_mobility(db: Database, *, client_id: str | None = None, fleet_id: str | None = None, plate: str | None = None,
                   company_id: str | None = None, group: str | None = None) -> dict:
     """Vehicles and fleets organized as Cliente → Empresa → Frota → Grupo (AJ-05).
@@ -308,9 +366,10 @@ def list_mobility(db: Database, *, client_id: str | None = None, fleet_id: str |
             LEFT JOIN fleets f ON f.id=v.fleet_id
             LEFT JOIN client_companies cc ON cc.id=f.client_company_id
             WHERE {predicate} ORDER BY c.legal_name,v.plate''', tuple(args))]
+    subs_by_vehicle, subs_by_fleet = _subscription_summaries_bulk(db)
     for row in rows:
         annotate_vehicle(row)
-        row['subscriptions'] = _active_subscription_summaries(db, vehicle_id=row['id'])
+        row['subscriptions'] = subs_by_vehicle.get(row['id'], [])
         row['subscriptions_count'] = len(row['subscriptions'])
     if group:
         rows = [row for row in rows if row['category'] == group]
@@ -324,6 +383,10 @@ def list_mobility(db: Database, *, client_id: str | None = None, fleet_id: str |
     if company_id:
         fleet_where.append('f.client_company_id=?'); fleet_args.append(company_id)
     fleets = []
+    fleet_vehicles: dict[str, list[dict]] = {}
+    for r in db.query(f'''SELECT v.*, {value_sql} AS total_value_cents FROM vehicles v
+                          WHERE v.fleet_id IS NOT NULL AND v.archived=0 ORDER BY v.plate'''):
+        fleet_vehicles.setdefault(r['fleet_id'], []).append(annotate_vehicle(dict(r)))
     for fleet in db.query(f'''SELECT f.*,c.legal_name AS client_name,c.code AS client_code,cc.legal_name AS company_name
                               FROM fleets f JOIN clients c ON c.id=f.client_id
                               LEFT JOIN client_companies cc ON cc.id=f.client_company_id
@@ -332,8 +395,7 @@ def list_mobility(db: Database, *, client_id: str | None = None, fleet_id: str |
         matching = [row for row in rows if row.get('fleet_id') == rec['id']]
         if (plate or group) and not matching and not (group and rec.get('vehicle_group') == group and not plate):
             continue
-        all_vehicle_rows = [annotate_vehicle(dict(r)) for r in db.query(f'''SELECT v.*, {value_sql} AS total_value_cents
-                                                         FROM vehicles v WHERE v.fleet_id=? AND v.archived=0 ORDER BY v.plate''', (rec['id'],))]
+        all_vehicle_rows = fleet_vehicles.get(rec['id'], [])
         rec['vehicle_group'] = rec.get('vehicle_group') or 'MIXED'
         rec['vehicle_group_label'] = fleet_group_label(rec['vehicle_group'])
         rec['vehicle_breakdown'] = breakdown_from_rows((v.get('type'), 1) for v in all_vehicle_rows)
@@ -341,7 +403,7 @@ def list_mobility(db: Database, *, client_id: str | None = None, fleet_id: str |
         rec['contracted_on'] = min((v.get('contracted_on') for v in all_vehicle_rows if v.get('contracted_on')), default=None)
         rec['review_on'] = max((v.get('review_on') for v in all_vehicle_rows if v.get('review_on')), default=None)
         rec['total_value_cents'] = sum(int(v.get('total_value_cents') or 0) for v in all_vehicle_rows)
-        rec['subscriptions'] = _active_subscription_summaries(db, fleet_id=rec['id'])
+        rec['subscriptions'] = subs_by_fleet.get(rec['id'], [])
         rec['subscriptions_count'] = len(rec['subscriptions'])
         fleets.append(rec)
     with closing(db.connect()) as con:
@@ -369,6 +431,7 @@ def mobility_hierarchy(vehicles: list[dict], fleets: list[dict]) -> list[dict]:
                                   'vehicle_group': fleet['vehicle_group'], 'vehicle_group_label': fleet['vehicle_group_label'],
                                   'total': 0, 'groups': {}})
     fleet_nodes = {f['fleet_id']: f for n in clients.values() for c in n['companies'].values() for f in c['fleets']}
+    fleet_company = {f['fleet_id']: c for n in clients.values() for c in n['companies'].values() for f in c['fleets']}
     for vehicle in vehicles:
         node = client_node(vehicle['client_id'], vehicle.get('client_name'), vehicle.get('client_code'))
         node['total'] += 1
@@ -378,8 +441,7 @@ def mobility_hierarchy(vehicles: list[dict], fleets: list[dict]) -> list[dict]:
             continue
         fleet_node['total'] += 1
         fleet_node['groups'][vehicle['category']] = fleet_node['groups'].get(vehicle['category'], 0) + 1
-        company = next(c for c in node['companies'].values() if fleet_node in c['fleets'])
-        company['total'] += 1
+        fleet_company[fleet_node['fleet_id']]['total'] += 1
     result = []
     for node in clients.values():
         companies = []
@@ -448,9 +510,10 @@ def fleet_profile(db: Database, fleet_id: str) -> dict:
     value_sql = _vehicle_value_sql()
     vehicles = [dict(r) for r in db.query(f'''SELECT v.*,{value_sql} AS total_value_cents
                                               FROM vehicles v WHERE v.fleet_id=? AND v.archived=0 ORDER BY v.plate''', (fleet_id,))]
+    subs_by_vehicle, _ = _subscription_summaries_bulk(db)
     for vehicle in vehicles:
         annotate_vehicle(vehicle)
-        vehicle['subscriptions'] = _active_subscription_summaries(db,vehicle_id=vehicle['id'])
+        vehicle['subscriptions'] = subs_by_vehicle.get(vehicle['id'], [])
         vehicle['subscriptions_count'] = len(vehicle['subscriptions'])
     fleet['vehicle_group'] = fleet.get('vehicle_group') or 'MIXED'
     fleet['vehicle_group_label'] = fleet_group_label(fleet['vehicle_group'])
