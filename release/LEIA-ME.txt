@@ -1,4 +1,4 @@
-UStracker 1.006
+UStracker 1.007
 
 Instalar ou atualizar:
   Execute install_UStracker.exe e siga as telas. Os dados (pasta UserData) nunca sao apagados.

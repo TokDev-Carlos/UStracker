@@ -282,6 +282,13 @@ def create_app(root: Path | str) -> FastAPI:
             except Exception:
                 pass
             cloud.start()
+            def _placa():
+                try:
+                    cloud.last_placa = time.time()
+                    cloud.check_placa(session)
+                except Exception as exc:
+                    cloud.status['placa_error'] = str(exc)[:200]
+            threading.Thread(target=_placa, daemon=True).start()
         media_recovery = recover_media_journals(root, db)
         if session.environment == 'production':
             rebuild_public(root, db)
@@ -1048,6 +1055,114 @@ def create_app(root: Path | str) -> FastAPI:
         cloud.state = type(cloud.state)(root)
         cloud.pending_secret = str(p.get('secret', '')).strip()
         return out
+
+    # ------------------------------------------------------------------ S-05..S-07 placa de direção
+    placa_cache: dict = {}
+
+    def placa_banks_public() -> dict | None:
+        """Pre-login: read the signed placa (cached 60 s). None when this install has no placa."""
+        from .placa import fetch_placa, load_bootstrap, read_placa
+        boot = load_bootstrap(root)
+        if not boot or not boot.get('placa_url'):
+            return None
+        if placa_cache.get('at', 0) > time.time() - 60:
+            return placa_cache['value']
+        value = read_placa(fetch_placa(boot['placa_url']), boot)
+        placa_cache.update(at=time.time(), value=value)
+        return value
+
+    @app.get('/api/v1/cloud/bootstrap')
+    def cloud_bootstrap():
+        """S-08 — new computer: is there a company cloud to join? (no secrets in the answer)"""
+        try:
+            placa = placa_banks_public()
+        except Exception as exc:
+            return {'available': False, 'error': str(exc)[:200]}
+        if not placa:
+            return {'available': False}
+        from .cloud import CloudClient
+        try:
+            ping = CloudClient(placa['banks'][0]['url'], placa['banks'][0]['key']).call('ping', {}, retries=1)
+        except CloudError as exc:
+            return {'available': True, 'reachable': False, 'error': exc.detail}
+        return {'available': True, 'reachable': True, 'has_data': bool(ping.get('head') and ping.get('auth_head'))}
+
+    @app.post('/api/v1/auth/join')
+    def auth_join(request: Request, response: Response, p: dict = Body(...)):
+        """S-08 — first use on a new computer: bring the company data from the cloud and sign in."""
+        csrf_required(request)
+        if auth.setup_status()['enrolled']:
+            raise ValueError('this computer already has users; use the normal sign in')
+        placa = placa_banks_public()
+        if not placa:
+            raise ValueError('no company cloud configured in this installation')
+        bank = placa['banks'][0]
+        cloud_call(lambda: restore_from_cloud(root, bank['url'], bank['key']))
+        auth.clear_sessions()
+        cloud.state = type(cloud.state)(root)
+        cloud.pending_secret = bank['key']
+        cloud.state.set(placa_seq=0)
+        return login(request, response, p)
+
+    def admin_session(request: Request):
+        session = session_required(request, True)
+        if not session.is_admin:
+            raise HTTPException(403, 'administrator required')
+        return session
+
+    @app.get('/api/v1/cloud/placa')
+    def placa_get(request: Request):
+        from .placa import load_bootstrap, render_form
+        session = admin_session(request)
+        banks = []
+        if cloud.state.get('url') and cloud.state.get('secret'):
+            banks.append({'url': cloud.state.get('url'), 'key': cloud.state.secret(session.vrk)})
+        for m in cloud.state.get('mirrors') or []:
+            banks.append({'url': m['url'], 'key': cloud.state.unseal(session.vrk, m['secret'])})
+        boot = load_bootstrap(root) or {}
+        gh = cloud.state.get('github') or {}
+        return {'form': render_form(banks or [{'url': '', 'key': ''}]), 'seq': cloud.state.get('placa_seq') or 0,
+                'placa_url': boot.get('placa_url') or '', 'github': {k: gh.get(k) for k in ('repo', 'path', 'branch')},
+                'github_token_saved': bool(gh.get('token')), 'has_master': bool(cloud.master(session, get_db(session)))}
+
+    @app.post('/api/v1/cloud/placa/publish')
+    def placa_publish(request: Request, p: dict = Body(...)):
+        from .placa import PlacaError, build_placa, github_publish, parse_form, raw_url, save_bootstrap
+        session = admin_session(request); csrf_required(request, session)
+        if session.environment != 'production':
+            raise ValueError('cloud is available only in Production')
+        banks = parse_form(p.get('form', ''))
+        db = get_db(session)
+        take_turn(session, db)
+        master = cloud.master(session, db, create=True)
+        seq = int(cloud.state.get('placa_seq') or 0) + 1
+        placa = build_placa(banks, master, seq)
+        gh = dict(cloud.state.get('github') or {})
+        g = p.get('github') or {}
+        for key in ('repo', 'path', 'branch'):
+            if str(g.get(key) or '').strip():
+                gh[key] = str(g[key]).strip()
+        if str(g.get('token') or '').strip():
+            gh['token'] = cloud.state.seal(session.vrk, str(g['token']).strip())
+        cloud.state.set(github=gh)
+        published = None
+        url = str(p.get('placa_url') or '').strip()
+        if gh.get('repo') and gh.get('token'):
+            published = github_publish(placa, repo=gh['repo'], path=gh.get('path') or 'placa.json', branch=gh.get('branch') or 'main',
+                                       token=cloud.state.unseal(session.vrk, gh['token']))
+            url = raw_url(gh['repo'], gh.get('path') or 'placa.json', gh.get('branch') or 'main')
+        if url:
+            save_bootstrap(root, url=url, master=master)
+            placa_cache.clear()
+        applied = cloud.apply_banks(session, banks, seq)
+        cloud.mark_dirty()
+        return {'placa': placa, 'seq': seq, 'published': published, 'placa_url': url, 'applied': applied,
+                'banks': [{'n': i, 'url': b['url']} for i, b in enumerate(banks, 1)]}
+
+    @app.post('/api/v1/cloud/placa/check')
+    def placa_check(request: Request):
+        session = admin_session(request); csrf_required(request, session)
+        return cloud_call(lambda: cloud.check_placa(session, force=True))
 
     @app.get('/api/v1/trash')
     def trash_list(request: Request):

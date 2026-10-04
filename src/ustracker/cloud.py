@@ -41,6 +41,7 @@ LEASE_TTL = 120          # a vez vence sozinha se o Servidor cair
 HOLD_SECONDS = 20        # sem alteração por 20 s → envia e solta a vez
 TURN_DEBOUNCE = 4        # com a vez na mão, envia 4 s após a última alteração
 PULL_EVERY = 25          # sem a vez, confere a cada 25 s se outro Servidor gravou
+PLACA_EVERY = 6 * 3600   # confere a placa de direção a cada 6 h (e ao entrar)
 TURN_WAIT = 45           # espera máxima pela vez ao salvar
 PROTOCOL = 1
 AUTH_AAD = b'UStracker/cloud-auth/v1'
@@ -284,6 +285,14 @@ class CloudState:
     def _key(vrk: bytes) -> bytes:
         return _hkdf(vrk, b'UStracker/cloud-secret/v1')
 
+    def seal(self, vrk: bytes, text: str) -> str:
+        nonce = os.urandom(12)
+        return base64.b64encode(nonce + AESGCM(self._key(vrk)).encrypt(nonce, text.encode(), b'cloud-secret')).decode()
+
+    def unseal(self, vrk: bytes, raw: str) -> str:
+        blob = base64.b64decode(raw)
+        return AESGCM(self._key(vrk)).decrypt(blob[:12], blob[12:], b'cloud-secret').decode()
+
     def store_secret(self, vrk: bytes, secret: str):
         nonce = os.urandom(12)
         sealed = nonce + AESGCM(self._key(vrk)).encrypt(nonce, secret.encode(), b'cloud-secret')
@@ -319,6 +328,7 @@ class CloudSync:
         self.last_turn_use = 0.0
         self.last_pull = 0.0
         self.data_version = 0                # bumps when another Servidor's data arrived
+        self.last_placa = 0.0
 
     # -- session handling -------------------------------------------------------
     def attach(self, session) -> None:
@@ -366,11 +376,24 @@ class CloudSync:
                 if time.time() - last_purge > 3600:
                     last_purge = time.time()
                     self.purge_trash(session)
+                if time.time() - self.last_placa >= PLACA_EVERY:
+                    self.last_placa = time.time()
+                    try:
+                        self.check_placa(session)
+                    except Exception as exc:
+                        self.status['placa_error'] = str(exc)[:200]
                 if not self.enabled():
                     continue
+                if self.state.get('bank_switch'):
+                    self.pull(session)
                 holding = self.lease_until > time.time()
                 idle = time.time() - float(self.state.get('last_change') or 0)
-                if self.state.get('dirty_since') and idle >= (TURN_DEBOUNCE if holding else self.debounce):
+                if self.state.get('dirty_since') and idle >= min(TURN_DEBOUNCE, self.debounce):
+                    if not holding:
+                        try:
+                            self.acquire_turn(session, wait=0)
+                        except CloudError:
+                            continue  # another Servidor is saving; try again on the next tick
                     self.sync_now(session)
                 if holding and not self.state.get('dirty_since') and time.time() - self.last_turn_use >= HOLD_SECONDS:
                     self.release_turn(session)
@@ -484,6 +507,7 @@ class CloudSync:
                 if self.state.get('compact_before'):
                     client.call('compact', {'before': self.state.get('compact_before')})
                     self.state.set(compact_before=None)
+                self._mirror(session, data, dataset, int(record['generation']), force)
                 update = dict(generation=int(record['generation']), last_upload_at=_now_iso(), last_upload_size=len(data),
                               conflict=None, last_error=None, dataset_id=dataset)
                 if self.state.get('last_change') == change_marker:
@@ -577,6 +601,19 @@ class CloudSync:
             self.state.set(auth_head_id=auth_head['id'], auth_fingerprint=_auth_fingerprint(self.root))
             changed = True
         local_gen = int(self.state.get('generation') or 0)
+        if self.state.get('bank_switch'):
+            # S-07: Banco 1 changed. Empty new bank → this Servidor fills it; otherwise take what is there.
+            if not head:
+                self.state.set(bank_switch=False, generation=0)
+                self.mark_dirty()
+                return changed
+            if int(head.get('generation') or 0) == local_gen:
+                self.state.set(bank_switch=False)           # promoted mirror already in step
+            elif self.state.get('dirty_since'):
+                return changed                              # send local changes first (conflict check protects)
+            else:
+                local_gen = -1
+                self.state.set(bank_switch=False)
         if head and int(head.get('generation') or 0) > local_gen:
             db = Database(self.root, 'production', session.db_key)
             if head.get('dataset_id') and head.get('dataset_id') != self.dataset_id(db):
@@ -606,6 +643,83 @@ class CloudSync:
         if changed:
             self.data_version += 1
         return changed
+
+    # -- S-05..S-07 placa de direção ---------------------------------------------
+    def master(self, session, db, *, create: bool = False) -> dict | None:
+        """Master key of the placa: sealed with the VRK inside the shared database."""
+        from .placa import KEY_SETTING, new_master
+        row = db.one('SELECT value FROM settings WHERE key=?', (KEY_SETTING,))
+        if row:
+            return json.loads(self.state.unseal(session.vrk, row[0]))
+        if not create:
+            return None
+        master = new_master()
+        with db.transaction() as con:
+            con.execute('INSERT OR REPLACE INTO settings(key,value,updated_at) VALUES(?,?,?)',
+                        (KEY_SETTING, self.state.seal(session.vrk, json.dumps(master)), _now_iso()))
+        self.mark_dirty()
+        return master
+
+    def apply_banks(self, session, banks: list[dict], seq: int | None = None) -> dict:
+        """Banco 1 = principal; the rest are mirrors. Switching Banco 1 is automatic and safe."""
+        primary = banks[0]
+        current_url = self.state.get('url')
+        current_secret = self.state.secret(session.vrk) if self.state.get('secret') else None
+        switched = bool(current_url) and (primary['url'] != current_url or primary['key'] != current_secret)
+        mirrors = [{'url': b['url'], 'secret': self.state.seal(session.vrk, b['key'])} for b in banks[1:]]
+        update = dict(enabled=True, url=primary['url'], mirrors=mirrors)
+        if seq is not None:
+            update['placa_seq'] = int(seq)
+        if switched or not current_url:
+            update.update(uploaded_blobs=[], auth_fingerprint=None, auth_head_id=None, conflict=None, bank_switch=True,
+                          mirror_state={})
+            self.lease_until = 0.0
+        self.state.set(**update)
+        self.state.store_secret(session.vrk, primary['key'])
+        if switched or not current_url:
+            self.last_pull = 0.0
+        return {'primary': primary['url'], 'mirrors': len(mirrors), 'switched': switched}
+
+    def check_placa(self, session, *, force: bool = False) -> dict:
+        from .placa import fetch_placa, load_bootstrap, read_placa
+        boot = load_bootstrap(self.root)
+        if not boot or not boot.get('placa_url'):
+            return {'configured': False}
+        placa = read_placa(fetch_placa(boot['placa_url']), boot)
+        self.status['placa_error'] = None
+        if not force and placa['seq'] <= int(self.state.get('placa_seq') or 0) and self.enabled():
+            return {'configured': True, 'seq': placa['seq'], 'changed': False}
+        out = self.apply_banks(session, placa['banks'], placa['seq'])
+        return {'configured': True, 'seq': placa['seq'], 'changed': True, **out}
+
+    def _mirror(self, session, data: bytes, dataset: str, generation: int, force: bool) -> None:
+        """Banco 2+: same snapshot, photos and access vault. Never blocks the main upload."""
+        mirrors = self.state.get('mirrors') or []
+        if not mirrors:
+            return
+        states = dict(self.state.get('mirror_state') or {})
+        for m in mirrors:
+            st = dict(states.get(m['url']) or {})
+            try:
+                client = self.client_factory(m['url'], self.state.unseal(session.vrk, m['secret']))
+                sent = set(st.get('blobs') or [])
+                if not st.get('listed'):
+                    sent |= set(client.call('list_blobs', {}).get('names', []))
+                    st['listed'] = True
+                for name, path in sorted(blob_files(self.root).items()):
+                    if name not in sent:
+                        client.put_blob(name, path.read_bytes()); sent.add(name)
+                fp = _auth_fingerprint(self.root)
+                if fp != st.get('auth_fingerprint'):
+                    client.upload(seal_auth(self.root, self.state.unseal(session.vrk, m['secret'])), {'kind': 'auth', 'dataset_id': dataset, 'force': True})
+                    st['auth_fingerprint'] = fp
+                client.upload(data, {'kind': 'db', 'environment': 'production', 'dataset_id': dataset, 'generation': generation,
+                                     'base_generation': generation - 1, 'created_at': _now_iso(), 'force': True, 'meta': {'mirror': True}})
+                st.update(blobs=sorted(sent), last_ok=_now_iso(), generation=generation, error=None)
+            except Exception as exc:
+                st.update(error=str(exc)[:200], last_error_at=_now_iso())
+            states[m['url']] = st
+        self.state.set(mirror_state=states)
 
     def sync_state(self) -> dict:
         return {'data_version': self.data_version, 'waiting_for': self.status.get('waiting_for'),
@@ -670,7 +784,9 @@ class CloudSync:
                 'last_upload_at': s.get('last_upload_at'), 'last_upload_size': s.get('last_upload_size'),
                 'pending_changes': bool(s.get('dirty_since')), 'last_error': s.get('last_error'),
                 'conflict': s.get('conflict'), 'running': self.status['running'], 'files_in_cloud': len(s.get('uploaded_blobs', [])),
-                'debounce_seconds': self.debounce}
+                'debounce_seconds': self.debounce, 'placa_seq': s.get('placa_seq'), 'placa_error': self.status.get('placa_error'),
+                'mirrors': [{'url': m['url'], **{k: v for k, v in ((s.get('mirror_state') or {}).get(m['url']) or {}).items() if k in ('last_ok', 'error', 'generation')}}
+                            for m in (s.get('mirrors') or [])]}
 
 
 # ----------------------------------------------------------------------------- restore on a new machine

@@ -3,7 +3,7 @@
 ; Regras: instala ou atualiza por cima; NUNCA apaga ou substitui UserData nem Trust.
 
 Unicode true
-SetCompressor /SOLID lzma
+SetCompressor lzma
 SetCompressorDictSize 64
 RequestExecutionLevel admin
 ManifestDPIAware true
@@ -78,6 +78,9 @@ Function WaitAppClosed
 FunctionEnd
 
 Function EnsureWebView2
+  !ifdef WV2
+  ; offline WebView2 runtime embedded at build time (installed only when missing)
+  !endif
   ReadRegStr $0 HKLM "SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\${WV2_GUID}" "pv"
   ${If} $0 == ""
   ${OrIf} $0 == "0.0.0.0"
@@ -85,6 +88,16 @@ Function EnsureWebView2
   ${EndIf}
   ${If} $0 == ""
   ${OrIf} $0 == "0.0.0.0"
+    !ifdef WV2
+      DetailPrint "Instalando o Microsoft WebView2 (componente da tela do sistema)..."
+      InitPluginsDir
+      SetOutPath "$PLUGINSDIR"
+      SetCompress off
+      File "${WV2}"
+      SetCompress auto
+      ExecWait '"$PLUGINSDIR\MicrosoftEdgeWebView2RuntimeInstallerX64.exe" /silent /install'
+      SetOutPath "$INSTDIR"
+    !else
     ${If} ${FileExists} "$EXEDIR\MicrosoftEdgeWebView2RuntimeInstallerX64.exe"
       DetailPrint "Instalando o Microsoft WebView2 (componente da tela do sistema)..."
       ExecWait '"$EXEDIR\MicrosoftEdgeWebView2RuntimeInstallerX64.exe" /silent /install'
@@ -92,6 +105,7 @@ Function EnsureWebView2
       MessageBox MB_ICONINFORMATION|MB_OK "Falta o Microsoft WebView2 Runtime (componente gratuito da Microsoft que desenha a tela do ${APP}).$\r$\n$\r$\nVamos abrir a página de download: baixe o 'Evergreen Bootstrapper', instale e depois abra o ${APP}."
       ExecShell "open" "https://go.microsoft.com/fwlink/p/?LinkId=2124703"
     ${EndIf}
+    !endif
   ${Else}
     DetailPrint "Microsoft WebView2 encontrado ($0)."
   ${EndIf}
@@ -114,6 +128,10 @@ Section "Programa" SecMain
   SetOutPath "$INSTDIR\Trust"
   File /nonfatal /r "${SRC}/Trust/*.*"
   SetOverwrite on
+  ; S-08: company cloud address (placa) — from the build or from the kit folder next to this installer
+  ${If} ${FileExists} "$EXEDIR\placa-bootstrap.json"
+    CopyFiles /SILENT "$EXEDIR\placa-bootstrap.json" "$INSTDIR\Trust\placa-bootstrap.json"
+  ${EndIf}
   SetOutPath "$INSTDIR"
   CreateDirectory "$INSTDIR\UserData"
   ; normal (non-admin) Windows users must be able to write their data

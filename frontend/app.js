@@ -28,7 +28,7 @@ import { entityChoices, renderFilesPage } from './pages/files.js';
 import { confirmDialog, openDialog, openPlateOwnerDialog } from './ui/dialog.js';
 import { allowedPages, applyPermissions, can, filterMenu, isAdmin, setAccess, watchPermissions } from './ui/permissions.js';
 import { bindUsersTab, renderUsersTab } from './pages/users.js';
-import { renderCloudPanel, renderCloudRestoreForm, renderPointsTable, renderRecoveryKit, renderTrashPanel } from './pages/cloud.js';
+import { renderCloudPanel, renderPlacaPanel, renderCloudRestoreForm, renderPointsTable, renderRecoveryKit, renderTrashPanel } from './pages/cloud.js';
 
 const app=document.querySelector('#app');
 let csrf=''; let me=null; let current='dashboard'; let navigationSequence=0; let systemNavigationLease=null;
@@ -132,8 +132,14 @@ function openSubscriptionWorkflow(model,{onSuccess,onCancel}={}){
   return drawer;
 }
 async function boot(){const state=await session.bootstrap();const pub=state.publicData,st=state.setupStatus;applyBrand(pub);if(state.state==='setup')return setupScreen();if(state.state==='login')return loginScreen(st,pub);renderShell();await show(allowedPages(nav.map(([key])=>key))[0]||'dashboard')}
-function setupScreen(){app.innerHTML=`<section class="auth"><h1>UStracker — Configuração inicial</h1><p>Crie o Administrador 1. Serão emitidos dois tickets de uso único para os Administradores 2 e 3.</p><form id="setup"><div class="row">${field('Nome','name')}${field('Senha (10+ caracteres)','password','password')}</div><div class="actions"><button>Iniciar configuração</button><button type="button" class="ui-btn ui-btn-subtle" data-cloud-restore-open>Já uso o UStracker: restaurar da nuvem</button></div></form><div id="setupOut"></div></section>`;bindCloudRestoreEntry();document.querySelector('#setup').onsubmit=async e=>{e.preventDefault();try{await getCsrf();const r=await api('/auth/bootstrap',{method:'POST',body:JSON.stringify(formData(e.target))});enrollmentScreen(r.tickets)}catch(err){document.querySelector('#setupOut').innerHTML=msg(err.message,'error')}}}
-function enrollmentScreen(tickets){app.innerHTML=`<section class="auth"><h1>Concluir três administradores</h1><div class="notice">Os tickets expiram em 15 minutos.</div>${tickets.map((t,i)=>`<form class="enroll" data-ticket="${esc(t)}"><h3>Administrador ${i+2}</h3><div class="ticket">${esc(t)}</div><div class="row">${field('Nome','name')}${field('Senha','password','password')}</div><div class="actions"><button>Registrar Admin ${i+2}</button></div><div class="out"></div></form>`).join('')}<button id="goLogin" class="secondary">Ir para login</button></section>`;document.querySelectorAll('.enroll').forEach(f=>f.onsubmit=async e=>{e.preventDefault();try{await getCsrf();const p=formData(f);p.ticket=f.dataset.ticket;await api('/auth/enroll',{method:'POST',body:JSON.stringify(p)});f.querySelector('.out').innerHTML=msg('Administrador registrado.')}catch(err){f.querySelector('.out').innerHTML=msg(err.message,'error')}});document.querySelector('#goLogin').onclick=()=>boot()}
+// S-08 — new computer: when the company cloud already has data, just sign in (it becomes one more Servidor).
+async function setupScreen(){let info={};try{info=await apiClient.request('/cloud/bootstrap')}catch{}
+  if(info.available&&info.has_data)return joinScreen();
+  setupFirstScreen(info)}
+function joinScreen(){app.innerHTML=`<section class="auth"><h1>Bem-vindo ao UStracker</h1><p>Este computador vai entrar como <b>mais um Servidor</b> da empresa, com os mesmos clientes e dados.</p><p class="muted">Entre com seu usuário e senha de sempre. A primeira entrada baixa os dados da nuvem e pode levar alguns minutos.</p><form id="join"><div class="row">${field('Usuário','name')}${field('Senha','password','password')}</div><div class="actions"><button class="ui-btn ui-btn-primary">Entrar</button></div></form><div id="joinOut"></div></section>`;
+  document.querySelector('#join').onsubmit=async e=>{e.preventDefault();const out=document.querySelector('#joinOut');const button=e.target.querySelector('button');button.disabled=true;out.innerHTML=msg('Baixando os dados da empresa… aguarde.','notice');try{await getCsrf();const r=await api('/auth/join',{method:'POST',body:JSON.stringify({...formData(e.target),environment:'production'})});csrf=r.csrf;me=r;renderShell();await show(allowedPages(nav.map(([key])=>key))[0]||'dashboard');toast({type:'success',message:'Pronto! Este computador agora é um Servidor da empresa.'})}catch(err){out.innerHTML=msg(err.message,'error')}finally{button.disabled=false}}}
+function setupFirstScreen(info={}){app.innerHTML=`<section class="auth"><h1>UStracker — Configuração inicial</h1><p>Crie o Administrador 1 (o acesso principal do sistema).</p>${info.available?`<p class="muted">${info.reachable===false?'Não foi possível falar com a nuvem agora; os dados serão enviados quando a conexão voltar.':'Os dados serão guardados automaticamente na nuvem da empresa.'}</p>`:''}<form id="setup"><div class="row">${field('Nome','name')}${field('Senha (mínimo 4 caracteres)','password','password')}</div><div class="actions"><button>Iniciar configuração</button><button type="button" class="ui-btn ui-btn-subtle" data-cloud-restore-open>Já uso o UStracker: restaurar da nuvem</button></div></form><div id="setupOut"></div></section>`;bindCloudRestoreEntry();document.querySelector('#setup').onsubmit=async e=>{e.preventDefault();try{await getCsrf();const r=await api('/auth/bootstrap',{method:'POST',body:JSON.stringify(formData(e.target))});enrollmentScreen(r.tickets)}catch(err){document.querySelector('#setupOut').innerHTML=msg(err.message,'error')}}}
+function enrollmentScreen(tickets){app.innerHTML=`<section class="auth"><h1>Administrador 1 criado</h1><p>Pronto para usar. <b>Opcional:</b> cadastre agora mais dois administradores de reserva (os códigos valem 15 minutos), ou clique em “Ir para login”. Usuários do dia a dia (Operador, Gerente) são criados depois em Sistema › Usuários.</p>${tickets.map((t,i)=>`<form class="enroll" data-ticket="${esc(t)}"><h3>Administrador ${i+2}</h3><div class="ticket">${esc(t)}</div><div class="row">${field('Nome','name')}${field('Senha','password','password')}</div><div class="actions"><button>Registrar Admin ${i+2}</button></div><div class="out"></div></form>`).join('')}<button id="goLogin" class="secondary">Ir para login</button></section>`;document.querySelectorAll('.enroll').forEach(f=>f.onsubmit=async e=>{e.preventDefault();try{await getCsrf();const p=formData(f);p.ticket=f.dataset.ticket;await api('/auth/enroll',{method:'POST',body:JSON.stringify(p)});f.querySelector('.out').innerHTML=msg('Administrador registrado.')}catch(err){f.querySelector('.out').innerHTML=msg(err.message,'error')}});document.querySelector('#goLogin').onclick=()=>boot()}
 // C-05 — restore a whole installation from the cloud (new or wiped computer), before login.
 function bindCloudRestoreEntry(){
   document.querySelectorAll('[data-cloud-restore-open]').forEach(button=>button.onclick=()=>{
@@ -472,10 +478,21 @@ function organizeSystemPage(runtime){
   tabs.querySelectorAll('[data-system-tab]').forEach(button=>button.onclick=()=>{history.replaceState(null,'','#system/'+button.dataset.systemTab);select(button.dataset.systemTab)});
   const wanted=location.hash.match(/^#system\/(users|cloud|trash|development)$/)?.[1];if(wanted)select(wanted);
 }
+async function loadPlacaPanel(section,status){
+  const data=await apiClient.request('/cloud/placa');const host=document.createElement('div');host.innerHTML=renderPlacaPanel(data,status);section.append(host);
+  const form=host.querySelector('#placaForm');const out=host.querySelector('[data-placa-out]');
+  bindActionForm(form,{key:'placa-publish',notify:toast,action:async()=>{const p=formData(form);const r=await api('/cloud/placa/publish',{method:'POST',body:JSON.stringify({form:p.form,placa_url:p.placa_url,github:{repo:p.repo,path:p.path,branch:p.branch,token:p.token}})});
+      const json=JSON.stringify(r.placa,null,2);const href='data:application/json;charset=utf-8,'+encodeURIComponent(json);
+      out.innerHTML=r.published?msg(`Placa versão ${r.seq} publicada no GitHub. Os Servidores seguem em até alguns minutos.`,'success')
+        :msg(`Placa versão ${r.seq} pronta. Salve o arquivo no GitHub (substitua o placa.json) e informe o endereço público acima.`,'notice')+`<p><a class="ui-btn ui-btn-secondary" download="placa.json" href="${href}">Baixar placa.json</a></p>`;
+      return r},successMessage:'Placa publicada.'});
+  bindActionButton(host.querySelector('[data-placa-check]'),{key:'placa-check',notify:toast,action:()=>api('/cloud/placa/check',{method:'POST',body:'{}'}),refresh:()=>loadCloudTab(section),successMessage:'Placa conferida.'});
+}
 async function loadCloudTab(section){
   section.innerHTML='<div class="panel"><p class="muted">Carregando…</p></div>';
   let status;try{status=await apiClient.request('/cloud/status')}catch(error){section.innerHTML=`<div class="error">${esc(error.message)}</div>`;return}
   section.innerHTML=renderCloudPanel(status);
+  if(isAdmin()&&me?.environment==='production')loadPlacaPanel(section,status).catch(()=>{});
   const reload=()=>loadCloudTab(section);
   const form=section.querySelector('#cloudConnectForm');
   if(form)bindActionForm(form,{key:'cloud-connect',action:async()=>{const p=formData(form);let r=await api('/cloud/connect',{method:'POST',body:JSON.stringify({url:p.url,secret:p.secret})});

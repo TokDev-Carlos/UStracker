@@ -280,3 +280,4 @@ body.is-navigating::before{content:'';position:fixed;top:0;left:0;height:3px;wid
 .sync-chip{align-self:center;padding:4px 10px;border-radius:999px;background:#fff4e5;color:#93370d;font-size:.8rem;font-weight:600;white-space:nowrap}
 .sync-chip.is-offline{background:#f2f4f7;color:#475467}
 @media(max-width:760px){.sync-chip{display:none}}
+.mono{font-family:ui-monospace,Consolas,monospace;font-size:.85rem;width:100%}.placa-mirrors{margin:0 0 10px;padding-left:18px}

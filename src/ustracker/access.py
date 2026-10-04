@@ -81,7 +81,7 @@ _VIEW_MEDIA = ('files.view', 'clients.view', 'mobility.view', 'commercial.view')
 
 # (métodos, regex do caminho depois de /api/v1, permissão). A primeira que casar vale.
 _RULES: list[tuple[str, str, object]] = [
-    ('*', r'/(health|public|auth/(csrf|login|logout|me|setup-status|bootstrap|enroll|change-password))$', ANY),
+    ('*', r'/(health|public|auth/(csrf|login|join|logout|me|setup-status|bootstrap|enroll|change-password)|cloud/bootstrap)$', ANY),
     ('*', r'/(system/shutdown|shell/detach)$', ANY),
     ('GET', r'/(search|entities/clients)$', ANY),
     ('GET', r'/(cloud/status|sync/state)$', ANY),

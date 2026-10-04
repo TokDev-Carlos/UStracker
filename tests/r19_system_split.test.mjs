@@ -7,9 +7,11 @@ const app = fs.readFileSync(new URL('../frontend/app.js', import.meta.url), 'utf
 
 test('R19: Administração é a aba inicial e diagnósticos ficam em Desenvolvimento', () => {
   assert.match(app, /class="active" data-system-tab="admin">Administração/);
-  for (const title of ['Recuperação / transferência', 'Integrações planejadas', 'Laboratório de testes', 'Estações', 'Auditoria']) {
+  for (const title of ['Recuperação / transferência', 'Integrações planejadas', 'Laboratório de testes', 'Auditoria']) {
     assert.match(app.match(/const advanced=new Set\(\[(.*?)\]\)/)[1], new RegExp(title));
   }
+  // 1.007: Servidores ficam em Administração (uso diário), não em Desenvolvimento
+  assert.doesNotMatch(app.match(/const advanced=new Set\(\[(.*?)\]\)/)[1], /Servidores/);
 });
 
 test('R19: ações destrutivas pedem confirmação explícita', async () => {

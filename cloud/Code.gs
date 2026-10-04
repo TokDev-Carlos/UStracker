@@ -93,6 +93,9 @@ function ust_lease_(b) {
     var ttl = Math.max(15, Math.min(300, Number(b.ttl || 120))) * 1000;
     var lease = { holder: holder, name: String(b.name || 'Servidor').slice(0, 80), since: (cur && cur.holder === holder) ? cur.since : now, expires: now + ttl };
     props.setProperty('LEASE', JSON.stringify(lease));
+    var servers = ust_prop_json_('SERVERS') || {};
+    servers[holder] = { name: lease.name, last_seen: new Date(now).toISOString() };
+    props.setProperty('SERVERS', JSON.stringify(servers));
     return { granted: true, lease: lease, head: ust_head_(), auth_head: ust_prop_json_('AUTH_HEAD'), now: now };
   } finally {
     lock.releaseLock();
@@ -342,4 +345,31 @@ function limpezaDiaria() {
   stale.forEach(function (f) { ust_remove_(f); });
   Logger.log('Limpeza: ' + removed + ' pontos expirados, ' + stale.length + ' envios incompletos removidos.');
   return { removed: removed, stale_uploads: stale.length };
+}
+
+
+/* ---------------------------------------------------------------- S-10 painel do dono
+ * No editor do Apps Script: escolha "painel" e clique em Executar. O relatório aparece no
+ * Registro de execução: Servidores, último envio, quem está gravando e espaço usado. */
+function painel() {
+  var head = ust_head_() || {};
+  var lease = ust_prop_json_('LEASE');
+  var servers = ust_prop_json_('SERVERS') || {};
+  var bytes = 0, files = 0;
+  (function walk(folder) {
+    var it = folder.getFiles();
+    while (it.hasNext()) { var f = it.next(); bytes += f.getSize(); files++; }
+    var sub = folder.getFolders();
+    while (sub.hasNext()) walk(sub.next());
+  })(ust_root_());
+  var gb = bytes / (1024 * 1024 * 1024);
+  var lines = [];
+  lines.push('UStracker Cloud — painel');
+  lines.push('Última versão do banco: ' + (head.generation || 0) + ' em ' + (head.created_at || '—'));
+  lines.push('Gravando agora: ' + (lease && lease.expires > new Date().getTime() ? lease.name : 'ninguém'));
+  lines.push('Servidores:');
+  Object.keys(servers).forEach(function (k) { lines.push('  - ' + servers[k].name + ' · último acesso ' + servers[k].last_seen); });
+  lines.push('Espaço usado: ' + gb.toFixed(2) + ' GB em ' + files + ' arquivos' + (gb > 12 ? '  ⚠ PERTO DO LIMITE de 15 GB do Drive gratuito' : ''));
+  Logger.log(lines.join('\n'));
+  return lines.join('\n');
 }

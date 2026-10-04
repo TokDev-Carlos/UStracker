@@ -24,7 +24,7 @@ export function renderCloudPanel(s = {}) {
       <dt>Último envio</dt><dd>${esc(when(s.last_upload_at))}${s.last_upload_size ? ` · ${esc(size(s.last_upload_size))}` : ''}</dd>
       <dt>Versão na nuvem</dt><dd>${esc(s.generation || 0)}</dd>
       <dt>Fotos e anexos na nuvem</dt><dd>${esc(s.files_in_cloud || 0)}</dd>
-      <dt>Envio automático</dt><dd>${Math.round(Number(s.debounce_seconds || 120) / 60)} min após a última alteração e ao fechar o sistema</dd></dl>
+      <dt>Envio automático</dt><dd>Segundos após cada alteração e ao fechar o sistema</dd></dl>
     ${s.last_error && !s.conflict ? `<p class="notice">Último erro: ${esc(s.last_error)}. O sistema tenta de novo sozinho.</p>` : ''}
     ${s.conflict ? `<div class="notice cloud-conflict"><strong>Outra máquina enviou dados mais novos.</strong><p>Para não perder nada, este computador parou de enviar. Se esta é a máquina certa, substitua a nuvem; senão, restaure a partir da nuvem.</p><div class="actions"><button type="button" class="ui-btn ui-btn-danger" data-cloud-force>Usar este computador e substituir a nuvem</button></div></div>` : ''}
     <div class="actions"><button type="button" class="ui-btn ui-btn-primary" data-cloud-sync>Enviar agora</button><button type="button" class="ui-btn ui-btn-secondary" data-cloud-points>Pontos de restauração</button><button type="button" class="ui-btn ui-btn-subtle" data-cloud-kit>Kit de recuperação</button><button type="button" class="ui-btn ui-btn-subtle" data-cloud-disconnect>Desconectar</button></div>
@@ -59,4 +59,25 @@ export function renderCloudRestoreForm() {
     <div class="field"><label>Código de conexão</label><input name="secret" type="password" required autocomplete="off"></div>
     <label class="cloud-confirm"><input type="checkbox" name="ok" required> Entendo que os dados deste computador serão substituídos pelos da nuvem.</label>
     <div class="actions"><button class="ui-btn ui-btn-primary">Restaurar da nuvem</button></div><div data-cloud-restore-out></div></form>`;
+}
+
+// S-05..S-07 — Placa de direção: onde estão os bancos (Banco 1 principal, Banco 2+ espelhos).
+export function renderPlacaPanel(d = {}, status = {}) {
+  const gh = d.github || {};
+  const mirrors = (status.mirrors || []).map((m, i) => `<li>Banco ${i + 2}: ${m.error ? `<span class="badge badge-warn">erro</span> ${esc(m.error)}` : m.last_ok ? `<span class="badge badge-ok">em dia</span> ${esc(when(m.last_ok))}` : '<span class="badge badge-muted">aguardando 1º envio</span>'}</li>`).join('');
+  return `<div class="panel placa-panel"><h3>Placa de direção (Servidores)</h3>
+    <p class="muted">Diz a todos os computadores onde ficam os bancos. <b>Banco 1</b> é o principal; <b>Banco 2</b> em diante recebem cópia de tudo. Para trocar de conta Google: acrescente a conta nova como Banco 2, espere “em dia”, passe-a para Banco 1 e publique. Os Servidores seguem sozinhos.</p>
+    <p>Placa atual: <b>${d.seq ? `versão ${esc(d.seq)}` : 'ainda não publicada'}</b>${d.placa_url ? ` · <code>${esc(d.placa_url)}</code>` : ''}${status.placa_error ? ` · <span class="badge badge-warn">${esc(status.placa_error)}</span>` : ''}</p>
+    ${mirrors ? `<ul class="placa-mirrors">${mirrors}</ul>` : ''}
+    <form id="placaForm">
+      <div class="field"><label>Bancos (formulário)</label><textarea name="form" rows="9" spellcheck="false" class="mono">${esc(d.form || '')}</textarea></div>
+      <details class="more-options"${gh.repo ? '' : ' open'}><summary>Onde publicar (GitHub)</summary>
+        <div class="row"><div class="field"><label>Repositório (dono/nome)</label><input name="repo" value="${esc(gh.repo || '')}" placeholder="ustracker/config"></div>
+        <div class="field"><label>Arquivo</label><input name="path" value="${esc(gh.path || 'placa.json')}"></div>
+        <div class="field"><label>Ramo</label><input name="branch" value="${esc(gh.branch || 'main')}"></div></div>
+        <div class="row"><div class="field field-wide"><label>Token do GitHub ${d.github_token_saved ? '(já salvo; preencha só para trocar)' : '(permissão “Contents: write” só neste repositório)'}</label><input name="token" type="password" autocomplete="off"></div></div>
+        <div class="field"><label>Ou endereço público da placa (se publicar à mão)</label><input name="placa_url" value="${esc(d.placa_url || '')}" placeholder="https://raw.githubusercontent.com/…/placa.json"></div>
+      </details>
+      <div class="actions"><button class="ui-btn ui-btn-primary">Publicar placa</button><button type="button" class="ui-btn ui-btn-secondary" data-placa-check>Verificar agora</button></div>
+      <div data-placa-out></div></form></div>`;
 }

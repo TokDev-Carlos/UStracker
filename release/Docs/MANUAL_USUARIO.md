@@ -1,12 +1,19 @@
-# Manual do Usuário — UStracker 1.006
+# Manual do Usuário — UStracker 1.007
 
 ## Instalar
 1. Execute **install_UStracker.exe** e siga as telas (pasta sugerida: `C:\UStracker`).
 2. Abra pelo atalho **UStracker** na Área de Trabalho ou no Menu Iniciar.
-3. **Primeira vez:** cadastre o Administrador 1.
-   **Já usa o UStracker em outro computador?** Clique em **Já uso o UStracker: restaurar da nuvem**, cole a URL e o Código de conexão e entre com seu usuário e senha de sempre.
+3. **Primeiro computador da empresa:** cadastre o Administrador 1.
+   **Outros computadores:** a tela já pede **usuário e senha** — os dados da empresa chegam sozinhos e o computador vira o próximo **Servidor**.
 
 Atualizar é igual: execute o instalador novo por cima. Seus dados (`UserData`) não são tocados.
+
+## Usuários e pacotes
+- Administrador cria pessoas em **Sistema › Usuários** (nome de acesso, senha inicial e pacote).
+- **Operador**: cria e atualiza clientes, veículos, planos e registra pagamentos. Não exclui, não estorna, não vê despesas nem custos.
+- **Gerente**: tudo do Operador + excluir, estornar, despesas, fiscal, custos, relatórios e Lixeira. Sem o menu Sistema.
+- Pacotes próprios: **+ Novo pacote** e marque o que pode.
+- Cada um troca a própria senha clicando no nome, no topo.
 
 ## Entrar
 - **Real** = dados de verdade. **Teste** = área de treino, separada (pode apagar à vontade).
@@ -49,9 +56,9 @@ Atualizar é igual: execute o instalador novo por cima. Seus dados (`UserData`) 
 - O histórico financeiro é sempre mantido.
 
 ## Nuvem (Google Drive)
-Configure uma vez seguindo `NUVEM_GOOGLE_DRIVE.md`. Depois o sistema envia tudo sozinho, cifrado, uns 2 minutos depois de cada alteração e ao fechar. Guarde a **URL** e o **Código de conexão** fora do computador.
+Configure uma vez seguindo `NUVEM_GOOGLE_DRIVE.md`. Depois o sistema envia tudo sozinho, cifrado, segundos depois de cada alteração e ao fechar. Guarde a **URL** e o **Código de conexão** fora do computador.
 
 ## Problemas comuns
 - **"Nuvem: o Google pediu login…"** → no Apps Script, a implantação precisa estar como *Qualquer pessoa*.
-- **"Outra máquina enviou dados mais novos"** → use só um computador por vez; escolha qual fica valendo em Sistema → Nuvem.
+- **"Outra máquina enviou dados mais novos"** → um Servidor salvou sem internet enquanto outro gravava; escolha qual fica valendo em Sistema → Nuvem.
 - **Algo sumiu?** Veja a Lixeira. Passou de 14 dias? Use um ponto de restauração em Sistema → Nuvem.
