@@ -52,7 +52,7 @@ export const ERROR_MESSAGES = Object.freeze({
   'document type must be CPF, RG or CNH': 'O documento deve ser CPF, RG ou CNH.',
   'due day must be 1..31': 'O dia de vencimento deve ficar entre 1 e 31.',
   'due_day must be between 1 and 31': 'O dia de vencimento deve ficar entre 1 e 31.',
-  'duplicate attachment hash': 'Este arquivo já foi anexado.',
+  'duplicate attachment hash': 'Este mesmo arquivo já está anexado no sistema (o conteúdo é idêntico). Se precisar repetir, use "Salvar Link" ou anexe outra versão do arquivo.',
   'duplicate fleet target': 'A frota foi selecionada duas vezes.',
   'duplicate vehicle target': 'O veículo foi selecionado duas vezes.',
   'end_on cannot precede start_on': 'A data final não pode ser anterior ao início.',

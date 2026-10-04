@@ -46,7 +46,8 @@ export function renderSubscriptionWorkflow(model = {}) {
         selected: selectedClientId ? { id: selectedClientId, display_name: selectedClient.legal_name || selectedClientId } : null,
       })}</div>`;
   const plans = activeMonthlyPlans(model.catalog);
-  const startOn = escapeHtml(model.startOn || new Date().toISOString().slice(0, 10));
+  const today = new Date(); const pad = n => String(n).padStart(2, '0');
+  const startOn = escapeHtml(model.startOn || `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`); // local date, not UTC
   return `<form id="subscriptionWorkflowForm" data-subscription-context="${escapeHtml(context)}">
     <div class="row">${clientField}<div class="field"><label>Plano mensal*</label><select name="catalog_id" required><option value="">Selecione o plano</option>${plans.map(item => `<option value="${escapeHtml(item.id)}" data-price="${Number(item.price_cents || 0)}">${escapeHtml(item.name || item.description || item.id)}</option>`).join('')}</select></div></div>
     <div class="row"><div class="field"><label>Início*</label><input type="date" name="start_on" value="${startOn}" required></div><div class="field"><label>Dia do vencimento*</label><input type="number" name="due_day" min="1" max="31" value="10" required></div><div class="field"><label>Quantidade*</label><input type="number" name="quantity" min="1" value="1" required></div></div>
