@@ -52,7 +52,7 @@ async function requestSystemShutdown(){const bridge=window.chrome?.webview;if(br
 // S-02/S-03 — other Servidores' changes appear by themselves; the chip tells when saving waits for another Servidor.
 let syncVersion=null,syncTimer=null,syncFast=0;
 function syncChip(state){let chip=document.querySelector('#syncChip');const actions=document.querySelector('.topbar-actions');if(!actions)return;if(!chip){chip=document.createElement('span');chip.id='syncChip';chip.className='sync-chip';chip.setAttribute('role','status');actions.prepend(chip)}
-  const text=state?.waiting_for?`Aguardando ${state.waiting_for} terminar de salvar…`:state?.offline?'Sem conexão com a nuvem: salvando neste computador':'';chip.textContent=text;chip.hidden=!text;chip.classList.toggle('is-offline',!!state?.offline&&!state?.waiting_for)}
+  const text=state?.waiting_for?`Aguardando ${state.waiting_for} terminar de salvar…`:state?.script_outdated?'Atualize o script da nuvem (veja Docs › Guia do dono)':state?.offline?'Sem conexão com a nuvem: salvando neste computador':'';chip.textContent=text;chip.hidden=!text;chip.classList.toggle('is-offline',!!state?.offline&&!state?.waiting_for)}
 async function syncTick(){clearTimeout(syncTimer);if(!me||me.environment!=='production'){syncTimer=setTimeout(syncTick,15000);return}
   try{const state=await apiClient.request('/sync/state');syncChip(state);
     if(syncVersion!==null&&state.data_version!==syncVersion){const busy=document.querySelector('#uiOverlay,#uiDialog,#uiActionMenu')||['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName);if(!busy&&typeof pageReload==='function'){pageReload();toast({type:'info',message:'Dados atualizados por outro Servidor.'})}else{syncTimer=setTimeout(syncTick,5000);return}}

@@ -549,7 +549,8 @@ class CloudSync:
                 try:
                     out = client.call('lease', {'op': 'acquire', 'holder': ident['id'], 'name': ident['name'], 'ttl': LEASE_TTL}, retries=1)
                 except CloudError as exc:
-                    self.status.update(offline=True, waiting_for=None, last_error=f'{exc.code}: {exc.detail}'[:300])
+                    self.status.update(offline=True, waiting_for=None, last_error=f'{exc.code}: {exc.detail}'[:300],
+                                       script_outdated=(exc.code == 'UNKNOWN_ACTION'))
                     return {'offline': True}
                 if out.get('granted'):
                     break
@@ -558,7 +559,7 @@ class CloudSync:
                     self.status['waiting_for'] = None
                     raise CloudError('BUSY', f"{out.get('holder_name') or 'Outro Servidor'} está salvando agora. Tente de novo em alguns segundos.")
                 time.sleep(2)
-            self.status.update(offline=False, waiting_for=None)
+            self.status.update(offline=False, waiting_for=None, script_outdated=False)
             self.lease_until = time.time() + LEASE_TTL - 10
             self.last_turn_use = time.time()
             self._pull_from(session, client, out.get('head'), out.get('auth_head'))
@@ -723,7 +724,7 @@ class CloudSync:
 
     def sync_state(self) -> dict:
         return {'data_version': self.data_version, 'waiting_for': self.status.get('waiting_for'),
-                'offline': bool(self.status.get('offline')), 'holding': self.lease_until > time.time(),
+                'offline': bool(self.status.get('offline')), 'script_outdated': bool(self.status.get('script_outdated')), 'holding': self.lease_until > time.time(),
                 'pending_changes': bool(self.state.get('dirty_since'))}
 
     # -- connect / status ---------------------------------------------------------
