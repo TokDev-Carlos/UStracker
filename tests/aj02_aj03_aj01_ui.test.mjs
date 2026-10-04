@@ -27,7 +27,7 @@ test('AJ-01: Receita Geral e Previsão do Mês lado a lado; previsão fora do Re
     vehicle_breakdown: { categories: [] },
     client_activity: [{ client_id: 'x', client_code: 'CLI-0001', client_name: 'Alfa', vehicles_count: 1, active_subscriptions: 1, purchases_count: 0, contracted_active_cents: 10000, realized_revenue_cents: 0, status: 'ACTIVE' }],
   });
-  assert.match(html, /revenue-split[\s\S]*Receita Geral[\s\S]*Previsão do Mês out\/2026[\s\S]*fora do Resultado/);
+  assert.match(html, /kpi-revenue[\s\S]*Receita<[\s\S]*kpi-forecast[\s\S]*Previsão do Mês out\/2026[\s\S]*fora do Resultado[\s\S]*kpi-clients[\s\S]*kpi-expenses[\s\S]*kpi-result[\s\S]*kpi-subscriptions/); // P-01 order
   assert.match(html, /R\$ 60,00<\/div><div class="label">Resultado/);
   assert.match(html, /Valor contratado ativo<\/th><th>Receita realizada/);
   assert.match(html, /R\$ 100,00<\/td><td class="money">R\$ 0,00/);

@@ -198,3 +198,14 @@ body.is-navigating::before{content:'';position:fixed;top:0;left:0;height:3px;wid
 .main>#content{min-width:0}
 .mobility-table{table-layout:auto;min-width:1040px}.mobility-table th,.mobility-table td{width:auto!important}.mobility-table td:last-child{white-space:nowrap}
 @media(max-width:600px){.vehicle-breakdown-label{font-size:.68rem;overflow-wrap:anywhere}.vehicle-breakdown-groups{grid-template-columns:repeat(3,minmax(0,1fr))}}
+/* P-01 — Visão Geral: 3 × 2 indicator grid */
+.overview-kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.overview-kpis .kpi{display:flex;flex-direction:column;gap:2px;min-width:0;border-left:0;border-top:4px solid var(--us-blue-600)}
+.overview-kpis .kpi-forecast{border-top-color:var(--us-signal-500);background:linear-gradient(180deg,var(--us-signal-50),#fff)}
+.overview-kpis .kpi-clients,.overview-kpis .kpi-subscriptions{border-top-color:var(--us-navy-700)}
+.overview-kpis .kpi-expenses{border-top-color:#f79009}
+.overview-kpis .kpi-result.result-positive{border-top-color:#12b76a;border-left:0}
+.overview-kpis .kpi-result.result-negative{border-top-color:var(--us-red-600);border-left:0}
+.overview-kpis .forecast-tag{align-self:flex-start}
+@media(max-width:800px){.overview-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:480px){.overview-kpis{grid-template-columns:1fr}}
