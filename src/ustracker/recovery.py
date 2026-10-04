@@ -20,6 +20,7 @@ RECOVERY_ROOTS = (
     'UserData/Production',
     'UserData/Test',
     'UserData/Media',
+    'UserData/Attachments',
     'UserData/Public',
 )
 
@@ -124,7 +125,7 @@ def import_recovery(package: Path | str, destination: Path | str, passphrase: st
         live_userdata = destination / 'UserData'
         live_userdata.mkdir(parents=True, exist_ok=True)
         backup.mkdir(parents=True, exist_ok=True)
-        for name in ('Auth', 'Production', 'Test', 'Media', 'Public'):
+        for name in ('Auth', 'Production', 'Test', 'Media', 'Attachments', 'Public'):
             src = staged_userdata / name
             dst = live_userdata / name
             old = backup / name

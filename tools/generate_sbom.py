@@ -4,6 +4,11 @@ import json
 import sys
 from pathlib import Path
 
+repo_root = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(repo_root / 'src'))
+
+from ustracker.versioning import read_version
+
 names = ['fastapi','uvicorn','cryptography','Pillow','openpyxl','python-multipart','sqlcipher3']
 components=[]
 for name in names:
@@ -15,7 +20,7 @@ for name in names:
 components.extend([
     {'name':'CPython Embedded','version':'3.13.15','license':'PSF-2.0'},
     {'name':'Microsoft Edge WebView2 Runtime','version':'152.0.4191.53','license':'Microsoft Software License Terms'},
-    {'name':'UStracker','version':'1.00.01.000','license':'Proprietary / LICENSE.txt'},
+    {'name':'UStracker','version':read_version(repo_root),'license':'Proprietary / LICENSE.txt'},
 ])
 out=Path(sys.argv[1]) if len(sys.argv)>1 else Path('SBOM.json')
 out.write_text(json.dumps({'bomFormat':'UStracker-SBOM','specVersion':'1.0','components':components},indent=2),encoding='utf-8')

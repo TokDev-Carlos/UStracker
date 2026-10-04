@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Caminhões">
+<defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1b5fe0"/><stop offset="1" stop-color="#0b2a73"/></linearGradient>
+<linearGradient id="s" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#d6e4ff"/></linearGradient></defs>
+<rect x="2" y="2" width="60" height="60" rx="14" fill="url(#g)"/><rect x="2.75" y="2.75" width="58.5" height="58.5" rx="13.25" fill="none" stroke="#5b9bff" stroke-opacity=".55" stroke-width="1.5"/>
+<g fill="url(#s)" stroke="none"><path d="M9 20h28a2 2 0 0 1 2 2v20H9a2 2 0 0 1-2-2V22a2 2 0 0 1 2-2zm32 8h7.5a3 3 0 0 1 2.5 1.3l4.5 6.6a3 3 0 0 1 .5 1.7V44a2 2 0 0 1-2 2h-2.2a5.5 5.5 0 0 1-10.6 0H24.8a5.5 5.5 0 0 1-10.6 0H9a2 2 0 0 1-2-2v-0.5h34zm3 2.5v6h9l-3.6-5.2a2 2 0 0 0-1.6-.8z"/><circle cx="19.5" cy="45.5" r="3.2" fill="#0b2a73"/><circle cx="46.5" cy="45.5" r="3.2" fill="#0b2a73"/></g></svg>

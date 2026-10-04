@@ -10,16 +10,19 @@ from PIL import Image, ImageOps
 
 from .crypto import random_bytes
 from .db import Database
+from .paths import resolve_stored_path
 from .services import audit, now, uid
 
 MAX_BYTES = 20 * 1024 * 1024
 MAX_PIXELS = 40_000_000
 
 
-def _encode(data: bytes, max_px: int, quality: int) -> tuple[bytes, int, int]:
+def _encode(data: bytes, max_px: int, quality: int, *, allowed_formats: set[str] | None = None) -> tuple[bytes, int, int]:
     if len(data) > MAX_BYTES:
         raise ValueError('image exceeds 20 MiB')
     with Image.open(io.BytesIO(data)) as im:
+        if allowed_formats is not None and (im.format or '').upper() not in allowed_formats:
+            raise ValueError('client photos must be JPEG, PNG or WebP')
         if getattr(im, 'n_frames', 1) != 1:
             raise ValueError('animated images are not supported')
         if im.width * im.height > MAX_PIXELS:
@@ -60,8 +63,8 @@ def recover_media_journals(root: Path | str, db: Database) -> dict:
             if row:
                 ok = True
                 for entry in entries:
-                    pending = root / entry['pending']
-                    final = root / entry['final']
+                    pending = resolve_stored_path(root, entry['pending'])
+                    final = resolve_stored_path(root, entry['final'])
                     if not final.exists() and pending.exists():
                         final.parent.mkdir(parents=True, exist_ok=True)
                         pending.replace(final)
@@ -72,8 +75,8 @@ def recover_media_journals(root: Path | str, db: Database) -> dict:
                     journal.unlink(missing_ok=True)
             else:
                 for entry in entries:
-                    (root / entry['pending']).unlink(missing_ok=True)
-                    (root / entry['final']).unlink(missing_ok=True)
+                    resolve_stored_path(root, entry['pending']).unlink(missing_ok=True)
+                    resolve_stored_path(root, entry['final']).unlink(missing_ok=True)
                     removed += 1
                 journal.unlink(missing_ok=True)
         except Exception:
@@ -82,8 +85,9 @@ def recover_media_journals(root: Path | str, db: Database) -> dict:
 
 
 def store(root: Path, db: Database, actor: int, media_key: bytes, entity_type: str, entity_id: str, data: bytes, retain_original: bool = False) -> dict:
-    operational, w, h = _encode(data, 1920, 82)
-    thumb, _, _ = _encode(data, 320, 75)
+    allowed_formats = {'JPEG','PNG','WEBP'} if entity_type == 'client' else None
+    operational, w, h = _encode(data, 1920, 82, allowed_formats=allowed_formats)
+    thumb, _, _ = _encode(data, 320, 75, allowed_formats=allowed_formats)
     mid = uid()
     root = Path(root)
     base = root / 'UserData' / 'Media' / db.environment
@@ -101,16 +105,16 @@ def store(root: Path, db: Database, actor: int, media_key: bytes, entity_type: s
     for final, payload in payloads:
         pending = final.with_suffix(final.suffix + '.pending')
         pending.write_bytes(payload)
-        files.append({'pending': str(pending.relative_to(root)), 'final': str(final.relative_to(root))})
+        files.append({'pending': pending.relative_to(root).as_posix(), 'final': final.relative_to(root).as_posix()})
     journal = _journal_dir(root) / f'{mid}.json'
     journal.write_text(json.dumps({'id': mid, 'environment': db.environment, 'files': files}, indent=2), encoding='utf-8')
     rec = {
         'id': mid,
         'entity_type': entity_type,
         'entity_id': entity_id,
-        'variant_path': str(op_path.relative_to(root)),
-        'thumb_path': str(th_path.relative_to(root)),
-        'original_path': str(orig_path.relative_to(root)) if orig_path else None,
+        'variant_path': op_path.relative_to(root).as_posix(),
+        'thumb_path': th_path.relative_to(root).as_posix(),
+        'original_path': orig_path.relative_to(root).as_posix() if orig_path else None,
         'mime': 'image/webp',
         'width': w,
         'height': h,
@@ -126,8 +130,8 @@ def store(root: Path, db: Database, actor: int, media_key: bytes, entity_type: s
             )
             audit(con, actor, 'MEDIA_CREATE', 'media', mid, None, {k:v for k,v in rec.items() if k not in {'variant_path','thumb_path','original_path'}})
         for entry in files:
-            pending = root / entry['pending']
-            final = root / entry['final']
+            pending = resolve_stored_path(root, entry['pending'])
+            final = resolve_stored_path(root, entry['final'])
             pending.replace(final)
         journal.unlink(missing_ok=True)
         return rec
@@ -143,5 +147,21 @@ def load(root: Path, db: Database, media_key: bytes, mid: str, variant: str = 'o
     col = {'operational':'variant_path','thumb':'thumb_path','original':'original_path'}.get(variant)
     if not col or not row[col]:
         raise KeyError('variant not found')
-    raw = (Path(root) / row[col]).read_bytes()
+    raw = resolve_stored_path(root, row[col]).read_bytes()
     return _open(media_key, raw, f'{mid}:{variant}:v1'.encode()), ('image/webp' if variant != 'original' else 'application/octet-stream')
+
+
+def remove(root: Path | str, db: Database, actor: int, mid: str) -> dict:
+    root = Path(root)
+    row = db.one('SELECT * FROM media WHERE id=?', (mid,))
+    if not row:
+        raise KeyError('media not found')
+    public = {key: row[key] for key in ('id', 'entity_type', 'entity_id', 'mime', 'width', 'height', 'sha256', 'created_at')}
+    # C-09: the photo goes to the 14-day trash; encrypted files stay until the purge.
+    from .trash import put as trash_put
+    label = {'client': 'Foto do cliente', 'vehicle': 'Foto do veículo', 'fleet': 'Foto da frota'}.get(row['entity_type'], 'Foto')
+    with db.transaction() as con:
+        trash_id = trash_put(con, actor, 'media', mid, label, {'row': dict(row)})
+        con.execute('DELETE FROM media WHERE id=?', (mid,))
+        audit(con, actor, 'MEDIA_DELETE', 'media', mid, public, None)
+    return {'id': mid, 'removed': True, 'trash_id': trash_id}

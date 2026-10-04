@@ -86,118 +86,19 @@ def verify_audit_chain(db: Database) -> dict:
 
 
 def create_fleet(db: Database, actor: int, p: dict) -> dict:
-    if not p.get('client_id') or not str(p.get('name', '')).strip():
-        raise ValueError('client_id and name required')
-    if not db.one('SELECT id FROM clients WHERE id=? AND archived=0', (p['client_id'],)):
-        raise ValueError('client not found')
-    fid = uid()
-    ts = now()
-    rec = {
-        'id': fid,
-        'client_id': p['client_id'],
-        'name': str(p['name']).strip(),
-        'sector_or_unit': p.get('sector_or_unit'),
-        'archived': 0,
-        'revision': 1,
-        'created_at': ts,
-        'updated_at': ts,
-    }
-    with db.transaction() as con:
-        con.execute(
-            'INSERT INTO fleets(id,client_id,name,sector_or_unit,archived,revision,created_at,updated_at) VALUES(:id,:client_id,:name,:sector_or_unit,:archived,:revision,:created_at,:updated_at)',
-            rec,
-        )
-        audit(con, actor, 'FLEET_CREATE', 'fleet', fid, None, rec)
-    return rec
-
+    # Compatibility seam: R03 centralizes fleet invariants in mobility.py.
+    from .mobility import create_fleet as create_mobility_fleet
+    return create_mobility_fleet(db, actor, p)
 
 def transfer_vehicle(db: Database, actor: int, vehicle_id: str, p: dict) -> dict:
-    new_client = p.get('client_id')
-    effective_from = p.get('effective_from') or date.today().isoformat()
-    if not new_client:
-        raise ValueError('client_id required')
-    with db.transaction() as con:
-        vehicle = con.execute('SELECT * FROM vehicles WHERE id=?', (vehicle_id,)).fetchone()
-        if not vehicle:
-            raise KeyError('vehicle not found')
-        expected = int(p.get('expected_revision', 0))
-        if expected <= 0 or int(vehicle['revision']) != expected:
-            raise ValueError(f"revision conflict: current={vehicle['revision']}")
-        if not con.execute('SELECT id FROM clients WHERE id=? AND archived=0', (new_client,)).fetchone():
-            raise ValueError('target client not found')
-        fleet_id = p.get('fleet_id') or None
-        if fleet_id:
-            fleet = con.execute('SELECT * FROM fleets WHERE id=? AND archived=0', (fleet_id,)).fetchone()
-            if not fleet or fleet['client_id'] != new_client:
-                raise ValueError('fleet does not belong to target client')
-        before = dict(vehicle)
-        open_owner = con.execute(
-            'SELECT * FROM ownerships WHERE vehicle_id=? AND effective_to IS NULL ORDER BY effective_from DESC LIMIT 1',
-            (vehicle_id,),
-        ).fetchone()
-        if not open_owner:
-            raise ValueError('vehicle has no active ownership record')
-        if date.fromisoformat(effective_from) < date.fromisoformat(open_owner['effective_from']):
-            raise ValueError('transfer date cannot precede current ownership start date')
-        con.execute(
-            'UPDATE ownerships SET effective_to=? WHERE id=?',
-            (effective_from, open_owner['id']),
-        )
-        con.execute(
-            'INSERT INTO ownerships(id,vehicle_id,client_id,fleet_id,effective_from,created_at) VALUES(?,?,?,?,?,?)',
-            (uid(), vehicle_id, new_client, fleet_id, effective_from, now()),
-        )
-        con.execute(
-            'UPDATE vehicles SET client_id=?,fleet_id=?,revision=revision+1,updated_at=? WHERE id=?',
-            (new_client, fleet_id, now(), vehicle_id),
-        )
-        after = dict(con.execute('SELECT * FROM vehicles WHERE id=?', (vehicle_id,)).fetchone())
-        audit(con, actor, 'VEHICLE_TRANSFER', 'vehicle', vehicle_id, before, after)
-        return after
-
+    # Legacy one-call contract remains available, but uses the R03 transfer-case ledger internally.
+    from .mobility import transfer_vehicle_compat
+    return transfer_vehicle_compat(db, actor, vehicle_id, p)
 
 def update_catalog(db: Database, actor: int, catalog_id: str, p: dict) -> dict:
-    with db.transaction() as con:
-        row = con.execute('SELECT * FROM catalog WHERE id=?', (catalog_id,)).fetchone()
-        if not row:
-            raise KeyError('catalog item not found')
-        expected = int(p.get('expected_revision', 0))
-        if expected <= 0 or int(row['revision']) != expected:
-            raise ValueError(f"revision conflict: current={row['revision']}")
-        before = dict(row)
-        price = row['price_cents'] if 'price' not in p else parse_money_api(p['price'])
-        cost = row['cost_cents'] if 'cost' not in p else parse_money_api(p['cost'])
-        values = {
-            'name': p.get('name', row['name']),
-            'description': p.get('description', row['description']),
-            'category': p.get('category', row['category']),
-            'billing_interval_months': int(p.get('billing_interval_months', row['billing_interval_months'])),
-            'notes': p.get('notes', row['notes']),
-            'public': 1 if p.get('public', bool(row['public'])) else 0,
-            'active': 1 if p.get('active', bool(row['active'])) else 0,
-            'price_cents': price,
-            'cost_cents': cost,
-            'id': catalog_id,
-            'updated_at': now(),
-        }
-        con.execute(
-            '''UPDATE catalog SET name=:name,description=:description,category=:category,billing_interval_months=:billing_interval_months,
-               notes=:notes,public=:public,active=:active,price_cents=:price_cents,cost_cents=:cost_cents,
-               revision=revision+1,updated_at=:updated_at WHERE id=:id''',
-            values,
-        )
-        if price != row['price_cents'] or cost != row['cost_cents']:
-            effective = p.get('effective_from') or date.today().isoformat()
-            con.execute(
-                '''INSERT INTO catalog_prices(id,catalog_id,effective_from,price_cents,cost_cents,created_at)
-                   VALUES(?,?,?,?,?,?)
-                   ON CONFLICT(catalog_id,effective_from) DO UPDATE SET price_cents=excluded.price_cents,cost_cents=excluded.cost_cents,created_at=excluded.created_at''',
-                (uid(), catalog_id, effective, price, cost, now()),
-            )
-        after = dict(con.execute('SELECT * FROM catalog WHERE id=?', (catalog_id,)).fetchone())
-        audit(con, actor, 'CATALOG_UPDATE', 'catalog', catalog_id, before, after)
-        return after
-
+    # Compatibility seam: R04 centralizes edit/history/cost-component rules in catalog.py.
+    from .catalog import update_catalog_item
+    return update_catalog_item(db,actor,catalog_id,p)
 
 def set_subscription_status(db: Database, actor: int, subscription_id: str, p: dict) -> dict:
     status = p.get('lifecycle_status')

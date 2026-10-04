@@ -20,6 +20,7 @@ namespace UStracker.Bootstrap
                 try
                 {
                     var root = RootPaths.ProductRoot;
+                    try { DesktopShortcut.CreateOrUpdate(); } catch { /* shortcut failure is non-fatal */ }
                     if (!File.Exists(RootPaths.RuntimePython))
                         throw new FileNotFoundException("Runtime Python não encontrado.", RootPaths.RuntimePython);
                     var port = ReadHealthyPort();
@@ -28,9 +29,12 @@ namespace UStracker.Bootstrap
                         StartBackend(root);
                         port = WaitForBackend();
                     }
-                    var shell = Path.Combine(root, "UStracker.Shell.exe");
+                    var shell = RootPaths.ShellExecutable;
                     if (!File.Exists(shell)) throw new FileNotFoundException("UStracker.Shell.exe não encontrado.", shell);
-                    Process.Start(new ProcessStartInfo(shell, port.ToString()) { UseShellExecute = false, WorkingDirectory = root });
+                    var shellProcess = Process.Start(new ProcessStartInfo(shell, port.ToString()) { UseShellExecute = false, WorkingDirectory = root });
+                    if (shellProcess == null) throw new InvalidOperationException("Falha ao iniciar a janela do UStracker.");
+                    shellProcess.WaitForExit();
+                    StopBackend();
                 }
                 catch (Exception ex)
                 {
@@ -82,6 +86,28 @@ namespace UStracker.Bootstrap
                 }
             }
             catch { return -1; }
+        }
+
+        private static void StopBackend()
+        {
+            try
+            {
+                if (!File.Exists(RootPaths.StateFile)) return;
+                var json = File.ReadAllText(RootPaths.StateFile);
+                var match = Regex.Match(json, "\"pid\"\\s*:\\s*(\\d+)");
+                if (!match.Success) return;
+                var pid = int.Parse(match.Groups[1].Value);
+                using (var backend = Process.GetProcessById(pid))
+                {
+                    var executable = backend.MainModule?.FileName;
+                    if (string.IsNullOrWhiteSpace(executable)) return;
+                    if (!string.Equals(Path.GetFullPath(executable), Path.GetFullPath(RootPaths.RuntimePython), StringComparison.OrdinalIgnoreCase)) return;
+                    backend.Kill();
+                    backend.WaitForExit(5000);
+                }
+                try { File.Delete(RootPaths.StateFile); } catch { }
+            }
+            catch { }
         }
     }
 }

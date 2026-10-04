@@ -1,0 +1,4 @@
+NODE: 19/19 PASS
+PYTHON: 14 executed; 13 PASS; 1 SKIP (sqlcipher3 unavailable)
+COMPILEALL: PASS
+NODE_CHECK frontend/app.js: PASS

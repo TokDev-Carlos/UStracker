@@ -1,0 +1,18 @@
+{
+  "execution_order": ["R11","R12","R13","R14","R15","R16","R17","R18","R19","R20","R21","R22","R23"],
+  "stages": {
+    "R11": {"name":"core_operational_flow","depends_on":[],"migration":"only_if_required","gate":"client-company-mobility-plan-subscription-payment-finance-overview e2e"},
+    "R12": {"name":"realtime_entity_search","depends_on":["R11"],"migration":"no","gate":"1000+ clients bounded autocomplete"},
+    "R13": {"name":"runtime_ui_sync","depends_on":["R11","R12"],"migration":"no","gate":"no F5 after mutations"},
+    "R14": {"name":"single_action_media","depends_on":["R13"],"migration":"no","gate":"single-action upload/replace/remove"},
+    "R15": {"name":"icon_system","depends_on":["R13"],"migration":"no","gate":"complete semantic icon map"},
+    "R16": {"name":"layout_refinement","depends_on":["R15"],"migration":"no","gate":"desktop visual smoke"},
+    "R17": {"name":"brand_asset_contract","depends_on":["R15","R16"],"migration":"no","gate":"no distorted/cropped brand assets"},
+    "R18": {"name":"overview_2","depends_on":["R11","R13"],"migration":"only_if_query/index_required","gate":"all-time/year financial reconciliation"},
+    "R19": {"name":"system_admin_dev_split","depends_on":["R13","R15"],"migration":"no","gate":"admin and dev concerns separated"},
+    "R20": {"name":"portability_enforcement","depends_on":[],"migration":"no","gate":"arbitrary-path test matrix"},
+    "R21": {"name":"repository_boundary","depends_on":["R20"],"migration":"no remote migration","gate":"local implementation behind stable boundary"},
+    "R22": {"name":"transactional_updater","depends_on":["R20"],"migration":"no domain schema by default","gate":"apply/healthcheck/rollback integration"},
+    "R23": {"name":"full_functional_audit","depends_on":["R11","R12","R13","R14","R15","R16","R17","R18","R19","R20","R21","R22"],"migration":"no","gate":"zero unresolved Critical/Important + Windows smoke"}
+  }
+}

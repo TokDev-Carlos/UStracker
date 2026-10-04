@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import shutil
 import sys
 import urllib.request
@@ -11,13 +12,28 @@ from pathlib import Path
 
 from cryptography.hazmat.primitives.serialization import load_pem_public_key
 from .update import inspect_package, safe_extract
+from .versioning import read_version
 
 UTC = timezone.utc
 STATES = ('RECEIVED','VALIDATED','QUIESCED','BACKED_UP','STAGED','MIGRATED','SWITCHED','VERIFIED','ACCEPTED')
 
 
 def _version(root: Path) -> str:
-    return json.loads((root/'VERSION.json').read_text(encoding='utf-8'))['version']
+    return read_version(root)
+
+
+def _schema_version(root: Path) -> int:
+    metadata = root / 'VERSION.json'
+    if not metadata.exists():
+        raise RuntimeError('VERSION.json is missing')
+    return int(json.loads(metadata.read_text(encoding='utf-8'))['schema_version'])
+
+
+def _replace_file(source: Path, destination: Path) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    pending = destination.with_name(destination.name + '.update-new')
+    shutil.copy2(source, pending)
+    os.replace(pending, destination)
 
 
 def _write_journal(root: Path, journal: dict, state: str) -> None:
@@ -49,7 +65,7 @@ def _verify_switched_files(root: Path, manifest: dict) -> None:
 
 def apply(root: Path, package: Path) -> dict:
     root=root.resolve(); package=package.resolve()
-    journal={'from':_version(root),'to':None,'state':'RECEIVED','package':package.name,'files':[],'started_at':datetime.now(UTC).isoformat()}
+    journal={'from':_version(root),'to':None,'from_schema':_schema_version(root),'to_schema':None,'state':'RECEIVED','package':package.name,'files':[],'started_at':datetime.now(UTC).isoformat()}
     _write_journal(root,journal,'RECEIVED')
     trust=root/'Trust'/'update_public_key.pem'
     if not trust.exists(): raise RuntimeError('trusted update public key is missing')
@@ -69,10 +85,16 @@ def apply(root: Path, package: Path) -> dict:
         journal['files'].append({'path':rel.as_posix(),'had_old':old.exists()})
     _write_journal(root,journal,'BACKED_UP')
     try:
-        safe_extract(package,stage,public); _write_journal(root,journal,'STAGED')
+        safe_extract(package,stage,public)
+        journal['to_schema']=_schema_version(stage)
+        # R22: migrations are sequential, additive and reentrant (db.py), so forward jumps (e.g. 9→11)
+        # are applied step by step on next authenticated open. Downgrades are never allowed.
+        if journal['to_schema'] < journal['from_schema']:
+            raise RuntimeError('update schema is not compatible with the installed schema')
+        _write_journal(root,journal,'STAGED')
         journal['migration_mode']='AUTHENTICATED_RUNTIME_ON_NEXT_OPEN'; _write_journal(root,journal,'MIGRATED')
         for item in manifest['files']:
-            rel=Path(item['path']); src=stage/rel; dst=root/rel; dst.parent.mkdir(parents=True,exist_ok=True); shutil.copy2(src,dst)
+            rel=Path(item['path']); src=stage/rel; dst=root/rel; _replace_file(src,dst)
         _write_journal(root,journal,'SWITCHED')
         _verify_switched_files(root,manifest)
         if _version(root)!=manifest['to_version']: raise RuntimeError('post-switch version verification failed')
@@ -80,7 +102,7 @@ def apply(root: Path, package: Path) -> dict:
     except Exception:
         for entry in reversed(journal['files']):
             rel=Path(entry['path']); dst=root/rel; old=rollback/rel
-            if old.exists(): dst.parent.mkdir(parents=True,exist_ok=True); shutil.copy2(old,dst)
+            if old.exists(): _replace_file(old,dst)
             elif dst.exists(): dst.unlink()
         journal['rollback_at']=datetime.now(UTC).isoformat(); journal['rollback_reason']='update_failed_before_acceptance'; _write_journal(root,journal,'QUIESCED'); raise
     finally:

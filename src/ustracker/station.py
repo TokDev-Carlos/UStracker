@@ -44,18 +44,46 @@ def local_identity(root: Path | str) -> dict:
     return data
 
 
+SERVER_PREFIX = 'UStracker Servidor '
+MAX_SERVERS = 99
+
+
+def _next_server_name(con) -> str:
+    used = [r[0] for r in con.execute('SELECT name FROM stations')]
+    numbers = [int(n[len(SERVER_PREFIX):]) for n in used if n and n.startswith(SERVER_PREFIX) and n[len(SERVER_PREFIX):].isdigit()]
+    return f'{SERVER_PREFIX}{max(numbers, default=0) + 1}'
+
+
+def _remember_name(root: Path | str, name: str) -> None:
+    path = _state_file(root)
+    data = json.loads(path.read_text(encoding='utf-8'))
+    if data.get('server_name') != name:
+        data['server_name'] = name
+        tmp = path.with_suffix('.tmp')
+        tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
+        tmp.replace(path)
+
+
 def ensure_station(root: Path | str, db: Database) -> dict:
+    """S-01 — this computer as "UStracker Servidor N" of the shared dataset."""
     ident = local_identity(root)
     row = db.one('SELECT * FROM stations WHERE id=?', (ident['id'],))
-    if row:
+    if row and str(row['name'] or '').startswith(SERVER_PREFIX):
+        _remember_name(root, row['name'])
         return dict(row)
+    if row:  # older installs used the computer name: give it a Servidor number once
+        with db.transaction() as con:
+            name = _next_server_name(con)
+            con.execute('UPDATE stations SET name=?,updated_at=? WHERE id=?', (name, _now(), ident['id']))
+        _remember_name(root, name)
+        return dict(db.one('SELECT * FROM stations WHERE id=?', (ident['id'],)))
     with db.transaction() as con:
         row = con.execute('SELECT * FROM stations WHERE id=?', (ident['id'],)).fetchone()
         if row:
             return dict(row)
         active_count = int(con.execute("SELECT COUNT(*) FROM stations WHERE status='ACTIVE'").fetchone()[0])
-        if active_count >= 3:
-            raise RuntimeError('maximum three active stations registered for this dataset')
+        if active_count >= MAX_SERVERS:
+            raise RuntimeError('maximum active servers registered for this dataset')
         has_writer = int(con.execute("SELECT COUNT(*) FROM stations WHERE is_writer=1 AND status='ACTIVE'").fetchone()[0]) > 0
         generation = max(1, int(con.execute('SELECT COALESCE(MAX(generation),0) FROM stations').fetchone()[0]))
         transfer = con.execute("SELECT value FROM settings WHERE key='transfer_generation'").fetchone()
@@ -65,11 +93,13 @@ def ensure_station(root: Path | str, db: Database) -> dict:
         ts = _now()
         con.execute(
             'INSERT INTO stations(id,name,fingerprint,is_writer,generation,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)',
-            (ident['id'], ident['name'], ident['fingerprint'], writer, generation, 'ACTIVE', ts, ts),
+            (ident['id'], _next_server_name(con), ident['fingerprint'], writer, generation, 'ACTIVE', ts, ts),
         )
         if transfer is not None and writer:
             con.execute("DELETE FROM settings WHERE key='transfer_generation'")
-        return dict(con.execute('SELECT * FROM stations WHERE id=?', (ident['id'],)).fetchone())
+        created = dict(con.execute('SELECT * FROM stations WHERE id=?', (ident['id'],)).fetchone())
+    _remember_name(root, created['name'])
+    return created
 
 
 def require_writer(root: Path | str, db: Database) -> dict:

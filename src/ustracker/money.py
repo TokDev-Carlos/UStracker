@@ -26,9 +26,16 @@ def parse_money_api(value: str | int | Decimal) -> int:
     if isinstance(value, Decimal):
         return _to_cents(format(value, 'f'))
     text = str(value).strip()
-    if ',' in text or not text:
-        raise ValueError('API money must use decimal point')
-    return _to_cents(text)
+    if not text:
+        raise ValueError('empty money value')
+    compact = text.replace('\u00a0', '').replace(' ', '')
+    if compact.startswith('-R$'):
+        compact = '-' + compact[3:]
+    elif compact.startswith('R$'):
+        compact = compact[2:]
+    if ',' in compact:
+        return parse_money_ptbr(compact)
+    return _to_cents(compact)
 
 
 def parse_money_ptbr(value: str) -> int:

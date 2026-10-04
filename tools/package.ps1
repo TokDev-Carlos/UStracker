@@ -9,7 +9,21 @@ if ([string]::IsNullOrWhiteSpace($RepoRoot)) { $RepoRoot = Split-Path -Parent $P
 if ([string]::IsNullOrWhiteSpace($RepoRoot)) { throw 'RepoRoot nao pode ser determinado' }
 $RepoRoot = (Resolve-Path $RepoRoot).Path
 if ([string]::IsNullOrWhiteSpace($OutDir)) { $OutDir = Join-Path $RepoRoot 'Dist' }
-$version = (Get-Content (Join-Path $RepoRoot 'VERSION.json') -Raw | ConvertFrom-Json).version
+
+function Build-HostProject([string]$Project) {
+    $projectPath = Join-Path $RepoRoot $Project
+    if (!(Test-Path $projectPath)) { throw "Projeto ausente: $projectPath" }
+    & dotnet build $projectPath -c Release -p:Platform=x64 --nologo
+    if ($LASTEXITCODE -ne 0) { throw "Falha ao compilar: $Project" }
+}
+
+# Sempre compilar a partir desta propria fonte. bin/obj antigos nao fazem parte da baseline.
+Build-HostProject 'host\Bootstrap\Bootstrap.csproj'
+Build-HostProject 'host\Shell\Shell.csproj'
+Build-HostProject 'host\Updater\Updater.csproj'
+& python (Join-Path $RepoRoot 'tools\sync_version.py') $RepoRoot
+if ($LASTEXITCODE -ne 0) { throw 'Falha ao sincronizar version.md' }
+$version = (Get-Content (Join-Path $RepoRoot 'version.md') -Raw).Trim()
 $candidate = Join-Path $OutDir ("UStracker_{0}_win-x64" -f $version)
 $zipPath = $candidate + '.zip'
 Remove-Item $candidate -Recurse -Force -ErrorAction SilentlyContinue
@@ -58,6 +72,7 @@ Copy-Tree (Join-Path $RepoRoot 'Trust') (Join-Path $candidate 'Trust')
 Copy-Tree (Join-Path $RepoRoot 'docs') (Join-Path $candidate 'Docs')
 Copy-Item (Join-Path $RepoRoot 'VERSION.json') $candidate -Force
 Copy-Item (Join-Path $RepoRoot 'current.json') $candidate -Force
+Copy-Item (Join-Path $RepoRoot 'version.md') $candidate -Force
 Copy-Item (Join-Path $RepoRoot 'LICENSE.txt') $candidate -Force
 Copy-Item (Join-Path $RepoRoot 'NOTICE.txt') $candidate -Force
 
@@ -90,20 +105,21 @@ if ($null -eq $sig.SignerCertificate -or $sig.SignerCertificate.Subject -notmatc
 Copy-Item $wv2Cache (Join-Path $redist 'MicrosoftEdgeWebView2RuntimeInstallerX64.exe') -Force
 
 $runtimePython = Join-Path $runtime 'python.exe'
-& $runtimePython -c "import fastapi,uvicorn,cryptography,PIL,openpyxl,sqlcipher3; c=sqlcipher3.connect(':memory:'); print('SQLCipher',c.execute('pragma cipher_version').fetchone()[0]); import ustracker; print('UStracker',ustracker.__version__)"
-if ($LASTEXITCODE -ne 0) { throw 'Smoke test do Runtime falhou' }
-
 & $runtimePython (Join-Path $RepoRoot 'tools\generate_sbom.py') (Join-Path $candidate 'SBOM.json')
 if ($LASTEXITCODE -ne 0) { throw 'Falha ao gerar SBOM' }
 
 New-Item -ItemType Directory -Force -Path (Join-Path $candidate 'UserData') | Out-Null
+& icacls $candidate /inheritance:e /t /c | Out-Null
+if ($LASTEXITCODE -ne 0) { throw 'Falha ao normalizar permissões NTFS do pacote' }
+& $runtimePython -c 'import fastapi, sqlcipher3, ustracker.server'
+if ($LASTEXITCODE -ne 0) { throw 'Runtime do pacote nao importa backend e dependencias' }
 @"
 UStracker $version
 1. Extraia a pasta inteira para um disco local NTFS.
 2. Execute UStracker.exe.
 3. No primeiro uso, cadastre o Administrador 1 e conclua os Administradores 2 e 3 com os tickets exibidos.
 4. Production e Test sao isolados; nao mova UserData enquanto o sistema estiver em uso.
-5. Se o WebView2 nao existir, o instalador offline x64 incluido sera executado pelo Shell.
+5. O perfil WebView2 fica dentro de UserData; se o runtime nao estiver presente, o instalador offline incluido pode ser usado pelo Shell.
 "@ | Set-Content (Join-Path $candidate 'LEIA-ME.txt') -Encoding UTF8
 
 if (Test-Path $zipPath) { Remove-Item $zipPath -Force }

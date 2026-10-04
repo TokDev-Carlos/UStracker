@@ -1,1 +1,4 @@
-__version__ = '1.00.01.000'
+from .versioning import read_version
+
+
+__version__ = read_version()

@@ -1,0 +1,13 @@
+7af4ca3 docs(handoff): add machine execution plan R11-R23
+c46da8d test(handoff): rebaseline legacy tests to schema8 contract
+10d9ebc chore(handoff): reconstruct cumulative schema8 baseline
+a9d3758 docs(r01): add Windows homologation gate
+04394fd fix(engineering): prevent premature R01 verification
+68290e7 docs(r01): record source-ready verification checkpoint
+1599676 feat(r01): add visual foundation and pt-BR formatting
+3c6106e chore(r01): start isolated visual foundation increment
+aff64d0 chore(engineering): authorize R01 execution
+d85c9bc docs(engineering): record preparation evidence and remaining Windows gates
+d1b902a fix(engineering): harden guard and PowerShell compatibility
+de2d5ca chore(engineering): add guarded progressive update workspace
+f6fafde baseline: UStracker 1.00.01.000 schema 3 handoff

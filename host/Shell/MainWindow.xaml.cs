@@ -2,20 +2,22 @@ using Microsoft.Web.WebView2.Core;
 using System;
 using System.Diagnostics;
 using System.IO;
-using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Interop;
 using UStracker.Shared;
 
 namespace UStracker.Shell
 {
     public partial class MainWindow : Window
     {
+        private const int WmClose = 0x0010;
         private string _profile;
         private int _port;
         public MainWindow()
         {
             InitializeComponent();
+            SourceInitialized += (_, __) => HwndSource.FromHwnd(new WindowInteropHelper(this).Handle)?.AddHook(WindowMessageHook);
             Loaded += async (_, __) => await InitializeBrowserAsync();
             Closed += OnClosed;
         }
@@ -27,7 +29,7 @@ namespace UStracker.Shell
                 MessageBox.Show("Porta do backend não informada.", "UStracker", MessageBoxButton.OK, MessageBoxImage.Error);
                 Close(); return;
             }
-            _profile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "UStracker", "WebView2", Guid.NewGuid().ToString("N"));
+            _profile = RootPaths.WebView2Profile;
             Directory.CreateDirectory(_profile);
             try
             {
@@ -35,7 +37,7 @@ namespace UStracker.Shell
             }
             catch (WebView2RuntimeNotFoundException)
             {
-                var installer = Path.Combine(RootPaths.ProductRoot, "Redist", "MicrosoftEdgeWebView2RuntimeInstallerX64.exe");
+                var installer = RootPaths.WebView2Installer;
                 if (!File.Exists(installer)) throw;
                 var proc = Process.Start(new ProcessStartInfo(installer, "/silent /install") { UseShellExecute = true });
                 if (proc == null) throw new InvalidOperationException("Falha ao iniciar instalador offline do WebView2.");
@@ -49,31 +51,34 @@ namespace UStracker.Shell
 
         private async Task EnsureWebViewAsync()
         {
-            var env = await CoreWebView2Environment.CreateAsync(null, _profile);
+            var runtime = Directory.Exists(RootPaths.WebView2Runtime) ? RootPaths.WebView2Runtime : null;
+            var env = await CoreWebView2Environment.CreateAsync(runtime, _profile);
             await Browser.EnsureCoreWebView2Async(env);
+            Browser.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
             Browser.CoreWebView2.Settings.AreDevToolsEnabled = false;
             Browser.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
             Browser.CoreWebView2.Settings.IsStatusBarEnabled = false;
         }
 
+        private void OnWebMessageReceived(object sender, CoreWebView2WebMessageReceivedEventArgs e)
+        {
+            if (e.TryGetWebMessageAsString() == "system-shutdown")
+                Environment.Exit(0);
+        }
+
+        private IntPtr WindowMessageHook(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
+        {
+            if (message == WmClose)
+            {
+                handled = true;
+                Environment.Exit(0);
+            }
+            return IntPtr.Zero;
+        }
+
         private void OnClosed(object sender, EventArgs e)
         {
-            try
-            {
-                if (Browser?.CoreWebView2 != null)
-                    Browser.CoreWebView2.ExecuteScriptAsync("fetch('/api/v1/shell/detach',{method:'POST',credentials:'include',keepalive:true}).catch(()=>{})");
-            }
-            catch { }
-            try { Browser?.Dispose(); } catch { }
-            var profile = _profile;
-            Task.Run(() =>
-            {
-                for (var i = 0; i < 10 && !string.IsNullOrEmpty(profile); i++)
-                {
-                    try { if (Directory.Exists(profile)) Directory.Delete(profile, true); return; }
-                    catch { Thread.Sleep(500); }
-                }
-            });
+            Environment.Exit(0);
         }
     }
 }

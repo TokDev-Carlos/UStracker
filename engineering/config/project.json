@@ -1,0 +1,17 @@
+{
+  "product": "UStracker",
+  "baseline_version": "1.00.01.000",
+  "baseline_schema_version": 3,
+  "planned_schema_version": 8,
+  "baseline_tag": "baseline/1.00.01.000-schema3",
+  "baseline_commit": "f6fafde4f4abc8a8484239fa86fc3c031497d422",
+  "engineering_base_commit": "f6fafde4f4abc8a8484239fa86fc3c031497d422",
+  "active_install_root": "C:\\UStracker",
+  "recommended_workspace_root": "C:\\UStracker\\.Arquivado\\workspaces\\ustracker_reestruturacao_20260928",
+  "plan_path": "docs/handoff/2026-09-28-ustracker-reestruturacao-incremental.md",
+  "baseline_snapshot_path": "engineering/config/baseline_snapshot.json",
+  "snapshot_excludes": [],
+  "reference_installation_zip_sha256": "D7E6AE841C794D5704F9F4455B5D70EA144663AB8BD41FD2119C79B3033C025F",
+  "handoff_zip_sha256": "677097E1C002CF7C2C6FAB8AB18C7B6CCF2420AAC305D2365F193C84E4E4A1C3",
+  "execution_policy": "explicit-user-confirmation-before-functional-plan"
+}
