@@ -883,7 +883,7 @@ def create_app(root: Path | str) -> FastAPI:
             return fn()
         except CloudError as exc:
             raise HTTPException(409 if exc.code in ('CONFLICT', 'READ_ONLY') else 502,
-                                detail={'code': f'CLOUD_{exc.code}', 'detail': exc.detail}) from exc
+                                detail={'code': f'CLOUD_{exc.code}', 'detail': exc.detail, 'message': exc.detail}) from exc
 
     @app.get('/api/v1/cloud/status')
     def cloud_status(request: Request):

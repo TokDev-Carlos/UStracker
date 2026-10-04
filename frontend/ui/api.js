@@ -14,6 +14,7 @@ const responseData = async response => {
   return contentType.includes('json') ? response.json() : response.text();
 };
 const errorMessage = data => {
+  if (data?.detail?.message && String(data.detail.code || '').startsWith('CLOUD_')) return `Nuvem: ${data.detail.message}`;
   const message = typeof data === 'string' ? data : data?.detail?.code || data?.detail || data?.error || JSON.stringify(data);
   return messagePtBR(message);
 };

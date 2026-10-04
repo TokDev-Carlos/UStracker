@@ -61,13 +61,71 @@ def _now_iso() -> str:
 
 
 # ----------------------------------------------------------------------------- transport
+_NOT_PUBLIC = ('o Google pediu login em vez de responder. No Apps Script: Implantar → Gerenciar implantações → editar (lápis) → '
+               '"Executar como: Eu" e "Quem pode acessar: Qualquer pessoa" → Implantar, e use a URL que termina em /exec')
+
+
+def _html_text(raw: bytes) -> str:
+    import re
+    text = raw.decode('utf-8', 'replace')
+    text = re.sub(r'<(script|style)[^>]*>.*?</\1>', ' ', text, flags=re.S | re.I)
+    return ' '.join(re.sub(r'<[^>]+>', ' ', text).split())[:200]
+
+
+def _not_json_error(raw: bytes, final_url: str = '') -> 'CloudError':
+    low = raw.decode('utf-8', 'replace').lower()
+    if 'accounts.google.com' in (final_url or '').lower() or 'servicelogin' in low or 'accounts.google.com' in low:
+        return CloudError('NOT_PUBLIC', _NOT_PUBLIC)
+    if 'script function not found' in low or 'função de script não encontrada' in low or 'dopost' in low:
+        return CloudError('SCRIPT_NOT_READY', 'o script publicado não tem o código do UStracker. Cole todo o UStracker-Cloud-Code.gs, salve e publique uma NOVA versão (Implantar → Gerenciar implantações → editar → Nova versão)')
+    if 'authorization is required' in low or 'autorização' in low or 'authorisation' in low:
+        return CloudError('SCRIPT_NOT_AUTHORIZED', 'falta autorizar o script: no editor, escolha a função "instalar", clique em Executar e permita o acesso')
+    hint = _html_text(raw)
+    return CloudError('BAD_RESPONSE', 'a URL respondeu, mas não como o UStracker Cloud. Confira se é a URL /exec do App da Web e se a implantação está atualizada' + (f' (resposta: "{hint}")' if hint else ''))
+
+
+def _http_error(status: int, raw: bytes) -> 'CloudError':
+    if status in (401, 403):
+        return CloudError('NOT_PUBLIC', _NOT_PUBLIC)
+    if status == 404:
+        return CloudError('NOT_FOUND', 'URL não encontrada (404). A implantação pode ter sido arquivada ou a URL foi copiada incompleta; copie de novo a URL /exec')
+    if status == 429:
+        return CloudError('QUOTA', 'o Google limitou o uso temporariamente (cota). Tente de novo mais tarde')
+    err = _not_json_error(raw)
+    if err.code in ('NOT_PUBLIC', 'SCRIPT_NOT_READY', 'SCRIPT_NOT_AUTHORIZED'):
+        return err
+    return CloudError('HTTP_' + str(status), f'o Google respondeu com erro {status}. Tente de novo; se persistir, publique uma nova versão do script')
+
+
+def _network_error(exc: Exception) -> 'CloudError':
+    import ssl
+    reason = getattr(exc, 'reason', exc)
+    text = str(reason)
+    if isinstance(reason, ssl.SSLError) or 'CERTIFICATE' in text.upper() or 'SSL' in text.upper():
+        return CloudError('TLS', 'conexão segura recusada (certificado). Antivírus ou proxy da rede pode estar interceptando o HTTPS; libere o UStracker ou teste em outra rede. Detalhe: ' + text[:160])
+    if isinstance(reason, (TimeoutError,)) or 'timed out' in text.lower():
+        return CloudError('TIMEOUT', 'o Google demorou demais para responder. Verifique a internet e tente de novo')
+    if 'getaddrinfo' in text or 'Name or service not known' in text or 'nodename' in text or '11001' in text:
+        return CloudError('NETWORK', 'sem internet ou DNS: não foi possível encontrar script.google.com')
+    return CloudError('NETWORK', 'não foi possível falar com o Google (internet, firewall ou proxy). Detalhe: ' + text[:160])
+
+
 class CloudClient:
     def __init__(self, url: str, secret: str, *, timeout: float = 120.0, opener=None):
         url = str(url or '').strip()
         if not url.startswith('https://') and not url.startswith('http://127.0.0.1') and not url.startswith('http://localhost'):
             raise CloudError('BAD_URL', 'a URL do App da Web deve começar com https://')
-        if not secret or len(secret.strip()) < 16:
-            raise CloudError('BAD_SECRET', 'código de conexão inválido')
+        if url.startswith('https://'):
+            if '/macros/' not in url or 'script.google' not in url:
+                raise CloudError('BAD_URL', 'cole a URL do App da Web (começa com https://script.google.com/macros/s/ e termina em /exec), não a URL do editor do script')
+            if url.rstrip('/').endswith('/dev'):
+                raise CloudError('BAD_URL', 'esta é a URL de teste (/dev), que só funciona com login. Use Implantar → Gerenciar implantações e copie a URL que termina em /exec')
+            url = url.split('?')[0].split('#')[0].rstrip('/')
+            if not url.endswith('/exec'):
+                raise CloudError('BAD_URL', 'a URL do App da Web deve terminar em /exec')
+        secret = ''.join(str(secret or '').split())
+        if len(secret) < 16:
+            raise CloudError('BAD_SECRET', 'código de conexão incompleto: copie as 48 letras/números do Registro de execução')
         self.url = url
         self.secret = secret.strip()
         self.timeout = timeout
@@ -82,14 +140,23 @@ class CloudClient:
             sig = hmac.new(self.secret.encode(), f'{action}\n{ts}\n{nonce}\n{body_text}'.encode(), hashlib.sha256).hexdigest()
             payload = json.dumps({'v': PROTOCOL, 'action': action, 'ts': ts, 'nonce': nonce, 'body': body_text, 'sig': sig}).encode()
             req = urllib.request.Request(self.url, data=payload, method='POST', headers={'Content-Type': 'text/plain;charset=utf-8'})
+            final_url = ''
             try:
                 with self.opener.open(req, timeout=self.timeout) as resp:  # Apps Script answers 302 -> GET (handled by urllib)
                     raw = resp.read()
-                out = json.loads(raw.decode('utf-8'))
-            except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
-                last = CloudError('NETWORK', str(exc))
+                    final_url = resp.geturl() or ''
+            except urllib.error.HTTPError as exc:
+                raise _http_error(exc.code, exc.read()[:4000] if exc.fp else b'') from exc
+            except (urllib.error.URLError, TimeoutError, OSError) as exc:
+                last = _network_error(exc)
                 time.sleep(min(2 ** attempt, 8) if attempt + 1 < retries else 0)
                 continue
+            try:
+                out = json.loads(raw.decode('utf-8'))
+                if not isinstance(out, dict):
+                    raise ValueError('not an object')
+            except ValueError:
+                raise _not_json_error(raw[:4000], final_url)
             if not out.get('ok'):
                 raise CloudError(out.get('error') or 'SERVER_ERROR', out.get('detail') or '')
             return out
