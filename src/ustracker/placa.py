@@ -177,8 +177,15 @@ def save_bootstrap(root: Path | str, *, url: str, master: dict) -> dict:
 def fetch_placa(url: str, timeout: float = 20.0, opener=None) -> dict:
     sep = '&' if '?' in url else '?'
     req = urllib.request.Request(f'{url}{sep}t={int(datetime.now().timestamp())}', headers={'Cache-Control': 'no-cache'})
-    with (opener or urllib.request.build_opener()).open(req, timeout=timeout) as resp:
-        return json.loads(resp.read().decode('utf-8'))
+    try:
+        with (opener or urllib.request.build_opener()).open(req, timeout=timeout) as resp:
+            return json.loads(resp.read().decode('utf-8'))
+    except urllib.error.HTTPError as exc:
+        raise PlacaError(f'não foi possível baixar a placa (o endereço respondeu {exc.code})') from exc
+    except (urllib.error.URLError, OSError, TimeoutError) as exc:
+        raise PlacaError('não foi possível baixar a placa (sem internet ou endereço errado)') from exc
+    except ValueError as exc:
+        raise PlacaError('o endereço da placa não devolveu uma placa válida') from exc
 
 
 def github_publish(placa: dict, *, repo: str, path: str, token: str, branch: str = 'main', opener=None) -> dict:
@@ -193,6 +200,8 @@ def github_publish(placa: dict, *, repo: str, path: str, token: str, branch: str
     except urllib.error.HTTPError as exc:
         if exc.code != 404:
             raise PlacaError(f'GitHub respondeu {exc.code} ao ler a placa') from exc
+    except (urllib.error.URLError, OSError) as exc:
+        raise PlacaError('não foi possível falar com o GitHub (sem internet?)') from exc
     body = {'message': f"UStracker: placa seq {placa.get('seq')}", 'branch': branch,
             'content': _b64e(json.dumps(placa, indent=2, ensure_ascii=False).encode())}
     if sha:
@@ -203,6 +212,8 @@ def github_publish(placa: dict, *, repo: str, path: str, token: str, branch: str
             out = json.loads(resp.read())
     except urllib.error.HTTPError as exc:
         raise PlacaError(f'GitHub recusou a publicação ({exc.code}); confira o token e o repositório') from exc
+    except (urllib.error.URLError, OSError) as exc:
+        raise PlacaError('não foi possível falar com o GitHub (sem internet?)') from exc
     return {'committed': True, 'path': out.get('content', {}).get('path')}
 
 

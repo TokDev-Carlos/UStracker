@@ -78,5 +78,13 @@ class BankSwitch(unittest.TestCase):
         self.assertEqual(h2b['generation'], h2['generation'] + 1, 'novo principal continua a sequência sem conflito')
 
 
+class PlacaOffline(unittest.TestCase):
+    def test_unreachable_placa_is_a_clear_error_not_500(self):
+        from ustracker.placa import fetch_placa
+        with self.assertRaises(PlacaError) as ctx:
+            fetch_placa('http://127.0.0.1:9/placa.json', timeout=3)
+        self.assertIn('placa', str(ctx.exception))
+
+
 if __name__ == '__main__':
     unittest.main()
