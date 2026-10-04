@@ -1,13 +1,13 @@
 {
   "format": "ustracker-placa/1",
-  "seq": 3,
-  "issued_at": "2026-10-04T21:58:59.859106+00:00",
+  "seq": 4,
+  "issued_at": "2026-10-04T23:18:24.701923+00:00",
   "banks": [
     {
       "n": 1,
       "url": "https://script.google.com/macros/s/AKfycbxyjECQlt_k_MfG9zAXfg6MMU7zeMvFLHyN8jqpCXL6xvf09b3iXC9RA7W2ynfR_1j9wg/exec",
-      "key": "7Slb2v9XqiDln7pAPhQSadmhgHy8Qnyfomln6WTtcqVyALe6fOhhstxd7xPkEjltrXi65gPxBu2spQMc+SWdafFPWxAJKdA5Zj2pdA=="
+      "key": "qMzEMZV8qafQvTqNsaqZoKwsLCD4QGt2Xm/Zt2p3vWgcaiyioqODHWBRJ0Od2TBKkITbWSJ2kDdBX8f/R7ShwZxpov0oXi3NtEPtxw=="
     }
   ],
-  "sig": "T3K+hNb98kDpwk72vkmMgQfgm8w0Zx+3pEdomGjJk50HyokB4UN4AvljsJvJhsn31EpYHX4gIuNtnIKvIU7nCQ=="
+  "sig": "Pf7AEQSxNr7f5YYxWBz6DSRd9Pt1exfAkEtuX2tAC+UCKLn9X3nNFOn4GSMJQ49iO2KiPxk4iiu8IKpjd7WmDw=="
 }
