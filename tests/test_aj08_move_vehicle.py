@@ -2,7 +2,7 @@ import os
 import sys
 import tempfile
 import unittest
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -13,7 +13,7 @@ from ustracker.db import Database
 from ustracker.mobility import create_fleet, create_vehicle, move_vehicle
 from ustracker.services import create_catalog, create_client, create_client_company, create_subscription
 
-TODAY = date(2026, 10, 3)
+TODAY = date.today()
 
 
 class AJ08MoveTests(unittest.TestCase):
@@ -53,7 +53,7 @@ class AJ08MoveTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             move_vehicle(self.db, 1, self.v['id'], {}, as_of=TODAY)
         with self.assertRaises(ValueError):
-            move_vehicle(self.db, 1, self.v['id'], {'fleet_id': self.fleet_a['id'], 'effective_from': '2026-10-04'}, as_of=TODAY)
+            move_vehicle(self.db, 1, self.v['id'], {'fleet_id': self.fleet_a['id'], 'effective_from': (TODAY + timedelta(days=1)).isoformat()}, as_of=TODAY)
 
     def test_other_client_fleet_reissues_code_and_detaches_subscription(self):
         plan = create_catalog(self.db, 1, {'description': 'P', 'category': 'Mensal', 'price': '10,00'})

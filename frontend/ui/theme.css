@@ -209,3 +209,10 @@ body.is-navigating::before{content:'';position:fixed;top:0;left:0;height:3px;wid
 .overview-kpis .forecast-tag{align-self:flex-start}
 @media(max-width:800px){.overview-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:480px){.overview-kpis{grid-template-columns:1fr}}
+/* C-04 — Nuvem e Lixeira */
+.cloud-facts{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:6px 16px;margin:10px 0}
+.cloud-facts dt{color:#5b6884}.cloud-facts dd{margin:0;font-weight:600;overflow-wrap:anywhere}
+.cloud-steps{margin:8px 0 12px;padding-left:20px;line-height:1.6}
+.cloud-conflict{border-left:4px solid var(--us-red-600)}
+.cloud-confirm{display:flex;gap:8px;align-items:flex-start;margin:10px 0}
+.system-tabs button{position:relative}

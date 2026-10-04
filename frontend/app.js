@@ -25,6 +25,7 @@ import { renderFinancePage, renderSellExpenseForm } from './pages/finance.js';
 import { localToday, openPaymentDialog } from './ui/payment-dialog.js';
 import { renderOverviewDrilldown, renderOverviewPage } from './pages/dashboard.js';
 import { entityChoices, renderFilesPage } from './pages/files.js';
+import { renderCloudPanel, renderCloudRestoreForm, renderPointsTable, renderRecoveryKit, renderTrashPanel } from './pages/cloud.js';
 
 const app=document.querySelector('#app');
 let csrf=''; let me=null; let current='dashboard'; let navigationSequence=0; let systemNavigationLease=null;
@@ -88,9 +89,20 @@ function openSubscriptionWorkflow(model,{onSuccess,onCancel}={}){
   return drawer;
 }
 async function boot(){const state=await session.bootstrap();const pub=state.publicData,st=state.setupStatus;applyBrand(pub);if(state.state==='setup')return setupScreen();if(state.state==='login')return loginScreen(st,pub);renderShell();await show('dashboard')}
-function setupScreen(){app.innerHTML=`<section class="auth"><h1>UStracker — Configuração inicial</h1><p>Crie o Administrador 1. Serão emitidos dois tickets de uso único para os Administradores 2 e 3.</p><form id="setup"><div class="row">${field('Nome','name')}${field('Senha (10+ caracteres)','password','password')}</div><div class="actions"><button>Iniciar configuração</button></div></form><div id="setupOut"></div></section>`;document.querySelector('#setup').onsubmit=async e=>{e.preventDefault();try{await getCsrf();const r=await api('/auth/bootstrap',{method:'POST',body:JSON.stringify(formData(e.target))});enrollmentScreen(r.tickets)}catch(err){document.querySelector('#setupOut').innerHTML=msg(err.message,'error')}}}
+function setupScreen(){app.innerHTML=`<section class="auth"><h1>UStracker — Configuração inicial</h1><p>Crie o Administrador 1. Serão emitidos dois tickets de uso único para os Administradores 2 e 3.</p><form id="setup"><div class="row">${field('Nome','name')}${field('Senha (10+ caracteres)','password','password')}</div><div class="actions"><button>Iniciar configuração</button><button type="button" class="ui-btn ui-btn-subtle" data-cloud-restore-open>Já uso o UStracker: restaurar da nuvem</button></div></form><div id="setupOut"></div></section>`;bindCloudRestoreEntry();document.querySelector('#setup').onsubmit=async e=>{e.preventDefault();try{await getCsrf();const r=await api('/auth/bootstrap',{method:'POST',body:JSON.stringify(formData(e.target))});enrollmentScreen(r.tickets)}catch(err){document.querySelector('#setupOut').innerHTML=msg(err.message,'error')}}}
 function enrollmentScreen(tickets){app.innerHTML=`<section class="auth"><h1>Concluir três administradores</h1><div class="notice">Os tickets expiram em 15 minutos.</div>${tickets.map((t,i)=>`<form class="enroll" data-ticket="${esc(t)}"><h3>Administrador ${i+2}</h3><div class="ticket">${esc(t)}</div><div class="row">${field('Nome','name')}${field('Senha','password','password')}</div><div class="actions"><button>Registrar Admin ${i+2}</button></div><div class="out"></div></form>`).join('')}<button id="goLogin" class="secondary">Ir para login</button></section>`;document.querySelectorAll('.enroll').forEach(f=>f.onsubmit=async e=>{e.preventDefault();try{await getCsrf();const p=formData(f);p.ticket=f.dataset.ticket;await api('/auth/enroll',{method:'POST',body:JSON.stringify(p)});f.querySelector('.out').innerHTML=msg('Administrador registrado.')}catch(err){f.querySelector('.out').innerHTML=msg(err.message,'error')}});document.querySelector('#goLogin').onclick=()=>boot()}
-function loginScreen(st,pub){app.innerHTML=renderLoginScreen(st,pub);document.querySelector('#login').onsubmit=async e=>{e.preventDefault();try{await getCsrf();const r=await api('/auth/login',{method:'POST',body:JSON.stringify(formData(e.target))});csrf=r.csrf;me=r;renderShell();await show('dashboard');if(r.backup_warning)alert('Backup automático: '+r.backup_warning)}catch(err){document.querySelector('#loginOut').innerHTML=msg(err.message,'error')}}}
+// C-05 — restore a whole installation from the cloud (new or wiped computer), before login.
+function bindCloudRestoreEntry(){
+  document.querySelectorAll('[data-cloud-restore-open]').forEach(button=>button.onclick=()=>{
+    const drawer=openDrawer({title:'Restaurar da nuvem',subtitle:'Traz de volta todos os dados guardados no seu Google Drive.',content:renderCloudRestoreForm()});
+    const form=drawer.querySelector('#cloudRestoreForm');const out=form.querySelector('[data-cloud-restore-out]');
+    bindActionForm(form,{key:'cloud-restore',action:async()=>{await getCsrf();const p=formData(form);out.innerHTML=msg('Baixando da nuvem… pode levar alguns minutos.','notice');
+      const r=await api('/cloud/restore',{method:'POST',body:JSON.stringify({url:p.url,secret:p.secret,confirm:'RESTAURAR DA NUVEM'})});
+      out.innerHTML=msg(`Pronto! Ponto de ${formatDateBR(r.created_at,true)} recuperado (${r.files_downloaded} fotos/anexos). Entre com seu usuário e senha de sempre.`,'success');
+      setTimeout(()=>{closeOverlay();boot()},2500)},notify:toast});
+  });
+}
+function loginScreen(st,pub){app.innerHTML=renderLoginScreen(st,pub);bindCloudRestoreEntry();document.querySelector('#login').onsubmit=async e=>{e.preventDefault();try{await getCsrf();const r=await api('/auth/login',{method:'POST',body:JSON.stringify(formData(e.target))});csrf=r.csrf;me=r;renderShell();await show('dashboard');if(r.backup_warning)alert('Backup automático: '+r.backup_warning)}catch(err){document.querySelector('#loginOut').innerHTML=msg(err.message,'error')}}}
 const nav=[['dashboard','Visão geral'],['clients','Clientes'],['mobility','Frotas/Veículos'],['catalog','Planos/Produtos'],['commercial','Comercial'],['finance','Financeiro'],['files','Fotos/Arquivos'],['reports','Relatórios'],['system','Sistema']];
 function renderShell(){renderAppShell({me,nav,onNavigate:show,onSearch:async query=>{const d=await api('/search?q='+encodeURIComponent(query));tableStore.clear();content(pageHeader('Pesquisa','Resultados da busca global')+dt(d.items,'searchTable'))},onHelp:()=>{const help=helpFor(current);openDrawer({title:help.title,subtitle:'Ajuda contextual',content:`<p>${esc(help.body)}</p>${HELP[current]?.fields?`<dl>${Object.entries(HELP[current].fields).map(([key,value])=>`<dt><strong>${esc(key.replaceAll('_',' '))}</strong></dt><dd>${esc(value)}</dd>`).join('')}</dl>`:''}`})},onUser:()=>content(pageHeader('Usuário','Sessão atual')+`<div class="panel"><strong>${esc(me.name)}</strong><p class="muted">Perfil: ${esc(sessionProfileLabel(me))}</p><p class="muted">Ambiente: ${esc(me.environment)}</p></div>`),onLogout:async()=>{await session.logout();await boot()},onShutdown:requestSystemShutdown})}
 function bindClientJourney(drawer,profile,clientId){
@@ -400,14 +412,44 @@ function reportsPage(lease=null){const names=['clients','vehicles','charges','pa
 async function downloadReport(name,ext){const r=await fetch(`/api/v1/reports/${name}.${ext}`);if(!r.ok)throw new Error('Falha no relatório');const a=document.createElement('a');a.href=URL.createObjectURL(await r.blob());a.download=`${name}.${ext}`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
 function organizeSystemPage(runtime){
   const root=document.querySelector('#content');if(!root||root.querySelector('.system-tabs'))return;
-  const tabs=document.createElement('div');tabs.className='system-tabs';tabs.innerHTML='<button type="button" class="active" data-system-tab="admin">Administração</button><button type="button" data-system-tab="development">Desenvolvimento</button>';
+  const tabs=document.createElement('div');tabs.className='system-tabs';tabs.innerHTML='<button type="button" class="active" data-system-tab="admin">Administração</button><button type="button" data-system-tab="cloud">Nuvem</button><button type="button" data-system-tab="trash">Lixeira</button><button type="button" data-system-tab="development">Desenvolvimento</button>';
   const admin=document.createElement('section');admin.className='system-panel';admin.dataset.systemPanel='admin';
   const development=document.createElement('section');development.className='system-panel';development.dataset.systemPanel='development';development.hidden=true;
   const advanced=new Set(['Recovery / transferência','Recuperação / transferência','Estações','Auditoria','Integrações futuras','Integrações planejadas','Laboratório Test','Laboratório de testes']);
   [...root.querySelectorAll(':scope > .panel')].forEach(panel=>(advanced.has(panel.querySelector('h3')?.textContent?.trim())?development:admin).appendChild(panel));
   const runtimePanel=document.createElement('div');runtimePanel.className='panel';runtimePanel.innerHTML=`<h3>Runtime e atualização</h3><dl class="runtime-grid"><dt>Versão</dt><dd>${esc(runtime?.version||'—')}</dd><dt>Schema</dt><dd>${esc(runtime?.schema_version||'—')}</dd><dt>Ambiente</dt><dd>${esc(runtime?.environment||'—')}</dd><dt>APP_ROOT</dt><dd>${esc(runtime?.app_root||'—')}</dd><dt>DATA_ROOT</dt><dd>${esc(runtime?.data_root||'—')}</dd><dt>BACKUP_ROOT</dt><dd>${esc(runtime?.backup_root||'—')}</dd><dt>Última atualização</dt><dd>${esc(runtime?.update?.state||'Nenhuma registrada')}</dd></dl><p class="muted">Pacotes .usup são verificados por assinatura e checksum pelo atualizador externo antes da troca transacional.</p>`;development.prepend(runtimePanel);
-  const header=root.querySelector('.ui-page-header');header?.after(tabs,admin,development);
-  tabs.querySelectorAll('[data-system-tab]').forEach(button=>button.onclick=()=>{tabs.querySelectorAll('button').forEach(item=>item.classList.toggle('active',item===button));admin.hidden=button.dataset.systemTab!=='admin';development.hidden=button.dataset.systemTab!=='development'});
+  const cloudSection=document.createElement('section');cloudSection.className='system-panel';cloudSection.dataset.systemPanel='cloud';cloudSection.hidden=true;
+  const trashSection=document.createElement('section');trashSection.className='system-panel';trashSection.dataset.systemPanel='trash';trashSection.hidden=true;
+  const header=root.querySelector('.ui-page-header');header?.after(tabs,admin,cloudSection,trashSection,development);
+  const sections={admin,cloud:cloudSection,trash:trashSection,development};
+  const loaders={cloud:()=>loadCloudTab(cloudSection),trash:()=>loadTrashTab(trashSection)};
+  const select=name=>{tabs.querySelectorAll('button').forEach(item=>item.classList.toggle('active',item.dataset.systemTab===name));Object.entries(sections).forEach(([key,el])=>{el.hidden=key!==name});loaders[name]?.()};
+  tabs.querySelectorAll('[data-system-tab]').forEach(button=>button.onclick=()=>{history.replaceState(null,'','#system/'+button.dataset.systemTab);select(button.dataset.systemTab)});
+  const wanted=location.hash.match(/^#system\/(cloud|trash|development)$/)?.[1];if(wanted)select(wanted);
+}
+async function loadCloudTab(section){
+  section.innerHTML='<div class="panel"><p class="muted">Carregando…</p></div>';
+  let status;try{status=await apiClient.request('/cloud/status')}catch(error){section.innerHTML=`<div class="error">${esc(error.message)}</div>`;return}
+  section.innerHTML=renderCloudPanel(status);
+  const reload=()=>loadCloudTab(section);
+  const form=section.querySelector('#cloudConnectForm');
+  if(form)bindActionForm(form,{key:'cloud-connect',action:async()=>{const p=formData(form);let r=await api('/cloud/connect',{method:'POST',body:JSON.stringify({url:p.url,secret:p.secret})});
+    if(r.needs_choice){if(!confirm(`Esta nuvem já tem dados de outra instalação (versão ${r.head?.generation}, ${formatDateBR(r.head?.created_at,true)}).\n\nOK = substituir a nuvem pelos dados DESTE computador.\nCancelar = não mudar nada (para trazer os dados da nuvem, use "Restaurar da nuvem" na tela de entrada).`))return;r=await api('/cloud/connect',{method:'POST',body:JSON.stringify({url:p.url,secret:p.secret,mode:'replace'})})}
+    return r},refresh:reload,successMessage:'Nuvem conectada e dados enviados.',notify:toast});
+  const sync=section.querySelector('[data-cloud-sync]');if(sync)bindActionButton(sync,{key:'cloud-sync',action:()=>api('/cloud/sync',{method:'POST',body:'{}'}),refresh:reload,successMessage:'Dados enviados para a nuvem.',notify:toast});
+  const force=section.querySelector('[data-cloud-force]');if(force)bindActionButton(force,{key:'cloud-force',confirm:'Substituir o conteúdo da nuvem pelos dados deste computador? A versão da outra máquina deixa de ser a atual (fica nos pontos de restauração por 14 dias).',action:()=>api('/cloud/sync',{method:'POST',body:JSON.stringify({force:true,confirm:'SUBSTITUIR NUVEM'})}),refresh:reload,successMessage:'Nuvem atualizada com este computador.',notify:toast});
+  const disconnect=section.querySelector('[data-cloud-disconnect]');if(disconnect)bindActionButton(disconnect,{key:'cloud-disconnect',confirm:'Parar de enviar para a nuvem? O que já está lá continua guardado.',action:()=>api('/cloud/disconnect',{method:'POST',body:'{}'}),refresh:reload,successMessage:'Envio para a nuvem desligado.',notify:toast});
+  const kit=section.querySelector('[data-cloud-kit]');if(kit)kit.onclick=()=>openDrawer({title:'Kit de recuperação',content:renderRecoveryKit(status)});
+  const pointsButton=section.querySelector('[data-cloud-points]');
+  if(pointsButton)bindActionButton(pointsButton,{key:'cloud-points',action:async()=>{const box=section.querySelector('[data-cloud-points-box]');const r=await api('/cloud/points');box.innerHTML=renderPointsTable(r.items||[]);
+    box.querySelectorAll('[data-cloud-restore-point]').forEach(button=>bindActionButton(button,{key:'cloud-point:'+button.dataset.cloudRestorePoint,confirm:'Voltar todos os dados para este ponto? O estado atual é guardado antes num backup local.',action:()=>api('/cloud/points/'+encodeURIComponent(button.dataset.cloudRestorePoint)+'/restore',{method:'POST',body:JSON.stringify({confirm:'RESTAURAR PONTO'})}),refresh:reload,successMessage:'Dados restaurados para o ponto escolhido.',notify:toast}))},notify:toast});
+  if(status.running||status.pending_changes){clearTimeout(section._poll);section._poll=setTimeout(()=>{if(section.isConnected&&!section.hidden)loadCloudTab(section)},15000)}
+}
+async function loadTrashTab(section){
+  section.innerHTML='<div class="panel"><p class="muted">Carregando…</p></div>';
+  const data=await apiClient.request('/trash');
+  section.innerHTML=renderTrashPanel(data.items||[]);
+  section.querySelectorAll('[data-trash-restore]').forEach(button=>bindActionButton(button,{key:'trash-restore:'+button.dataset.trashRestore,action:()=>api('/trash/'+encodeURIComponent(button.dataset.trashRestore)+'/restore',{method:'POST',body:'{}'}),refresh:()=>loadTrashTab(section),successMessage:'Item restaurado.',notify:toast}));
 }
 function bindSystemActions(){
   const settingsForm=document.querySelector('#settingsForm');if(!settingsForm)return;
