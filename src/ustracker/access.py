@@ -84,7 +84,7 @@ _RULES: list[tuple[str, str, object]] = [
     ('*', r'/(health|public|auth/(csrf|login|logout|me|setup-status|bootstrap|enroll|change-password))$', ANY),
     ('*', r'/(system/shutdown|shell/detach)$', ANY),
     ('GET', r'/(search|entities/clients)$', ANY),
-    ('GET', r'/cloud/status$', ANY),
+    ('GET', r'/(cloud/status|sync/state)$', ANY),
     ('GET', r'/dashboard$', 'dashboard.view'),
     ('GET', r'/dashboard/drilldown$', 'dashboard.full'),
     ('POST', r'/clients/archive$', 'clients.delete'),

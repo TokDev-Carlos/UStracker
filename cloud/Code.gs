@@ -58,7 +58,7 @@ function doPost(e) {
 }
 
 var UST_ACTIONS = {
-  ping: function () { return { version: UST_VERSION, head: ust_head_(), auth_head: ust_prop_json_('AUTH_HEAD'), now: new Date().toISOString() }; },
+  ping: function () { return { version: UST_VERSION, head: ust_head_(), auth_head: ust_prop_json_('AUTH_HEAD'), lease: ust_prop_json_('LEASE'), now: new Date().toISOString() }; },
   put_part: ust_put_part_,
   commit: ust_commit_,
   list_snapshots: ust_list_snapshots_,
@@ -68,8 +68,36 @@ var UST_ACTIONS = {
   list_blobs: ust_list_blobs_,
   get_blob: ust_get_blob_,
   delete_blobs: ust_delete_blobs_,
-  compact: ust_compact_
+  compact: ust_compact_,
+  lease: ust_lease_
 };
+
+/* ---------------------------------------------------------------- vez de gravar (S-03)
+ * Um Servidor grava por vez. acquire: concede se livre, vencido ou já é dele; renew: estende;
+ * release: solta. A vez vence sozinha (ttl) se o Servidor cair. */
+function ust_lease_(b) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    var props = PropertiesService.getScriptProperties();
+    var now = new Date().getTime();
+    var cur = ust_prop_json_('LEASE');
+    var holder = String(b.holder || '');
+    if (!/^[0-9a-f-]{8,64}$/.test(holder)) throw ust_err_('BAD_REQUEST', 'holder');
+    var free = !cur || Number(cur.expires) <= now || cur.holder === holder;
+    if (b.op === 'release') {
+      if (cur && cur.holder === holder) props.deleteProperty('LEASE');
+      return { released: true };
+    }
+    if (!free) return { granted: false, holder: cur.holder, holder_name: cur.name, expires: cur.expires, now: now };
+    var ttl = Math.max(15, Math.min(300, Number(b.ttl || 120))) * 1000;
+    var lease = { holder: holder, name: String(b.name || 'Servidor').slice(0, 80), since: (cur && cur.holder === holder) ? cur.since : now, expires: now + ttl };
+    props.setProperty('LEASE', JSON.stringify(lease));
+    return { granted: true, lease: lease, head: ust_head_(), auth_head: ust_prop_json_('AUTH_HEAD'), now: now };
+  } finally {
+    lock.releaseLock();
+  }
+}
 
 /* ---------------------------------------------------------------- segurança */
 function ust_verify_(req) {

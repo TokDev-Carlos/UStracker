@@ -61,7 +61,7 @@ export function createGas({ now = () => Date.now() } = {}) {
       getFoldersByName: n => mkIter(children(rootDrive).filter(x => x.kind === 'folder' && x.name === n).map(wrapFolder)),
       createFolder: n => mkFolder(n, 'root'),
     },
-    PropertiesService: { getScriptProperties: () => ({ getProperty: k => (props.has(k) ? props.get(k) : null), setProperty: (k, v) => props.set(k, String(v)) }) },
+    PropertiesService: { getScriptProperties: () => ({ getProperty: k => (props.has(k) ? props.get(k) : null), setProperty: (k, v) => props.set(k, String(v)), deleteProperty: k => props.delete(k) }) },
     CacheService: { getScriptCache: () => ({ get: k => cache.get(k) ?? null, put: (k, v) => cache.set(k, v) }) },
     LockService: { getScriptLock: () => ({ waitLock: () => {}, releaseLock: () => {} }) },
     ContentService: { MimeType: { JSON: 'json' }, createTextOutput: t => ({ _text: t, setMimeType() { return this; } }) },

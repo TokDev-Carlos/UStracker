@@ -199,13 +199,24 @@ def create_app(root: Path | str) -> FastAPI:
         if not supplied or not cookie or not secrets.compare_digest(supplied, cookie):
             raise HTTPException(403, 'invalid csrf')
 
+    def take_turn(session: Session, db: Database) -> None:
+        """S-03 — with the shared cloud: automatic turn (+ newest data first). Without it: the single writer station."""
+        if cloud.enabled():
+            try:
+                cloud.acquire_turn(session)
+            except CloudError as exc:
+                raise HTTPException(409, detail={'code': f'CLOUD_{exc.code}', 'detail': exc.detail, 'message': exc.detail}) from exc
+        else:
+            require_writer(root, db)
+
     def mutation(request: Request, session: Session, route: str, payload, fn, *, writer: bool = True):
         csrf_required(request, session)
         db = get_db(session)
         if writer and session.environment == 'production':
-            require_writer(root, db)
+            take_turn(session, db)
         operation_id = request.headers.get('X-Operation-ID', '')
-        result = run_idempotent(db, session.slot, route, operation_id, payload, lambda: fn(db))
+        with cloud.db_gate:
+            result = run_idempotent(db, session.slot, route, operation_id, payload, lambda: fn(db))
         if session.environment == 'production':
             cloud.mark_dirty()
         return result
@@ -214,9 +225,14 @@ def create_app(root: Path | str) -> FastAPI:
         csrf_required(request, session)
         db = get_db(session)
         if writer and session.environment == 'production':
-            require_writer(root, db)
+            take_turn(session, db)
             cloud.mark_dirty()
         return db
+
+    @app.get('/api/v1/sync/state')
+    def sync_state_get(request: Request):
+        session = session_required(request)
+        return {**cloud.sync_state(), 'environment': session.environment}
 
     @app.get('/api/v1/health')
     def health():

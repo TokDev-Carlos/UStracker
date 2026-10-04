@@ -275,3 +275,8 @@ body.is-navigating::before{content:'';position:fixed;top:0;left:0;height:3px;wid
 .perm-group{border:1px solid #e3e9f4;border-radius:10px;padding:8px 12px;margin:0;display:flex;flex-direction:column;gap:4px}
 .perm-group legend{font-weight:700;padding:0 4px}
 [data-perm-hidden]{display:none!important}
+
+/* S-03 sync chip */
+.sync-chip{align-self:center;padding:4px 10px;border-radius:999px;background:#fff4e5;color:#93370d;font-size:.8rem;font-weight:600;white-space:nowrap}
+.sync-chip.is-offline{background:#f2f4f7;color:#475467}
+@media(max-width:760px){.sync-chip{display:none}}

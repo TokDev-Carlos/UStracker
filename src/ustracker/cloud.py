@@ -36,6 +36,12 @@ from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
 PART_SIZE = 4 * 1024 * 1024
 DEBOUNCE_SECONDS = 120
+# S-02/S-03 — vários Servidores no mesmo banco: vez de gravar automática
+LEASE_TTL = 120          # a vez vence sozinha se o Servidor cair
+HOLD_SECONDS = 20        # sem alteração por 20 s → envia e solta a vez
+TURN_DEBOUNCE = 4        # com a vez na mão, envia 4 s após a última alteração
+PULL_EVERY = 25          # sem a vez, confere a cada 25 s se outro Servidor gravou
+TURN_WAIT = 45           # espera máxima pela vez ao salvar
 PROTOCOL = 1
 AUTH_AAD = b'UStracker/cloud-auth/v1'
 UTC = timezone.utc
@@ -305,8 +311,14 @@ class CloudSync:
         self.token: str | None = None
         self.thread: threading.Thread | None = None
         self.stop_event = threading.Event()
-        self.status = {'running': False, 'last_error': None}
+        self.status = {'running': False, 'last_error': None, 'waiting_for': None, 'offline': False}
         self.pending_secret: str | None = None  # after a cloud restore, until the first login
+        self.turn_lock = threading.RLock()
+        self.db_gate = threading.RLock()     # pull (replace the local database) vs. writes
+        self.lease_until = 0.0
+        self.last_turn_use = 0.0
+        self.last_pull = 0.0
+        self.data_version = 0                # bumps when another Servidor's data arrived
 
     # -- session handling -------------------------------------------------------
     def attach(self, session) -> None:
@@ -346,7 +358,7 @@ class CloudSync:
 
     def _loop(self) -> None:
         last_purge = 0.0
-        while not self.stop_event.wait(10):
+        while not self.stop_event.wait(3):
             try:
                 session = self._session()
                 if not session:
@@ -354,20 +366,37 @@ class CloudSync:
                 if time.time() - last_purge > 3600:
                     last_purge = time.time()
                     self.purge_trash(session)
-                if self.enabled() and self.state.get('dirty_since') and time.time() - float(self.state.get('last_change') or 0) >= self.debounce:
+                if not self.enabled():
+                    continue
+                holding = self.lease_until > time.time()
+                idle = time.time() - float(self.state.get('last_change') or 0)
+                if self.state.get('dirty_since') and idle >= (TURN_DEBOUNCE if holding else self.debounce):
                     self.sync_now(session)
+                if holding and not self.state.get('dirty_since') and time.time() - self.last_turn_use >= HOLD_SECONDS:
+                    self.release_turn(session)
+                elif not holding and not self.state.get('dirty_since') and time.time() - self.last_pull >= PULL_EVERY:
+                    self.pull(session)
             except Exception as exc:  # never kill the loop
                 self.status['last_error'] = str(exc)
 
     def flush(self, timeout: float = 60.0) -> bool:
-        """Called when the system closes: upload pending changes right away."""
+        """Called when the system closes: upload pending changes right away, then free the turn."""
         session = self._session()
-        if not (session and self.enabled() and self.state.get('dirty_since')):
+        if not (session and self.enabled()):
+            return False
+        if not self.state.get('dirty_since'):
+            try:
+                self.release_turn(session)
+            except Exception:
+                pass
             return False
         done = threading.Event()
         def run():
             try:
                 self.sync_now(session)
+                self.release_turn(session)
+            except Exception:
+                pass
             finally:
                 done.set()
         threading.Thread(target=run, daemon=True).start()
@@ -407,8 +436,7 @@ class CloudSync:
                 client = self.client(session.vrk)
                 db = Database(self.root, 'production', session.db_key)
                 from .station import ensure_station
-                if not bool(ensure_station(self.root, db)['is_writer']):
-                    raise CloudError('READ_ONLY', 'esta estação é só leitura; apenas a estação escritora envia à nuvem')
+                ensure_station(self.root, db)
                 dataset = self.dataset_id(db)
                 started = time.time()
                 change_marker = self.state.get('last_change')
@@ -432,8 +460,8 @@ class CloudSync:
                 # 3) access vault when it changed
                 fp = _auth_fingerprint(self.root)
                 if fp != self.state.get('auth_fingerprint'):
-                    client.upload(seal_auth(self.root, self.state.secret(session.vrk)), {'kind': 'auth', 'dataset_id': dataset, 'force': force})
-                    self.state.set(auth_fingerprint=fp)
+                    auth_rec = client.upload(seal_auth(self.root, self.state.secret(session.vrk)), {'kind': 'auth', 'dataset_id': dataset, 'force': force})
+                    self.state.set(auth_fingerprint=fp, auth_head_id=(auth_rec or {}).get('id'))
                 # 4) database snapshot
                 generation = int(self.state.get('generation') or 0)
                 tmp = Path(tempfile.mkdtemp(prefix='ustracker-cloud-', dir=str(self.root / 'UserData')))
@@ -469,6 +497,120 @@ class CloudSync:
                 raise
             finally:
                 self.status['running'] = False
+
+    # -- S-02/S-03 vários Servidores ----------------------------------------------
+    def _ident(self) -> dict:
+        from .station import local_identity
+        ident = local_identity(self.root)
+        return {'id': ident['id'], 'name': ident.get('server_name') or ident.get('name') or 'Servidor'}
+
+    def acquire_turn(self, session, wait: float = TURN_WAIT) -> dict | None:
+        """Called before every change. Takes the turn (waiting if another Servidor is saving),
+        brings the newest data first, then lets the change happen. Offline: works locally and
+        the conflict check at upload time protects the cloud."""
+        if session.environment != 'production' or not self.enabled():
+            return None
+        with self.turn_lock:
+            now = time.time()
+            self.last_turn_use = now
+            if self.lease_until - now > 30:
+                return {'held': True}
+            ident = self._ident()
+            try:
+                client = self.client(session.vrk)
+            except Exception:
+                return {'offline': True}
+            deadline = now + wait
+            while True:
+                try:
+                    out = client.call('lease', {'op': 'acquire', 'holder': ident['id'], 'name': ident['name'], 'ttl': LEASE_TTL}, retries=1)
+                except CloudError as exc:
+                    self.status.update(offline=True, waiting_for=None, last_error=f'{exc.code}: {exc.detail}'[:300])
+                    return {'offline': True}
+                if out.get('granted'):
+                    break
+                self.status['waiting_for'] = out.get('holder_name') or 'outro Servidor'
+                if time.time() >= deadline:
+                    self.status['waiting_for'] = None
+                    raise CloudError('BUSY', f"{out.get('holder_name') or 'Outro Servidor'} está salvando agora. Tente de novo em alguns segundos.")
+                time.sleep(2)
+            self.status.update(offline=False, waiting_for=None)
+            self.lease_until = time.time() + LEASE_TTL - 10
+            self.last_turn_use = time.time()
+            self._pull_from(session, client, out.get('head'), out.get('auth_head'))
+            return {'granted': True}
+
+    def release_turn(self, session) -> None:
+        if self.lease_until <= 0 or not self.enabled():
+            return
+        with self.turn_lock:
+            if self.state.get('dirty_since'):
+                return
+            try:
+                self.client(session.vrk).call('lease', {'op': 'release', 'holder': self._ident()['id']}, retries=1)
+            finally:
+                self.lease_until = 0.0
+
+    def pull(self, session) -> bool:
+        """Without the turn: bring what other Servidores saved (screens refresh by data_version)."""
+        if session.environment != 'production' or not self.enabled():
+            return False
+        self.last_pull = time.time()
+        with self.turn_lock:
+            client = self.client(session.vrk)
+            ping = client.call('ping', {}, retries=1)
+            self.status['offline'] = False
+            return self._pull_from(session, client, ping.get('head'), ping.get('auth_head'))
+
+    def _pull_from(self, session, client, head: dict | None, auth_head: dict | None) -> bool:
+        from .backup import restore_backup, verify_backup
+        from .db import Database
+        changed = False
+        if auth_head and auth_head.get('id') and auth_head.get('id') != self.state.get('auth_head_id'):
+            _, blob = client.download('auth', auth_head['id'])
+            files = open_auth(blob, self.state.secret(session.vrk))
+            auth_dir = self.root / 'UserData' / 'Auth'
+            for name, data in files.items():
+                tmp = auth_dir / (name + '.cloud')
+                tmp.write_bytes(data)
+                tmp.replace(auth_dir / name)
+            self.state.set(auth_head_id=auth_head['id'], auth_fingerprint=_auth_fingerprint(self.root))
+            changed = True
+        local_gen = int(self.state.get('generation') or 0)
+        if head and int(head.get('generation') or 0) > local_gen:
+            db = Database(self.root, 'production', session.db_key)
+            if head.get('dataset_id') and head.get('dataset_id') != self.dataset_id(db):
+                return changed
+            if self.state.get('dirty_since'):
+                return changed  # local changes not sent yet: the upload will report the conflict
+            manifest, data = client.download('db', 'head')
+            tmp = Path(tempfile.mkdtemp(prefix='ustracker-pull-', dir=str(self.root / 'UserData')))
+            try:
+                path = tmp / 'head.usbk'
+                path.write_bytes(data)
+                verify_backup(path, session.vrk)
+                with self.db_gate:
+                    restore_backup(self.root, db, session.vrk, path)
+            finally:
+                shutil.rmtree(tmp, ignore_errors=True)
+            names = client.call('list_blobs', {}).get('names', [])
+            for name in names:
+                target = blob_target(self.root, name)
+                if not target.exists():
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    part = target.with_suffix(target.suffix + '.download')
+                    part.write_bytes(client.get_blob(name))
+                    part.replace(target)
+            self.state.set(generation=int(manifest['generation']), uploaded_blobs=sorted(set(names) | set(self.state.get('uploaded_blobs', []))))
+            changed = True
+        if changed:
+            self.data_version += 1
+        return changed
+
+    def sync_state(self) -> dict:
+        return {'data_version': self.data_version, 'waiting_for': self.status.get('waiting_for'),
+                'offline': bool(self.status.get('offline')), 'holding': self.lease_until > time.time(),
+                'pending_changes': bool(self.state.get('dirty_since'))}
 
     # -- connect / status ---------------------------------------------------------
     def connect(self, session, url: str, secret: str, *, mode: str | None = None) -> dict:
@@ -574,7 +716,8 @@ def restore_from_cloud(root: Path, url: str, secret: str, *, client_factory=Clou
     (state_dir / 'cloud_restore.usbk').write_bytes(snapshot)
     state = CloudState(root)
     state.data = {'enabled': True, 'url': url, 'generation': int(manifest['generation']), 'dataset_id': manifest['dataset_id'],
-                  'uploaded_blobs': sorted(names), 'restore_pending': True, 'restored_from': manifest['id']}
+                  'uploaded_blobs': sorted(names), 'restore_pending': True, 'restored_from': manifest['id'],
+                  'auth_head_id': (ping.get('auth_head') or {}).get('id')}
     state.save()
     return {'snapshot': manifest['id'], 'generation': manifest['generation'], 'created_at': manifest['created_at'],
             'files_downloaded': fetched, 'local_backup': str(keep.relative_to(root)) if keep.exists() else None,
@@ -584,7 +727,7 @@ def restore_from_cloud(root: Path, url: str, secret: str, *, client_factory=Clou
 def apply_pending_restore(root: Path, db, session, sync: CloudSync | None = None) -> dict | None:
     """At the first production login after a cloud restore: apply the snapshot, take the writer role."""
     from .backup import restore_backup
-    from .station import emergency_takeover
+    from .station import ensure_station
     root = Path(root)
     pending = root / 'UserData' / 'State' / 'cloud_restore.usbk'
     if not pending.exists():
@@ -593,7 +736,10 @@ def apply_pending_restore(root: Path, db, session, sync: CloudSync | None = None
     pending.unlink(missing_ok=True)
     from .db import Database
     fresh = Database(root, 'production', session.db_key)
-    station = emergency_takeover(root, fresh, 'ASSUMIR EMERGENCIA', 'Restaurado da nuvem nesta máquina')
+    station = ensure_station(root, fresh)
+    with fresh.transaction() as con:  # S-01: one more Servidor; the cloud turn decides who writes
+        con.execute("UPDATE stations SET is_writer=1,status='ACTIVE' WHERE id=?", (station['id'],))
+    station = dict(fresh.one('SELECT * FROM stations WHERE id=?', (station['id'],)))
     state = CloudState(root)
     state.set(restore_pending=False, auth_fingerprint=_auth_fingerprint(root), dirty_since=None)
     if sync is not None and sync.pending_secret:
