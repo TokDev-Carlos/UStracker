@@ -19,6 +19,8 @@ class R01FoundationTests(unittest.TestCase):
             root = Path(directory)
             (root / 'version.md').write_text('1.234', encoding='utf-8')
             self.assertEqual(read_version(root), '1.234')
+            (root / 'version.md').write_text('2.0.0', encoding='utf-8')
+            self.assertEqual(read_version(root), '2.0.0')
 
             (root / 'version.md').write_text('1.23', encoding='utf-8')
             with self.assertRaisesRegex(ValueError, 'N.NNN'):

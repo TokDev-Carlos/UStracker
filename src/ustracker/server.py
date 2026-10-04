@@ -266,6 +266,8 @@ def create_app(root: Path | str) -> FastAPI:
     def login(request: Request, response: Response, p: dict = Body(...)):
         csrf_required(request)
         session = auth.login(p.get('name', ''), p.get('password', ''), p.get('environment', 'production'))
+        from .factory_reset import run_if_requested
+        factory_reset = run_if_requested(root, auth, session, cloud)  # G-02: internal one-time "zerar tudo"
         response.set_cookie('us_session', session.token, httponly=True, samesite='strict', secure=False, max_age=43200)
         response.set_cookie('us_csrf', session.csrf, httponly=False, samesite='strict', secure=False, max_age=43200)
         db = get_db(session)
@@ -308,6 +310,7 @@ def create_app(root: Path | str) -> FastAPI:
             'csrf': session.csrf,
             'station': station,
             'cloud_restore': cloud_restore,
+            'factory_reset': factory_reset,
             'media_recovery': media_recovery,
             'automatic_backup': backup_info,
             'backup_warning': backup_warning,
@@ -1046,8 +1049,9 @@ def create_app(root: Path | str) -> FastAPI:
 
     @app.post('/api/v1/cloud/restore')
     def cloud_restore(request: Request, p: dict = Body(...)):
-        """C-05 — before login, on a new or wiped machine."""
-        csrf_required(request)
+        """C-05 — administrator only (Sistema › Nuvem › Avançado). New computers download by themselves (/auth/join)."""
+        session = admin_session(request)
+        csrf_required(request, session)
         if p.get('confirm') != 'RESTAURAR DA NUVEM':
             raise ValueError('confirmation RESTAURAR DA NUVEM required')
         out = cloud_call(lambda: restore_from_cloud(root, p.get('url', ''), p.get('secret', '')))

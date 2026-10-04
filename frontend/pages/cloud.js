@@ -26,14 +26,17 @@ export function renderCloudPanel(s = {}) {
       <dt>Fotos e anexos na nuvem</dt><dd>${esc(s.files_in_cloud || 0)}</dd>
       <dt>Envio automático</dt><dd>Segundos após cada alteração e ao fechar o sistema</dd></dl>
     ${s.last_error && !s.conflict ? `<p class="notice">Último erro: ${esc(s.last_error)}. O sistema tenta de novo sozinho.</p>` : ''}
-    ${s.conflict ? `<div class="notice cloud-conflict"><strong>Outra máquina enviou dados mais novos.</strong><p>Para não perder nada, este computador parou de enviar. Se esta é a máquina certa, substitua a nuvem; senão, restaure a partir da nuvem.</p><div class="actions"><button type="button" class="ui-btn ui-btn-danger" data-cloud-force>Usar este computador e substituir a nuvem</button></div></div>` : ''}
+    ${s.conflict ? `<div class="notice cloud-conflict"><strong>Outra máquina enviou dados mais novos.</strong><p>Para não perder nada, este computador parou de enviar. Se esta é a máquina certa, substitua a nuvem; senão, use Avançado › Restaurar da nuvem.</p><div class="actions"><button type="button" class="ui-btn ui-btn-danger" data-cloud-force>Usar este computador e substituir a nuvem</button></div></div>` : ''}
     <div class="actions"><button type="button" class="ui-btn ui-btn-primary" data-cloud-sync>Enviar agora</button><button type="button" class="ui-btn ui-btn-secondary" data-cloud-points>Pontos de restauração</button><button type="button" class="ui-btn ui-btn-subtle" data-cloud-kit>Kit de recuperação</button><button type="button" class="ui-btn ui-btn-subtle" data-cloud-disconnect>Desconectar</button></div>
     <details class="more-options"><summary>Trocar conexão</summary>${connectForm}</details>`
     : `<p>Guarde uma cópia cifrada de tudo no seu Google Drive. Se o computador quebrar ou a pasta for apagada, você recupera em outra máquina.</p>
        <ol class="cloud-steps"><li>Publique o script <b>UStracker Cloud</b> no seu Google (guia: <code>Docs\\NUVEM_GOOGLE_DRIVE.md</code>, 5 minutos).</li><li>Cole aqui a URL do App da Web e o Código de conexão.</li></ol>${connectForm}`;
   return `<div class="panel cloud-panel"><h3>Nuvem (Google Drive)</h3>
     <p class="muted">Tudo sai do computador já cifrado: o Google guarda, mas não consegue ler. Só o que for excluído dentro do sistema sai da nuvem, depois de 14 dias na Lixeira.</p>
-    ${status}<div data-cloud-points-box></div></div>`;
+    ${status}<div data-cloud-points-box></div>
+    <details class="more-options cloud-advanced"><summary>Avançado (Administrador)</summary>
+      <p class="muted">Computadores novos recebem os dados sozinhos. Use só para trocar à força os dados <b>deste</b> computador pelos de uma nuvem.</p>
+      <div class="actions"><button type="button" class="ui-btn ui-btn-danger" data-cloud-restore-admin>Restaurar da nuvem…</button></div></details></div>`;
 }
 
 export function renderPointsTable(items = []) {
@@ -44,7 +47,7 @@ export function renderPointsTable(items = []) {
 export function renderRecoveryKit(s = {}) {
   return `<div class="cloud-kit"><p>Guarde estas duas informações fora do computador (papel, cofre de senhas). Com elas e a sua senha de sempre você recupera tudo em outra máquina.</p>
     <dl class="cloud-facts"><dt>URL do App da Web</dt><dd><code>${esc(s.url || '')}</code></dd><dt>Código de conexão</dt><dd>O mesmo exibido pelo script ao executar <code>instalar</code> (não fica visível aqui por segurança).</dd></dl>
-    <p class="muted">Recuperação: abrir o UStracker na máquina nova → <b>Restaurar da nuvem</b> → colar URL e código → entrar com seu usuário e senha.</p></div>`;
+    <p class="muted">Computador novo: instale com <b>UStracker_install_x64.exe</b> e entre com seu usuário e senha — os dados chegam sozinhos da nuvem.</p></div>`;
 }
 
 export function renderTrashPanel(items = []) {
@@ -54,7 +57,7 @@ export function renderTrashPanel(items = []) {
 }
 
 export function renderCloudRestoreForm() {
-  return `<form id="cloudRestoreForm"><p>Use em um computador novo ou quando a pasta do UStracker foi perdida. Os dados deste computador (se houver) são guardados em <code>UserData\\Backups</code> antes.</p>
+  return `<form id="cloudRestoreForm"><p><b>Uso interno do Administrador.</b> Substitui todos os dados deste computador pelos de uma nuvem (URL + código). Os dados atuais são guardados em <code>UserData\\Backups</code> antes. Depois, todos entram de novo.</p>
     <div class="field"><label>URL do App da Web</label><input name="url" type="url" required placeholder="https://script.google.com/macros/s/…/exec"></div>
     <div class="field"><label>Código de conexão</label><input name="secret" type="password" required autocomplete="off"></div>
     <label class="cloud-confirm"><input type="checkbox" name="ok" required> Entendo que os dados deste computador serão substituídos pelos da nuvem.</label>

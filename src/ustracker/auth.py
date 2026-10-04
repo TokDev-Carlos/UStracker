@@ -344,6 +344,22 @@ class AuthService:
                 if existing.slot == session.slot:
                     self._sessions.pop(token, None)
 
+    def remove_all_users(self, session: Session) -> dict:
+        """G-02 — keep only the administrators: every user and every custom package goes (built-ins stay)."""
+        if not session.is_admin:
+            raise PermissionError('administrator required')
+        with self._lock, self._connection() as con:
+            if not con.execute("SELECT 1 FROM sqlite_master WHERE name='users'").fetchone():
+                self._init_store()
+            users = con.execute('DELETE FROM users').rowcount
+            packages = con.execute('DELETE FROM packages WHERE builtin=0').rowcount
+            con.execute('INSERT INTO auth_audit(at,actor_slot,action,detail) VALUES(?,?,?,?)',
+                        (self._now().isoformat(), session.slot, 'FACTORY_RESET', json.dumps({'users': users, 'packages': packages})))
+        for token, existing in list(self._sessions.items()):
+            if existing.slot >= USER_SLOT_BASE:
+                self._sessions.pop(token, None)
+        return {'users': users, 'packages': packages}
+
     def reset_admin(self, session: Session, slot: int, reason: str) -> str:
         if slot == session.slot or slot not in (1, 2, 3) or not reason.strip():
             raise ValueError('invalid reset request')

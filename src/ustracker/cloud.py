@@ -475,11 +475,15 @@ class CloudSync:
                     if sent % 20 == 0:
                         self.state.set(uploaded_blobs=sorted(known))
                 self.state.set(uploaded_blobs=sorted(known))
-                # 2) deletions requested by the Lixeira (14 days are over)
+                # 2) deletions requested by the Lixeira (14 days are over); G-02 zerar tudo: every remote file not local
                 pending = list(self.state.get('pending_delete', []))
+                if self.state.get('wipe_cloud'):
+                    pending = sorted(set(pending) | (set(client.call('list_blobs', {}).get('names', [])) - set(local)))
                 if pending:
                     client.call('delete_blobs', {'names': pending})
                     self.state.set(pending_delete=[], uploaded_blobs=sorted(known - set(pending)))
+                if self.state.get('wipe_cloud'):
+                    self.state.set(wipe_cloud=None)
                 # 3) access vault when it changed
                 fp = _auth_fingerprint(self.root)
                 if fp != self.state.get('auth_fingerprint'):

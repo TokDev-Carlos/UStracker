@@ -1,6 +1,8 @@
 ; UStracker — instalador para Windows 10/11 x64 (NSIS 3)
-; Compilar: makensis -DSRC=<pasta do programa> -DVERSION=1.006 -DOUT=<arquivo .exe> UStracker.nsi
-; Regras: instala ou atualiza por cima; NUNCA apaga ou substitui UserData nem Trust.
+; Compilar: makensis -DSRC=<pasta do programa> -DVERSION=2.0.0 -DWV2=<MicrosoftEdgeWebView2RuntimeInstallerX64.exe>
+;           -DPLACA=<placa-bootstrap.json> [-DOUT=UStracker_install_x64.exe] UStracker.nsi
+; Release 2: um único arquivo leva tudo (programa + WebView2 + endereço da nuvem). Nada ao lado do instalador.
+; Regras: instala ou atualiza por cima; NUNCA apaga ou substitui UserData; a chave de atualização (Trust) só entra se faltar.
 
 Unicode true
 SetCompressor lzma
@@ -9,13 +11,19 @@ RequestExecutionLevel admin
 ManifestDPIAware true
 
 !ifndef VERSION
-  !define VERSION "1.006"
+  !define VERSION "2.0.0"
 !endif
 !ifndef SRC
   !error "Defina -DSRC=<pasta do programa>"
 !endif
+!ifndef WV2
+  !error "Defina -DWV2=<MicrosoftEdgeWebView2RuntimeInstallerX64.exe> (o WebView2 vai dentro do instalador)"
+!endif
+!ifndef PLACA
+  !error "Defina -DPLACA=<placa-bootstrap.json> (endereço da nuvem da empresa, vai dentro do instalador)"
+!endif
 !ifndef OUT
-  !define OUT "install_UStracker.exe"
+  !define OUT "UStracker_install_x64.exe"
 !endif
 
 !define APP "UStracker"
@@ -28,7 +36,7 @@ OutFile "${OUT}"
 InstallDir "C:\UStracker"
 InstallDirRegKey HKLM "${UNINST_KEY}" "InstallLocation"
 BrandingText "${APP} ${VERSION}"
-VIProductVersion "${VERSION}.0.0"
+VIProductVersion "${VERSION}.0"
 VIAddVersionKey /LANG=1046 "ProductName" "${APP}"
 VIAddVersionKey /LANG=1046 "FileDescription" "Instalador do ${APP}"
 VIAddVersionKey /LANG=1046 "ProductVersion" "${VERSION}"
@@ -48,7 +56,7 @@ VIAddVersionKey /LANG=1046 "LegalCopyright" "${PUBLISHER}"
 !define MUI_WELCOMEPAGE_TEXT "Este assistente instala ou atualiza o ${APP} neste computador.$\r$\n$\r$\nSe o ${APP} já estiver instalado, só o programa é atualizado: seus dados (pasta UserData) continuam intactos.$\r$\n$\r$\nAntes de continuar, feche o ${APP} pelo botão Encerrar."
 !define MUI_DIRECTORYPAGE_TEXT_TOP "Pasta do ${APP}. Use uma pasta local (não use pasta de rede nem pasta sincronizada). Para atualizar, escolha a pasta onde ele já está."
 !define MUI_FINISHPAGE_TITLE "${APP} pronto"
-!define MUI_FINISHPAGE_TEXT "Instalação concluída.$\r$\n$\r$\nPrimeira vez neste computador e já usa o ${APP} em outro? Na tela inicial clique em $\"Já uso o UStracker: restaurar da nuvem$\" e cole a URL e o Código de conexão."
+!define MUI_FINISHPAGE_TEXT "Instalação concluída.$\r$\n$\r$\nAbra o ${APP}. Se a empresa já usa o ${APP}, entre com seu usuário e senha: os dados chegam sozinhos da nuvem. Se for o primeiro computador, cadastre o Administrador."
 !define MUI_FINISHPAGE_RUN "$INSTDIR\UStracker.exe"
 !define MUI_FINISHPAGE_RUN_TEXT "Abrir o ${APP} agora"
 
@@ -77,10 +85,8 @@ Function WaitAppClosed
   done:
 FunctionEnd
 
+; offline WebView2 runtime embedded at build time (installed only when missing)
 Function EnsureWebView2
-  !ifdef WV2
-  ; offline WebView2 runtime embedded at build time (installed only when missing)
-  !endif
   ReadRegStr $0 HKLM "SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\${WV2_GUID}" "pv"
   ${If} $0 == ""
   ${OrIf} $0 == "0.0.0.0"
@@ -88,24 +94,14 @@ Function EnsureWebView2
   ${EndIf}
   ${If} $0 == ""
   ${OrIf} $0 == "0.0.0.0"
-    !ifdef WV2
-      DetailPrint "Instalando o Microsoft WebView2 (componente da tela do sistema)..."
-      InitPluginsDir
-      SetOutPath "$PLUGINSDIR"
-      SetCompress off
-      File "${WV2}"
-      SetCompress auto
-      ExecWait '"$PLUGINSDIR\MicrosoftEdgeWebView2RuntimeInstallerX64.exe" /silent /install'
-      SetOutPath "$INSTDIR"
-    !else
-    ${If} ${FileExists} "$EXEDIR\MicrosoftEdgeWebView2RuntimeInstallerX64.exe"
-      DetailPrint "Instalando o Microsoft WebView2 (componente da tela do sistema)..."
-      ExecWait '"$EXEDIR\MicrosoftEdgeWebView2RuntimeInstallerX64.exe" /silent /install'
-    ${Else}
-      MessageBox MB_ICONINFORMATION|MB_OK "Falta o Microsoft WebView2 Runtime (componente gratuito da Microsoft que desenha a tela do ${APP}).$\r$\n$\r$\nVamos abrir a página de download: baixe o 'Evergreen Bootstrapper', instale e depois abra o ${APP}."
-      ExecShell "open" "https://go.microsoft.com/fwlink/p/?LinkId=2124703"
-    ${EndIf}
-    !endif
+    DetailPrint "Instalando o Microsoft WebView2 (componente da tela do sistema)..."
+    InitPluginsDir
+    SetOutPath "$PLUGINSDIR"
+    SetCompress off
+    File /oname=MicrosoftEdgeWebView2RuntimeInstallerX64.exe "${WV2}"
+    SetCompress auto
+    ExecWait '"$PLUGINSDIR\MicrosoftEdgeWebView2RuntimeInstallerX64.exe" /silent /install'
+    SetOutPath "$INSTDIR"
   ${Else}
     DetailPrint "Microsoft WebView2 encontrado ($0)."
   ${EndIf}
@@ -121,17 +117,18 @@ Section "Programa" SecMain
   ; remove only replaceable program code so no stale file survives an update
   RMDir /r "$INSTDIR\Runtime\Lib\site-packages\ustracker"
   RMDir /r "$INSTDIR\frontend"
+  ; Release 2: leftovers of the old kit-based installer
+  RMDir /r "$INSTDIR\Redist"
+  RMDir /r "$INSTDIR\Instalador"
   ; program files
-  File /r /x "UserData" /x "Trust" /x "*.pdb" /x "__pycache__" "${SRC}/*.*"
+  File /r /x "UserData" /x "Trust" /x "Instalador" /x "Redist" /x "*.pdb" /x "__pycache__" "${SRC}/*.*"
   ; Trust (update public key) is installed only when missing
   SetOverwrite off
   SetOutPath "$INSTDIR\Trust"
   File /nonfatal /r "${SRC}/Trust/*.*"
   SetOverwrite on
-  ; S-08: company cloud address (placa) — from the build or from the kit folder next to this installer
-  ${If} ${FileExists} "$EXEDIR\placa-bootstrap.json"
-    CopyFiles /SILENT "$EXEDIR\placa-bootstrap.json" "$INSTDIR\Trust\placa-bootstrap.json"
-  ${EndIf}
+  ; S-08: company cloud address (placa), embedded at build time — new computers download the data by themselves
+  File /oname=placa-bootstrap.json "${PLACA}"
   SetOutPath "$INSTDIR"
   CreateDirectory "$INSTDIR\UserData"
   ; normal (non-admin) Windows users must be able to write their data

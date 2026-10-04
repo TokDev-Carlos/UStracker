@@ -15,7 +15,7 @@ empresa e o arquivo inteiro é ASSINADO (Ed25519) com a chave mestre. O arquivo 
 Banco 1 = principal; Banco 2+ = espelhos (recebem cópia de tudo).
 
 Arquivos:
-* ``APP_ROOT/Trust/placa-bootstrap.json`` (vai no instalador): endereço da placa, chave pública, chave da empresa.
+* ``APP_ROOT/Trust/placa-bootstrap.json`` (vai DENTRO do UStracker_install_x64.exe): endereço da placa, chave pública, chave da empresa.
 * chave mestre (privada): no banco, cifrada com a VRK (só administradores usam; viaja com a nuvem).
 """
 from __future__ import annotations
@@ -167,10 +167,7 @@ def save_bootstrap(root: Path | str, *, url: str, master: dict) -> dict:
     tmp = path.with_suffix('.tmp')
     tmp.write_text(json.dumps(data, indent=2), encoding='utf-8')
     tmp.replace(path)
-    # the installer kit (Instalador\) carries it to new computers next to install_UStracker.exe
-    kit = Path(root) / 'Instalador'
-    if kit.is_dir():
-        (kit / 'placa-bootstrap.json').write_text(json.dumps(data, indent=2), encoding='utf-8')
+    # Release 2: the build embeds this file inside UStracker_install_x64.exe (no kit folder)
     return data
 
 
