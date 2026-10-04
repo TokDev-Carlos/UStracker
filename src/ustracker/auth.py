@@ -262,6 +262,8 @@ class AuthService:
         with self._lock, self._connection() as con:
             self._check_login_throttle(identity)
             row = con.execute("SELECT * FROM admins WHERE name=? AND status='ENROLLED'", (name.strip(),)).fetchone()
+            if not row and not con.execute("SELECT 1 FROM sqlite_master WHERE name='users'").fetchone():
+                self._init_store()
             user = None if row else con.execute('SELECT * FROM users WHERE name=? AND active=1', (name.strip(),)).fetchone()
             if not row and not user:
                 self._record_login_failure(identity)
@@ -379,6 +381,7 @@ class AuthService:
             raise PermissionError('administrator required')
 
     def list_packages(self) -> list[dict]:
+        self._init_store()  # auth.db may have arrived from an older version (cloud)
         with self._connection() as con:
             rows = con.execute('SELECT * FROM packages ORDER BY builtin DESC, title').fetchall()
             counts = {r[0]: r[1] for r in con.execute('SELECT package_id,COUNT(*) FROM users GROUP BY package_id')}
@@ -432,6 +435,7 @@ class AuthService:
         return {'id': package_id, 'deleted': True}
 
     def list_users(self) -> list[dict]:
+        self._init_store()
         with self._connection() as con:
             rows = con.execute('''SELECT u.id,u.name,u.full_name,u.package_id,u.active,u.created_at,u.updated_at,p.title AS package_title
                                     FROM users u LEFT JOIN packages p ON p.id=u.package_id ORDER BY u.active DESC,u.name''').fetchall()
@@ -445,6 +449,7 @@ class AuthService:
 
     def create_user(self, session: Session, p: dict) -> dict:
         self._require_admin(session)
+        self._init_store()
         name = str(p.get('name') or '').strip()
         if not name:
             raise ValueError('admin name is required')
@@ -509,3 +514,58 @@ class AuthService:
                 if existing.kind == 'user' and existing.package in packages:
                     existing.permissions = clean(packages[existing.package]['permissions'])
                     existing.package_title = packages[existing.package]['title']
+
+    # ------------------------------------------------------------------ S-02 acesso vindo de outro Servidor
+    def merge_from(self, other_db: Path) -> dict:
+        """Merge another Servidor's auth.db into this one (never a blind replace).
+
+        admins by slot, users by name, packages by id: the newest ``updated_at`` wins; audit rows are
+        added once. Local changes not yet sent are kept, remote ones arrive."""
+        self._init_store()
+        added = {'admins': 0, 'users': 0, 'packages': 0}
+        with self._lock, self._connection() as con:
+            con.execute('ATTACH DATABASE ? AS r', (str(other_db),))
+            try:
+                tables = {r[0] for r in con.execute("SELECT name FROM r.sqlite_master WHERE type='table'")}
+                if 'admins' in tables:
+                    for row in con.execute('SELECT * FROM r.admins').fetchall():
+                        mine = con.execute('SELECT updated_at FROM admins WHERE slot=?', (row['slot'],)).fetchone()
+                        if not mine or str(row['updated_at']) > str(mine['updated_at']):
+                            con.execute('UPDATE admins SET name=NULL WHERE name=? AND slot<>?', (row['name'], row['slot']))
+                            con.execute('INSERT OR REPLACE INTO admins(slot,name,salt,vrk_nonce,vrk_cipher,status,revision,updated_at) VALUES(?,?,?,?,?,?,?,?)',
+                                        (row['slot'], row['name'], row['salt'], row['vrk_nonce'], row['vrk_cipher'], row['status'], row['revision'], row['updated_at']))
+                            added['admins'] += 1
+                if 'packages' in tables:
+                    for row in con.execute('SELECT * FROM r.packages WHERE builtin=0').fetchall():
+                        mine = con.execute('SELECT updated_at FROM packages WHERE id=?', (row['id'],)).fetchone()
+                        if not mine or str(row['updated_at']) > str(mine['updated_at']):
+                            con.execute('DELETE FROM packages WHERE title=? AND id<>? AND builtin=0', (row['title'], row['id']))
+                            con.execute('INSERT OR REPLACE INTO packages(id,title,description,permissions,builtin,updated_at) VALUES(?,?,?,?,0,?)',
+                                        (row['id'], row['title'], row['description'], row['permissions'], row['updated_at']))
+                            added['packages'] += 1
+                if 'users' in tables:
+                    for row in con.execute('SELECT * FROM r.users').fetchall():
+                        mine = con.execute('SELECT id,updated_at FROM users WHERE name=?', (row['name'],)).fetchone()
+                        if mine and str(row['updated_at']) <= str(mine['updated_at']):
+                            continue
+                        if not con.execute('SELECT 1 FROM packages WHERE id=?', (row['package_id'],)).fetchone():
+                            continue
+                        values = (row['name'], row['full_name'], row['package_id'], row['salt'], row['vrk_nonce'], row['vrk_cipher'],
+                                  row['active'], row['revision'], row['created_at'], row['updated_at'])
+                        if mine:
+                            con.execute('UPDATE users SET name=?,full_name=?,package_id=?,salt=?,vrk_nonce=?,vrk_cipher=?,active=?,revision=?,created_at=?,updated_at=? WHERE id=?',
+                                        values + (mine['id'],))
+                        else:
+                            free = not con.execute('SELECT 1 FROM users WHERE id=?', (row['id'],)).fetchone()
+                            con.execute('INSERT INTO users(id,name,full_name,package_id,salt,vrk_nonce,vrk_cipher,active,revision,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)',
+                                        ((row['id'] if free else None),) + values)
+                        added['users'] += 1
+                if 'auth_audit' in tables:
+                    con.execute('''INSERT INTO auth_audit(at,actor_slot,action,detail)
+                                   SELECT a.at,a.actor_slot,a.action,a.detail FROM r.auth_audit a
+                                   WHERE NOT EXISTS(SELECT 1 FROM auth_audit b WHERE b.at=a.at AND b.actor_slot IS a.actor_slot AND b.action=a.action)''')
+                con.commit()
+            finally:
+                con.execute('DETACH DATABASE r')
+        self._refresh_sessions()
+        return added

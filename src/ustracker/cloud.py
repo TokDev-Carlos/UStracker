@@ -595,11 +595,17 @@ class CloudSync:
             _, blob = client.download('auth', auth_head['id'])
             files = open_auth(blob, self.state.secret(session.vrk))
             auth_dir = self.root / 'UserData' / 'Auth'
-            for name, data in files.items():
-                tmp = auth_dir / (name + '.cloud')
-                tmp.write_bytes(data)
-                tmp.replace(auth_dir / name)
-            self.state.set(auth_head_id=auth_head['id'], auth_fingerprint=_auth_fingerprint(self.root))
+            if 'auth.db' in files:
+                # merge, never replace: local users/packages not sent yet survive; the merged result goes up next sync
+                tmp = auth_dir / 'auth.cloud.db'
+                tmp.write_bytes(files['auth.db'])
+                try:
+                    self.auth.merge_from(tmp)
+                finally:
+                    tmp.unlink(missing_ok=True)
+            if 'vault.json' in files and not (auth_dir / 'vault.json').exists():
+                (auth_dir / 'vault.json').write_bytes(files['vault.json'])
+            self.state.set(auth_head_id=auth_head['id'])
             changed = True
         local_gen = int(self.state.get('generation') or 0)
         if self.state.get('bank_switch'):
