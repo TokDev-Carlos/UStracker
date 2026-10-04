@@ -1,0 +1,12 @@
+UStracker 1.006
+
+Instalar ou atualizar:
+  Execute install_UStracker.exe e siga as telas. Os dados (pasta UserData) nunca sao apagados.
+
+Primeiro uso:
+  - Novo: cadastre o Administrador 1.
+  - Ja usa em outro computador: "Ja uso o UStracker: restaurar da nuvem".
+
+Manual: Docs\MANUAL_USUARIO.md
+Nuvem:  Docs\NUVEM_GOOGLE_DRIVE.md
+Recuperacao: Docs\RECUPERACAO.md
