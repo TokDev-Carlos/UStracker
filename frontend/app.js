@@ -26,6 +26,8 @@ import { localToday, openPaymentDialog } from './ui/payment-dialog.js';
 import { renderOverviewDrilldown, renderOverviewPage } from './pages/dashboard.js';
 import { entityChoices, renderFilesPage } from './pages/files.js';
 import { confirmDialog, openDialog, openPlateOwnerDialog } from './ui/dialog.js';
+import { allowedPages, applyPermissions, can, filterMenu, isAdmin, setAccess, watchPermissions } from './ui/permissions.js';
+import { bindUsersTab, renderUsersTab } from './pages/users.js';
 import { renderCloudPanel, renderCloudRestoreForm, renderPointsTable, renderRecoveryKit, renderTrashPanel } from './pages/cloud.js';
 
 const app=document.querySelector('#app');
@@ -119,7 +121,7 @@ function openSubscriptionWorkflow(model,{onSuccess,onCancel}={}){
   },onError:error=>toast({type:'error',message:error.message})});
   return drawer;
 }
-async function boot(){const state=await session.bootstrap();const pub=state.publicData,st=state.setupStatus;applyBrand(pub);if(state.state==='setup')return setupScreen();if(state.state==='login')return loginScreen(st,pub);renderShell();await show('dashboard')}
+async function boot(){const state=await session.bootstrap();const pub=state.publicData,st=state.setupStatus;applyBrand(pub);if(state.state==='setup')return setupScreen();if(state.state==='login')return loginScreen(st,pub);renderShell();await show(allowedPages(nav.map(([key])=>key))[0]||'dashboard')}
 function setupScreen(){app.innerHTML=`<section class="auth"><h1>UStracker — Configuração inicial</h1><p>Crie o Administrador 1. Serão emitidos dois tickets de uso único para os Administradores 2 e 3.</p><form id="setup"><div class="row">${field('Nome','name')}${field('Senha (10+ caracteres)','password','password')}</div><div class="actions"><button>Iniciar configuração</button><button type="button" class="ui-btn ui-btn-subtle" data-cloud-restore-open>Já uso o UStracker: restaurar da nuvem</button></div></form><div id="setupOut"></div></section>`;bindCloudRestoreEntry();document.querySelector('#setup').onsubmit=async e=>{e.preventDefault();try{await getCsrf();const r=await api('/auth/bootstrap',{method:'POST',body:JSON.stringify(formData(e.target))});enrollmentScreen(r.tickets)}catch(err){document.querySelector('#setupOut').innerHTML=msg(err.message,'error')}}}
 function enrollmentScreen(tickets){app.innerHTML=`<section class="auth"><h1>Concluir três administradores</h1><div class="notice">Os tickets expiram em 15 minutos.</div>${tickets.map((t,i)=>`<form class="enroll" data-ticket="${esc(t)}"><h3>Administrador ${i+2}</h3><div class="ticket">${esc(t)}</div><div class="row">${field('Nome','name')}${field('Senha','password','password')}</div><div class="actions"><button>Registrar Admin ${i+2}</button></div><div class="out"></div></form>`).join('')}<button id="goLogin" class="secondary">Ir para login</button></section>`;document.querySelectorAll('.enroll').forEach(f=>f.onsubmit=async e=>{e.preventDefault();try{await getCsrf();const p=formData(f);p.ticket=f.dataset.ticket;await api('/auth/enroll',{method:'POST',body:JSON.stringify(p)});f.querySelector('.out').innerHTML=msg('Administrador registrado.')}catch(err){f.querySelector('.out').innerHTML=msg(err.message,'error')}});document.querySelector('#goLogin').onclick=()=>boot()}
 // C-05 — restore a whole installation from the cloud (new or wiped computer), before login.
@@ -133,9 +135,9 @@ function bindCloudRestoreEntry(){
       setTimeout(()=>{closeOverlay();boot()},2500)},notify:toast});
   });
 }
-function loginScreen(st,pub){app.innerHTML=renderLoginScreen(st,pub);bindCloudRestoreEntry();document.querySelector('#login').onsubmit=async e=>{e.preventDefault();try{await getCsrf();const r=await api('/auth/login',{method:'POST',body:JSON.stringify(formData(e.target))});csrf=r.csrf;me=r;renderShell();await show('dashboard');if(r.backup_warning)toast({type:'error',message:messagePtBR('Backup automático: '+r.backup_warning)})}catch(err){document.querySelector('#loginOut').innerHTML=msg(err.message,'error')}}}
+function loginScreen(st,pub){app.innerHTML=renderLoginScreen(st,pub);bindCloudRestoreEntry();document.querySelector('#login').onsubmit=async e=>{e.preventDefault();try{await getCsrf();const r=await api('/auth/login',{method:'POST',body:JSON.stringify(formData(e.target))});csrf=r.csrf;me=r;renderShell();await show(allowedPages(nav.map(([key])=>key))[0]||'dashboard');if(r.backup_warning)toast({type:'error',message:messagePtBR('Backup automático: '+r.backup_warning)})}catch(err){document.querySelector('#loginOut').innerHTML=msg(err.message,'error')}}}
 const nav=[['dashboard','Visão geral'],['clients','Clientes'],['mobility','Frotas/Veículos'],['catalog','Planos/Produtos'],['commercial','Comercial'],['finance','Financeiro'],['files','Fotos/Arquivos'],['reports','Relatórios'],['system','Sistema']];
-function renderShell(){renderAppShell({me,nav,onNavigate:show,onSearch:async query=>{const d=await api('/search?q='+encodeURIComponent(query));tableStore.clear();content(pageHeader('Pesquisa','Resultados da busca global')+dt(d.items,'searchTable'))},onHelp:()=>{const help=helpFor(current);openDrawer({title:help.title,subtitle:'Ajuda contextual',content:`<p>${esc(help.body)}</p>${HELP[current]?.fields?`<dl>${Object.entries(HELP[current].fields).map(([key,value])=>`<dt><strong>${esc(key.replaceAll('_',' '))}</strong></dt><dd>${esc(value)}</dd>`).join('')}</dl>`:''}`})},onUser:()=>content(pageHeader('Usuário','Sessão atual')+`<div class="panel"><strong>${esc(me.name)}</strong><p class="muted">Perfil: ${esc(sessionProfileLabel(me))}</p><p class="muted">Ambiente: ${esc(me.environment)}</p></div>`),onLogout:async()=>{await session.logout();await boot()},onShutdown:requestSystemShutdown})}
+function renderShell(){setAccess(me);watchPermissions();const pages=allowedPages(nav.map(([key])=>key));renderAppShell({me,nav:nav.filter(([key])=>pages.includes(key)).map(([key,label])=>key==='system'&&!isAdmin()?[key,'Lixeira']:[key,label]),onNavigate:show,onSearch:async query=>{const d=await api('/search?q='+encodeURIComponent(query));tableStore.clear();content(pageHeader('Pesquisa','Resultados da busca global')+dt(d.items,'searchTable'))},onHelp:()=>{const help=helpFor(current);openDrawer({title:help.title,subtitle:'Ajuda contextual',content:`<p>${esc(help.body)}</p>${HELP[current]?.fields?`<dl>${Object.entries(HELP[current].fields).map(([key,value])=>`<dt><strong>${esc(key.replaceAll('_',' '))}</strong></dt><dd>${esc(value)}</dd>`).join('')}</dl>`:''}`})},onUser:()=>{content(pageHeader('Minha conta','Sessão atual')+`<div class="panel"><strong>${esc(me.name)}</strong><p class="muted">Perfil: ${esc(sessionProfileLabel(me))}</p><p class="muted">Ambiente: ${esc(me.environment==='production'?'Real':'Teste')}</p></div><div class="panel"><h3>Trocar minha senha</h3><form id="myPasswordForm"><div class="row"><div class="field"><label>Senha atual</label><input type="password" name="current_password" required autocomplete="current-password"></div><div class="field"><label>Nova senha (mínimo 4)</label><input type="password" name="new_password" minlength="4" required autocomplete="new-password"></div></div><div class="actions"><button class="ui-btn ui-btn-primary">Trocar senha</button></div></form></div>`);const form=document.querySelector('#myPasswordForm');bindActionForm(form,{key:'my-password',action:()=>api('/auth/change-password',{method:'POST',body:JSON.stringify(formData(form))}),refresh:async()=>{toast({type:'success',message:'Senha trocada. Entre de novo com a nova senha.'});await boot()},notify:toast})},onLogout:async()=>{await session.logout();await boot()},onShutdown:requestSystemShutdown})}
 function bindClientJourney(drawer,profile,clientId){
   const reopen=focus=>async()=>{closeOverlay();await openClientProfile(clientId,{focus})};
   bindClientProfileUi(drawer);
@@ -206,7 +208,7 @@ async function openClientProfile(clientId,options={}){
   drawer.querySelectorAll('[data-client-payment]').forEach(button=>button.onclick=()=>{const tab=drawer.querySelector('.cp')?.dataset.cpActive;openPaymentDialog({api,search:searchClientEntities,client:{id:clientId,display_name:profile.client?.legal_name},subscriptionId:button.dataset.subscriptionId||'',notify:toast,onSuccess:()=>openClientProfile(clientId,{tab})})});
   return drawer;
 }
-async function show(page){if(page==='fleets'||page==='vehicles')page='mobility';const lease=++navigationSequence;navigationStarted();pageReload=()=>show(page);systemNavigationLease=page==='system'?lease:null;current=page;tableStore.clear();document.querySelectorAll('[data-page]').forEach(b=>b.classList.toggle('active',b.dataset.page===page));try{const fn={dashboard:()=>dashboardPage('',lease),clients:()=>clientsPage(lease),mobility:()=>mobilityPage({},lease),catalog:()=>catalogPage(lease),commercial:()=>commercialPage(lease),subscriptions:()=>commercialPage(lease),purchases:()=>commercialPage(lease),charges:()=>commercialPage(lease),credits:()=>commercialPage(lease),finance:()=>financePage(lease),payments:()=>financePage(lease),expenses:()=>financePage(lease),fiscal:()=>financePage(lease),files:()=>filesPage(lease),media:()=>filesPage(lease),reports:()=>reportsPage(lease),system:()=>systemPage(lease)}[page];if(fn)await fn()}catch(e){content(`<div class="error">${esc(e.message)}</div>`,lease)}finally{if(lease===navigationSequence)navigationFinished()}}
+async function show(page){if(page==='fleets'||page==='vehicles')page='mobility';{const base={subscriptions:'commercial',purchases:'commercial',charges:'commercial',credits:'commercial',payments:'finance',expenses:'finance',fiscal:'finance',media:'files'}[page]||page;const ok=allowedPages(nav.map(([key])=>key));if(!ok.includes(base)&&ok.length)page=ok[0]}const lease=++navigationSequence;navigationStarted();pageReload=()=>show(page);systemNavigationLease=page==='system'?lease:null;current=page;tableStore.clear();document.querySelectorAll('[data-page]').forEach(b=>b.classList.toggle('active',b.dataset.page===page));try{const fn={dashboard:()=>dashboardPage('',lease),clients:()=>clientsPage(lease),mobility:()=>mobilityPage({},lease),catalog:()=>catalogPage(lease),commercial:()=>commercialPage(lease),subscriptions:()=>commercialPage(lease),purchases:()=>commercialPage(lease),charges:()=>commercialPage(lease),credits:()=>commercialPage(lease),finance:()=>financePage(lease),payments:()=>financePage(lease),expenses:()=>financePage(lease),fiscal:()=>financePage(lease),files:()=>filesPage(lease),media:()=>filesPage(lease),reports:()=>reportsPage(lease),system:()=>(isAdmin()?systemPage(lease):trashOnlyPage(lease))}[page];if(fn)await fn()}catch(e){content(`<div class="error">${esc(e.message)}</div>`,lease)}finally{if(lease===navigationSequence)navigationFinished()}}
 async function dashboardPage(query='',lease=null,year=''){
   const params=new URLSearchParams();if(query)params.set('q',query);if(year)params.set('year',year);
   const d=await api('/dashboard'+(params.size?'?'+params.toString():''));
@@ -327,7 +329,7 @@ async function mobilityPage(filters={},lease=null){
 
 async function catalogPage(lease=null){
   const d=await api('/catalog');
-  if(!content(renderCatalogPage(d),lease))return;
+  if(!content(renderCatalogPage(d,{costs:can('catalog.costs')}),lease))return;
   const form=document.querySelector('#catalogForm');
   bindCatalogForm(form,{bindMoney:bindMoneyInputs});
   bindActionForm(form,{key:'catalog-create',action:()=>api('/catalog',{method:'POST',body:JSON.stringify(catalogPayload(form))}),refresh:()=>show('catalog'),successMessage:'Produto cadastrado.',notify:toast});
@@ -370,7 +372,7 @@ async function commercialPage(lease=null){
         resume:()=>setStatus('ACTIVE','Assinatura reativada.'),
         cancel:()=>setStatus('CANCELLED','Assinatura cancelada.','Cancelar esta assinatura? Ela deixa de gerar mensalidades. O histórico é mantido.'),
       };
-      openActionMenu(button,subscriptionMenuItems(sub).map(item=>({...item,onClick:handlers[item.key]})));
+      openActionMenu(button,filterMenu(subscriptionMenuItems(sub)).map(item=>({...item,onClick:handlers[item.key]})));
     });
     const newSubscription=document.querySelector('[data-new-subscription]');if(newSubscription)newSubscription.onclick=()=>openSubscriptionWorkflow({context:'COMMERCIAL',catalog:data.catalog_mensal||[],vehicles:data.vehicles||[],fleets:data.fleets||[]},{onSuccess:()=>show('commercial')});
     const purchase=document.querySelector('#commercialPurchaseForm'); if(purchase){
@@ -388,7 +390,7 @@ async function financePage(lease=null){
   // AJ-13: recurring expenses due up to this month are issued once, without triggering a reload loop.
   if(Number(data.recurring_pending||0)>0){try{await apiClient.request('/expenses/recurring/run',{method:'POST',body:'{}'});data=await api('/finance')}catch{}}
   const legacyTab=current==='expenses'?'expenses':current==='fiscal'?'fiscal':'payments';
-  let active=(location.hash.match(/^#finance\/(payments|expenses|fiscal)$/)?.[1])||legacyTab;
+  let active=(location.hash.match(/^#finance\/(payments|expenses|fiscal)$/)?.[1])||legacyTab;{const perm={payments:'finance.view',expenses:'expenses.view',fiscal:'fiscal.view'};if(!can(perm[active]))active=['payments','expenses','fiscal'].find(tab=>can(perm[tab]))||'payments'}
   current='finance';document.querySelectorAll('[data-page]').forEach(b=>b.classList.toggle('active',b.dataset.page==='finance'));
   const reload=()=>show('finance');
   const draw=()=>{
@@ -444,7 +446,7 @@ function reportsPage(lease=null){const names=['clients','vehicles','charges','pa
 async function downloadReport(name,ext){const r=await fetch(`/api/v1/reports/${name}.${ext}`);if(!r.ok)throw new Error('Falha no relatório');const a=document.createElement('a');a.href=URL.createObjectURL(await r.blob());a.download=`${name}.${ext}`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
 function organizeSystemPage(runtime){
   const root=document.querySelector('#content');if(!root||root.querySelector('.system-tabs'))return;
-  const tabs=document.createElement('div');tabs.className='system-tabs';tabs.innerHTML='<button type="button" class="active" data-system-tab="admin">Administração</button><button type="button" data-system-tab="cloud">Nuvem</button><button type="button" data-system-tab="trash">Lixeira</button><button type="button" data-system-tab="development">Desenvolvimento</button>';
+  const tabs=document.createElement('div');tabs.className='system-tabs';tabs.innerHTML='<button type="button" class="active" data-system-tab="admin">Administração</button><button type="button" data-system-tab="users">Usuários</button><button type="button" data-system-tab="cloud">Nuvem</button><button type="button" data-system-tab="trash">Lixeira</button><button type="button" data-system-tab="development">Desenvolvimento</button>';
   const admin=document.createElement('section');admin.className='system-panel';admin.dataset.systemPanel='admin';
   const development=document.createElement('section');development.className='system-panel';development.dataset.systemPanel='development';development.hidden=true;
   const advanced=new Set(['Recovery / transferência','Recuperação / transferência','Estações','Auditoria','Integrações futuras','Integrações planejadas','Laboratório Test','Laboratório de testes']);
@@ -452,12 +454,13 @@ function organizeSystemPage(runtime){
   const runtimePanel=document.createElement('div');runtimePanel.className='panel';runtimePanel.innerHTML=`<h3>Runtime e atualização</h3><dl class="runtime-grid"><dt>Versão</dt><dd>${esc(runtime?.version||'—')}</dd><dt>Schema</dt><dd>${esc(runtime?.schema_version||'—')}</dd><dt>Ambiente</dt><dd>${esc(runtime?.environment||'—')}</dd><dt>APP_ROOT</dt><dd>${esc(runtime?.app_root||'—')}</dd><dt>DATA_ROOT</dt><dd>${esc(runtime?.data_root||'—')}</dd><dt>BACKUP_ROOT</dt><dd>${esc(runtime?.backup_root||'—')}</dd><dt>Última atualização</dt><dd>${esc(runtime?.update?.state||'Nenhuma registrada')}</dd></dl><p class="muted">Pacotes .usup são verificados por assinatura e checksum pelo atualizador externo antes da troca transacional.</p>`;development.prepend(runtimePanel);
   const cloudSection=document.createElement('section');cloudSection.className='system-panel';cloudSection.dataset.systemPanel='cloud';cloudSection.hidden=true;
   const trashSection=document.createElement('section');trashSection.className='system-panel';trashSection.dataset.systemPanel='trash';trashSection.hidden=true;
-  const header=root.querySelector('.ui-page-header');header?.after(tabs,admin,cloudSection,trashSection,development);
-  const sections={admin,cloud:cloudSection,trash:trashSection,development};
-  const loaders={cloud:()=>loadCloudTab(cloudSection),trash:()=>loadTrashTab(trashSection)};
+  const usersSection=document.createElement('section');usersSection.className='system-panel';usersSection.dataset.systemPanel='users';usersSection.hidden=true;
+  const header=root.querySelector('.ui-page-header');header?.after(tabs,admin,usersSection,cloudSection,trashSection,development);
+  const sections={admin,users:usersSection,cloud:cloudSection,trash:trashSection,development};
+  const loaders={users:()=>loadUsersTab(usersSection),cloud:()=>loadCloudTab(cloudSection),trash:()=>loadTrashTab(trashSection)};
   const select=name=>{tabs.querySelectorAll('button').forEach(item=>item.classList.toggle('active',item.dataset.systemTab===name));Object.entries(sections).forEach(([key,el])=>{el.hidden=key!==name});loaders[name]?.()};
   tabs.querySelectorAll('[data-system-tab]').forEach(button=>button.onclick=()=>{history.replaceState(null,'','#system/'+button.dataset.systemTab);select(button.dataset.systemTab)});
-  const wanted=location.hash.match(/^#system\/(cloud|trash|development)$/)?.[1];if(wanted)select(wanted);
+  const wanted=location.hash.match(/^#system\/(users|cloud|trash|development)$/)?.[1];if(wanted)select(wanted);
 }
 async function loadCloudTab(section){
   section.innerHTML='<div class="panel"><p class="muted">Carregando…</p></div>';
@@ -476,6 +479,18 @@ async function loadCloudTab(section){
   if(pointsButton)bindActionButton(pointsButton,{key:'cloud-points',action:async()=>{const box=section.querySelector('[data-cloud-points-box]');const r=await api('/cloud/points');box.innerHTML=renderPointsTable(r.items||[]);
     box.querySelectorAll('[data-cloud-restore-point]').forEach(button=>bindActionButton(button,{key:'cloud-point:'+button.dataset.cloudRestorePoint,confirm:'Voltar todos os dados para este ponto? O estado atual é guardado antes num backup local.',action:()=>api('/cloud/points/'+encodeURIComponent(button.dataset.cloudRestorePoint)+'/restore',{method:'POST',body:JSON.stringify({confirm:'RESTAURAR PONTO'})}),refresh:reload,successMessage:'Dados restaurados para o ponto escolhido.',notify:toast}))},notify:toast});
   if(status.running||status.pending_changes){clearTimeout(section._poll);section._poll=setTimeout(()=>{if(section.isConnected&&!section.hidden)loadCloudTab(section)},15000)}
+}
+// U-02 — Sistema › Usuários (administradores): usuários e pacotes de acesso.
+async function loadUsersTab(section){
+  section.innerHTML='<div class="panel"><p class="muted">Carregando…</p></div>';
+  let data;try{data=await apiClient.request('/users')}catch(error){section.innerHTML=`<div class="error">${esc(error.message)}</div>`;return}
+  section.innerHTML=renderUsersTab(data);
+  bindUsersTab(section,{data,api,toast,confirmDialog,openDrawer,closeOverlay,bindActionForm,bindActionButton,reload:()=>loadUsersTab(section)});
+}
+// U-05 — pacote sem o menu Sistema mas com Lixeira: só a Lixeira.
+async function trashOnlyPage(lease=null){
+  if(!content(pageHeader('Lixeira','Itens excluídos nos últimos 14 dias')+'<section id="trashOnly"></section>',lease))return;
+  await loadTrashTab(document.querySelector('#trashOnly'));
 }
 async function loadTrashTab(section){
   section.innerHTML='<div class="panel"><p class="muted">Carregando…</p></div>';

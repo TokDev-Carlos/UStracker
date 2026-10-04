@@ -50,7 +50,8 @@ class R2BackendTests(unittest.TestCase):
         root = Path(__file__).parents[1]
         version = json.loads((root / 'VERSION.json').read_text(encoding='utf-8'))
         current = json.loads((root / 'current.json').read_text(encoding='utf-8'))
-        self.assertEqual((version['schema_version'], current['schema_version']), (13, 13))
+        from ustracker.db import SCHEMA_VERSION
+        self.assertEqual((version['schema_version'], current['schema_version']), (SCHEMA_VERSION, SCHEMA_VERSION))
         canonical = (root / 'version.md').read_text(encoding='utf-8').strip()
         self.assertEqual((version['version'], current['version']), (canonical, canonical))
 

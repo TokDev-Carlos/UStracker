@@ -8,12 +8,13 @@ export function renderOverviewPage(data={},query='',selectedYear=''){
  const period=data.period||{};const years=data.available_years||[];const forecast=data.month_forecast||{};
  // P-01 — two rows of three: Receita | Previsão do Mês | Clientes Ativos / Despesas Gerais | Resultado | Assinaturas Ativas
  const kpi=(cls,value,label,extra='')=>`<div class="card kpi ${cls}"><div class="value">${value}</div><div class="label">${label}</div>${extra}</div>`;
+ const restricted=!!data.restricted; // U-05: package without despesas/resultado
  const kpis=[
   kpi('kpi-revenue',formatBRL(period.revenue_cents||0),'Receita',`<span class="forecast-detail">Realizada até hoje · ${esc(period.label||'Geral')}</span>`),
   kpi('kpi-forecast',formatBRL(forecast.forecast_cents||0),`Previsão do Mês ${esc(monthLabel(forecast.competence))}`,`<span class="forecast-tag">Não realizada · fora do Resultado</span><span class="forecast-detail">Recebido no mês: ${formatBRL(forecast.received_in_month_cents||0)}</span>`),
   kpi('kpi-clients',esc(data.active_clients??0),'Clientes Ativos'),
-  kpi('kpi-expenses',formatBRL(period.expenses_cents||0),'Despesas Gerais',`<span class="forecast-detail">Pagas · ${esc(period.label||'Geral')}</span>`),
-  kpi(`kpi-result ${Number(period.result_cents||0)>=0?'result-positive':'result-negative'}`,formatBRL(period.result_cents||0),'Resultado','<span class="forecast-detail">Receita − Despesas Gerais</span>'),
+  restricted?'':kpi('kpi-expenses',formatBRL(period.expenses_cents||0),'Despesas Gerais',`<span class="forecast-detail">Pagas · ${esc(period.label||'Geral')}</span>`),
+  restricted?'':kpi(`kpi-result ${Number(period.result_cents||0)>=0?'result-positive':'result-negative'}`,formatBRL(period.result_cents||0),'Resultado','<span class="forecast-detail">Receita − Despesas Gerais</span>'),
   kpi('kpi-subscriptions',esc(data.active_subscriptions??0),'Assinaturas Ativas'),
  ].join('');
  return `<h2>Visão Geral</h2><div class="panel r2-operational"><div class="indicators-head"><h3>${!period.label||period.label==='Geral'?'Indicadores gerais':'Indicadores de '+esc(period.label)}</h3><form id="overviewPeriod"><div class="field"><label>Período</label><select name="year"><option value="">Geral</option>${years.map(year=>`<option value="${year}" ${String(selectedYear)===String(year)?'selected':''}>${year}</option>`).join('')}</select></div></form><button type="button" class="ui-btn ui-btn-secondary" data-overview-drilldown>Ver detalhamento</button></div><div class="cards overview-kpis">${kpis}</div>

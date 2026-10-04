@@ -44,6 +44,7 @@ from .extensions import (
     update_catalog,
     verify_audit_chain,
 )
+from .access import describe as describe_access, required_permission, restrict_dashboard, strip_costs
 from .mobility_delete import PlateExists, check_plate, delete_fleet, delete_vehicle
 from .mobility import (
     cancel_transfer_case,
@@ -140,6 +141,14 @@ def create_app(root: Path | str) -> FastAPI:
                 or origin.startswith('http://testserver')
             ):
                 return JSONResponse({'error': 'INVALID_ORIGIN', 'correlation_id': correlation}, status_code=403)
+        # U-05: package permissions are enforced here for every API route (the UI only hides).
+        if request.url.path.startswith('/api/v1/'):
+            session = auth.get_session(request.cookies.get('us_session'))
+            if session is not None and not session.is_admin:
+                need = required_permission(request.method, request.url.path)
+                if not session.can(need):
+                    return JSONResponse({'error': 'FORBIDDEN', 'detail': 'permission denied', 'permission': need if isinstance(need, str) else list(need),
+                                         'correlation_id': correlation}, status_code=403)
         response = await call_next(request)
         response.headers['Cache-Control'] = 'no-store'
         response.headers['X-Content-Type-Options'] = 'nosniff'
@@ -272,6 +281,7 @@ def create_app(root: Path | str) -> FastAPI:
             'slot': session.slot,
             'name': session.name,
             'environment': session.environment,
+            **access_profile(session),
             'csrf': session.csrf,
             'station': station,
             'cloud_restore': cloud_restore,
@@ -297,7 +307,54 @@ def create_app(root: Path | str) -> FastAPI:
     def me(request: Request):
         session = session_required(request, True)
         station = ensure_station(root, get_db(session)) if session.environment == 'production' else None
-        return {'slot': session.slot, 'name': session.name, 'environment': session.environment, 'setup': auth.setup_status(), 'station': station}
+        return {'slot': session.slot, 'name': session.name, 'environment': session.environment, **access_profile(session), 'setup': auth.setup_status(), 'station': station}
+
+    # ------------------------------------------------------------------ U-01..U-04 usuários e pacotes
+    def access_profile(session) -> dict:
+        from .access import ALL
+        perms = sorted(ALL) if session.is_admin else sorted(session.permissions)
+        return {'kind': session.kind, 'role': session.package_title, 'package': session.package, 'permissions': perms}
+
+    def admin_required(request: Request):
+        session = session_required(request, True)
+        if not session.is_admin:
+            raise HTTPException(403, 'administrator required')
+        return session
+
+    @app.get('/api/v1/access')
+    def access_catalog(request: Request):
+        session_required(request, True)
+        return describe_access()
+
+    @app.get('/api/v1/users')
+    def users_list(request: Request):
+        admin_required(request)
+        return {'items': auth.list_users(), 'packages': auth.list_packages(), **describe_access()}
+
+    @app.post('/api/v1/users', status_code=201)
+    def users_create(request: Request, p: dict = Body(...)):
+        session = admin_required(request); csrf_required(request, session)
+        out = auth.create_user(session, p); cloud.mark_dirty(); return out
+
+    @app.patch('/api/v1/users/{user_id}')
+    def users_update(user_id: int, request: Request, p: dict = Body(...)):
+        session = admin_required(request); csrf_required(request, session)
+        out = auth.update_user(session, user_id, p); cloud.mark_dirty(); return out
+
+    @app.post('/api/v1/packages', status_code=201)
+    def packages_create(request: Request, p: dict = Body(...)):
+        session = admin_required(request); csrf_required(request, session)
+        out = auth.save_package(session, p); cloud.mark_dirty(); return out
+
+    @app.patch('/api/v1/packages/{package_id}')
+    def packages_update(package_id: str, request: Request, p: dict = Body(...)):
+        session = admin_required(request); csrf_required(request, session)
+        out = auth.save_package(session, p, package_id); cloud.mark_dirty(); return out
+
+    @app.delete('/api/v1/packages/{package_id}')
+    def packages_delete(package_id: str, request: Request):
+        session = admin_required(request); csrf_required(request, session)
+        out = auth.delete_package(session, package_id); cloud.mark_dirty(); return out
 
     @app.post('/api/v1/auth/change-password')
     def change_password(request: Request, response: Response, p: dict = Body(...)):
@@ -470,7 +527,17 @@ def create_app(root: Path | str) -> FastAPI:
 
     @app.get('/api/v1/finance')
     def finance(request: Request):
-        return finance_snapshot(get_db(session_required(request, True)))
+        session = session_required(request, True)
+        out = finance_snapshot(get_db(session))
+        if not session.can('expenses.view'):
+            for key in ('expenses', 'disbursements', 'realized_expenses_cents', 'cash_result_cents', 'recurring_pending'):
+                out.pop(key, None)
+        if not session.can('fiscal.view'):
+            out.pop('fiscal', None)
+        if not session.can('finance.view'):
+            for key in ('payments', 'active_payments', 'realized_received_cents', 'charges'):
+                out.pop(key, None)
+        return out
 
     @app.post('/api/v1/fiscal/{fiscal_id}/ensure-expense')
     def fiscal_ensure_expense(fiscal_id: str, request: Request):
@@ -480,7 +547,9 @@ def create_app(root: Path | str) -> FastAPI:
 
     @app.get('/api/v1/commercial')
     def commercial(request: Request):
-        return commercial_snapshot(get_db(session_required(request, True)))
+        session = session_required(request, True)
+        out = commercial_snapshot(get_db(session))
+        return out if session.can('catalog.costs') else strip_costs(out)
 
     @app.post('/api/v1/commercial/coverage', status_code=201)
     def commercial_coverage(request: Request, p: dict = Body(...)):
@@ -489,7 +558,9 @@ def create_app(root: Path | str) -> FastAPI:
 
     @app.get('/api/v1/catalog')
     def catalog(request: Request):
-        return {'items': list_catalog(get_db(session_required(request, True)))}
+        session = session_required(request, True)
+        out = {'items': list_catalog(get_db(session))}
+        return out if session.can('catalog.costs') else strip_costs(out)
 
     @app.post('/api/v1/catalog', status_code=201)
     def catalog_create(request: Request, p: dict = Body(...)):
@@ -503,6 +574,8 @@ def create_app(root: Path | str) -> FastAPI:
     @app.patch('/api/v1/catalog/{catalog_id}')
     def catalog_update(catalog_id: str, request: Request, p: dict = Body(...)):
         session = session_required(request, True)
+        if not session.can('catalog.costs'):
+            p = {k: v for k, v in p.items() if k not in ('cost', 'cost_components')}  # cannot see costs → cannot change them
         def action(db):
             rec = update_catalog(db, session.slot, catalog_id, p)
             if session.environment == 'production': rebuild_public(root, db)
@@ -535,6 +608,8 @@ def create_app(root: Path | str) -> FastAPI:
     @app.patch('/api/v1/subscriptions/{sid}/status')
     def subscriptions_status(sid: str, request: Request, p: dict = Body(...)):
         session = session_required(request, True)
+        if str(p.get('lifecycle_status') or '').upper() == 'CANCELLED' and not session.can('commercial.delete'):
+            raise HTTPException(403, 'permission denied')
         return mutation(request, session, f'PATCH /subscriptions/{sid}/status', p, lambda db: set_subscription_status(db, session.slot, sid, p))
 
     @app.patch('/api/v1/subscriptions/{sid}')
@@ -561,6 +636,8 @@ def create_app(root: Path | str) -> FastAPI:
     @app.patch('/api/v1/direct-sales/{sale_id}/status')
     def direct_sales_status(sale_id: str, request: Request, p: dict = Body(...)):
         session = session_required(request, True)
+        if str(p.get('status') or '').upper() == 'CANCELLED' and not session.can('commercial.delete'):
+            raise HTTPException(403, 'permission denied')
         return mutation(request, session, f'PATCH /direct-sales/{sale_id}/status', p,
                         lambda db: set_direct_sale_status(db, session.slot, sale_id, p))
 
@@ -684,8 +761,12 @@ def create_app(root: Path | str) -> FastAPI:
 
     @app.get('/api/v1/dashboard')
     def dashboard_get(request: Request, q: str = Query(default=''), year: int | None = Query(default=None)):
-        db = get_db(session_required(request, True))
-        return {**dashboard(db, year=year), **dashboard_extended(db), 'client_activity': client_activity_overview(db, q)}
+        session = session_required(request, True)
+        db = get_db(session)
+        out = {**dashboard(db, year=year), **dashboard_extended(db), 'client_activity': client_activity_overview(db, q)}
+        if not session.can('dashboard.full'):
+            out = restrict_dashboard(out)
+        return out
 
     @app.get('/api/v1/dashboard/drilldown')
     def dashboard_drilldown(request: Request, year: int | None = Query(default=None)):

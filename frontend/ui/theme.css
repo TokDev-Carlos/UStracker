@@ -268,3 +268,10 @@ body.is-navigating::before{content:'';position:fixed;top:0;left:0;height:3px;wid
 .panel form+form,.panel .data-table+form,.panel form+.data-table{margin-top:18px;padding-top:16px;border-top:1px solid #e3e9f4}
 .panel form .actions,.panel form>button,.panel form>.ui-btn{margin-top:10px}
 .mobility-tree{min-width:0;max-width:100%}.tree-client{max-width:100%;box-sizing:border-box;min-width:0}
+/* 1.007 U-02: users and packages */
+.panel-head-row{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.panel-head-row h3{margin:0}
+.perm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px;margin:12px 0}
+.perm-group{border:1px solid #e3e9f4;border-radius:10px;padding:8px 12px;margin:0;display:flex;flex-direction:column;gap:4px}
+.perm-group legend{font-weight:700;padding:0 4px}
+[data-perm-hidden]{display:none!important}
