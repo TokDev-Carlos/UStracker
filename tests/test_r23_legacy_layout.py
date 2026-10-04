@@ -53,6 +53,10 @@ class LegacyLayoutTests(unittest.TestCase):
         self.assertGreater(len(media.load(self.root, self.db, KEY, rec['id'], 'thumb')[0]), 10)
         self.assertTrue(load_attachment(self.root, self.db, KEY, att['id'])[0].startswith(b'%PDF'))
         media.remove(self.root, self.db, 1, rec['id'])
+        from datetime import datetime, timedelta, timezone
+        from ustracker.trash import purge_due
+        self.assertTrue(any((self.root / 'UserData' / 'Media' / 'production').glob(rec['id'] + '*')))  # kept 14 days (trash)
+        purge_due(self.root, self.db, 1, at=datetime.now(timezone.utc) + timedelta(days=15))
         self.assertFalse(any((self.root / 'UserData' / 'Media' / 'production').glob(rec['id'] + '*')))
 
 

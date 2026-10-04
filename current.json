@@ -1,6 +1,6 @@
 {
   "product": "UStracker",
   "version": "1.004",
-  "schema_version": 12,
+  "schema_version": 13,
   "channel": "stable"
 }

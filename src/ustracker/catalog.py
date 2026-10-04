@@ -140,6 +140,11 @@ def remove_catalog_item(db:Database,actor:int,catalog_id:str)->dict:
             con.execute('UPDATE catalog SET active=0,revision=revision+1,updated_at=? WHERE id=?',(now(),catalog_id))
             audit(con,actor,'CATALOG_ARCHIVE','catalog',catalog_id,dict(row),{'active':0})
             return {'id':catalog_id,'deleted':False,'archived':True}
+        from .trash import put as trash_put
+        trash_put(con,actor,'catalog',catalog_id,f"{row['code']} · {row['name']}",{
+            'row':dict(row),
+            'components':[dict(r) for r in con.execute('SELECT * FROM catalog_cost_components WHERE catalog_id=?',(catalog_id,)).fetchall()],
+            'prices':[dict(r) for r in con.execute('SELECT * FROM catalog_prices WHERE catalog_id=?',(catalog_id,)).fetchall()]})
         con.execute('DELETE FROM catalog_cost_components WHERE catalog_id=?',(catalog_id,))
         con.execute('DELETE FROM catalog_prices WHERE catalog_id=?',(catalog_id,))
         con.execute('DELETE FROM catalog WHERE id=?',(catalog_id,))

@@ -1,7 +1,7 @@
 {
   "product": "UStracker",
   "version": "1.004",
-  "schema_version": 12,
+  "schema_version": 13,
   "platform": "win-x64",
   "authority": "PECSUS 1.2.1",
   "copyright": "CRJ"

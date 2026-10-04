@@ -24,6 +24,8 @@ from .backup import create_backup, maybe_automatic_backup, prune_backups, restor
 from .branding import asset_dir, store_brand_asset
 from .billing import client_payment_options, register_subscription_payment, subscription_payment_status
 from .catalog import list_catalog, remove_catalog_item
+from .cloud import CloudError, CloudSync, apply_pending_restore, restore_from_cloud
+from .trash import list_trash, restore as restore_trash
 from .subscription_edit import amend_subscription
 from .expenses import convert_expense_to_sale, create_company_expense, delete_expense, pay_expense, run_recurring_expenses, stop_recurring_expense
 from .commercial import commercial_snapshot, create_coverage
@@ -117,6 +119,9 @@ def create_app(root: Path | str) -> FastAPI:
     def get_db(session: Session) -> Database:
         return repository.database(session.environment, session.db_key)
 
+    cloud = CloudSync(root, auth)
+    app.state.cloud = cloud
+
     @app.middleware('http')
     async def security_headers(request: Request, call_next):
         correlation = request.headers.get('X-Correlation-ID', '').strip()
@@ -185,13 +190,17 @@ def create_app(root: Path | str) -> FastAPI:
         if writer and session.environment == 'production':
             require_writer(root, db)
         operation_id = request.headers.get('X-Operation-ID', '')
-        return run_idempotent(db, session.slot, route, operation_id, payload, lambda: fn(db))
+        result = run_idempotent(db, session.slot, route, operation_id, payload, lambda: fn(db))
+        if session.environment == 'production':
+            cloud.mark_dirty()
+        return result
 
     def authorize_file_mutation(request: Request, session: Session, *, writer: bool = True) -> Database:
         csrf_required(request, session)
         db = get_db(session)
         if writer and session.environment == 'production':
             require_writer(root, db)
+            cloud.mark_dirty()
         return db
 
     @app.get('/api/v1/health')
@@ -229,7 +238,19 @@ def create_app(root: Path | str) -> FastAPI:
         response.set_cookie('us_session', session.token, httponly=True, samesite='strict', secure=False, max_age=43200)
         response.set_cookie('us_csrf', session.csrf, httponly=False, samesite='strict', secure=False, max_age=43200)
         db = get_db(session)
+        cloud_restore = None
+        if session.environment == 'production':
+            cloud_restore = apply_pending_restore(root, db, session, cloud)
+            if cloud_restore:
+                db = get_db(session)
         station = ensure_station(root, db) if session.environment == 'production' else None
+        if session.environment == 'production':
+            cloud.attach(session)
+            try:
+                cloud.purge_trash(session)
+            except Exception:
+                pass
+            cloud.start()
         media_recovery = recover_media_journals(root, db)
         if session.environment == 'production':
             rebuild_public(root, db)
@@ -247,6 +268,7 @@ def create_app(root: Path | str) -> FastAPI:
             'environment': session.environment,
             'csrf': session.csrf,
             'station': station,
+            'cloud_restore': cloud_restore,
             'media_recovery': media_recovery,
             'automatic_backup': backup_info,
             'backup_warning': backup_warning,
@@ -256,6 +278,10 @@ def create_app(root: Path | str) -> FastAPI:
     def logout(request: Request, response: Response):
         session = session_required(request)
         csrf_required(request, session)
+        if session.environment == 'production':
+            try: cloud.flush(timeout=30)
+            except Exception: pass
+        cloud.detach(session.token)
         auth.logout(session.token)
         response.delete_cookie('us_session')
         response.delete_cookie('us_csrf')
@@ -841,10 +867,84 @@ def create_app(root: Path | str) -> FastAPI:
         db = get_db(session); db.path.unlink(missing_ok=True); shutil.rmtree(root/'UserData'/'Media'/'test', ignore_errors=True); shutil.rmtree(root/'UserData'/'Attachments'/'test', ignore_errors=True); repository.database('test', session.db_key)
         return {'ok': True}
 
+    # ------------------------------------------------------------- C-04..C-06 nuvem e C-09 lixeira
+    def cloud_session(request: Request, *, write: bool = False) -> Session:
+        session = session_required(request, True)
+        if session.environment != 'production':
+            raise ValueError('cloud is available only in Production')
+        if write:
+            csrf_required(request, session)
+            require_writer(root, get_db(session))
+        cloud.attach(session)
+        return session
+
+    def cloud_call(fn):
+        try:
+            return fn()
+        except CloudError as exc:
+            raise HTTPException(409 if exc.code in ('CONFLICT', 'READ_ONLY') else 502,
+                                detail={'code': f'CLOUD_{exc.code}', 'detail': exc.detail}) from exc
+
+    @app.get('/api/v1/cloud/status')
+    def cloud_status(request: Request):
+        session_required(request, True)
+        return cloud.describe()
+
+    @app.post('/api/v1/cloud/connect')
+    def cloud_connect(request: Request, p: dict = Body(...)):
+        session = cloud_session(request, write=True)
+        return cloud_call(lambda: cloud.connect(session, p.get('url', ''), p.get('secret', ''), mode=p.get('mode')))
+
+    @app.post('/api/v1/cloud/sync')
+    def cloud_sync_now(request: Request, p: dict = Body(default={})):
+        session = cloud_session(request, write=True)
+        return cloud_call(lambda: cloud.sync_now(session, force=bool(p.get('force')) and p.get('confirm') == 'SUBSTITUIR NUVEM'))
+
+    @app.post('/api/v1/cloud/disconnect')
+    def cloud_disconnect(request: Request):
+        cloud_session(request, write=True)
+        cloud.state.set(enabled=False)
+        return cloud.describe()
+
+    @app.get('/api/v1/cloud/points')
+    def cloud_points(request: Request):
+        session = cloud_session(request)
+        return {'items': cloud_call(lambda: cloud.points(session))}
+
+    @app.post('/api/v1/cloud/points/{snapshot_id}/restore')
+    def cloud_point_restore(snapshot_id: str, request: Request, p: dict = Body(default={})):
+        session = cloud_session(request, write=True)
+        if p.get('confirm') != 'RESTAURAR PONTO':
+            raise ValueError('confirmation RESTAURAR PONTO required')
+        out = cloud_call(lambda: cloud.restore_point(session, snapshot_id))
+        rebuild_public(root, get_db(session))
+        return out
+
+    @app.post('/api/v1/cloud/restore')
+    def cloud_restore(request: Request, p: dict = Body(...)):
+        """C-05 — before login, on a new or wiped machine."""
+        csrf_required(request)
+        if p.get('confirm') != 'RESTAURAR DA NUVEM':
+            raise ValueError('confirmation RESTAURAR DA NUVEM required')
+        out = cloud_call(lambda: restore_from_cloud(root, p.get('url', ''), p.get('secret', '')))
+        auth.clear_sessions()
+        cloud.state = type(cloud.state)(root)
+        cloud.pending_secret = str(p.get('secret', '')).strip()
+        return out
+
+    @app.get('/api/v1/trash')
+    def trash_list(request: Request):
+        return {'items': list_trash(get_db(session_required(request, True))), 'retention_days': 14}
+
+    @app.post('/api/v1/trash/{trash_id}/restore')
+    def trash_restore(trash_id: str, request: Request):
+        session = session_required(request, True)
+        return mutation(request, session, f'POST /trash/{trash_id}/restore', {'id': trash_id}, lambda db: restore_trash(db, session.slot, trash_id))
+
     @app.get('/api/v1/integrations')
     def integrations(request: Request):
         session_required(request, True)
-        return {'drive':{'enabled':False,'implemented':False},'tracking':{'enabled':False,'implemented':False},'fiscal_official':{'enabled':False,'implemented':False}}
+        return {'drive':{'enabled':cloud.enabled(),'implemented':True},'tracking':{'enabled':False,'implemented':False},'fiscal_official':{'enabled':False,'implemented':False}}
 
     @app.get('/api/v1/system/runtime')
     def runtime_status(request: Request):
@@ -879,6 +979,11 @@ def create_app(root: Path | str) -> FastAPI:
 
     @app.post('/api/v1/system/shutdown')
     def shutdown(request: Request):
+        try:
+            cloud.flush(timeout=60)  # C-03: send pending changes before closing
+        except Exception:
+            pass
+        cloud.stop()
         if app.state.server is not None:
             def stop(): time.sleep(.2); app.state.server.should_exit = True
             threading.Thread(target=stop, daemon=True).start()

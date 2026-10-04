@@ -175,6 +175,8 @@ def delete_expense(db: Database, actor: int, expense_id: str) -> dict:
             raise ValueError('expense converted to sale cannot be deleted')
         if exp['recurrence_id'] == exp['id'] and con.execute('SELECT 1 FROM expenses WHERE recurrence_id=? AND id<>?', (expense_id, expense_id)).fetchone():
             raise ValueError('recurring expense has occurrences; stop the repetition instead')
+        from .trash import put as trash_put
+        trash_put(con, actor, 'expense', expense_id, f"{exp['category']} · {exp['description']}", {'row': dict(exp)})
         con.execute('DELETE FROM expenses WHERE id=?', (expense_id,))
         audit(con, actor, 'EXPENSE_DELETE', 'expense', expense_id, dict(exp), None)
         return {'id': expense_id, 'deleted': True}

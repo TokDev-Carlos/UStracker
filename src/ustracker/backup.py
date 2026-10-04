@@ -19,9 +19,11 @@ UTC = timezone.utc
 DEFAULT_RETENTION = 14
 
 
-def create_backup(root: Path, db: Database, vrk: bytes) -> Path:
+def create_backup(root: Path, db: Database, vrk: bytes, *, include_files: bool = True, out_dir: Path | None = None) -> Path:
+    """Encrypted .usbk. ``include_files=False`` (cloud snapshots) leaves photos/attachments out:
+    the cloud stores those once each, by name."""
     root = Path(root)
-    out_dir = root / 'UserData' / 'Backups'
+    out_dir = Path(out_dir) if out_dir else root / 'UserData' / 'Backups'
     out_dir.mkdir(parents=True, exist_ok=True)
     snapshot = out_dir / f'._snapshot_{db.environment}.db'
     snapshot.unlink(missing_ok=True)
@@ -38,12 +40,12 @@ def create_backup(root: Path, db: Database, vrk: bytes) -> Path:
         with zipfile.ZipFile(mem, 'w', zipfile.ZIP_DEFLATED) as z:
             z.write(snapshot, arcname='database/ustracker.db')
             media_root = root / 'UserData' / 'Media' / db.environment
-            if media_root.exists():
+            if include_files and media_root.exists():
                 for p in media_root.rglob('*'):
                     if p.is_file():
                         z.write(p, arcname='media/' + p.relative_to(media_root).as_posix())
             attachments_root = root / 'UserData' / 'Attachments' / db.environment
-            if attachments_root.exists():
+            if include_files and attachments_root.exists():
                 for p in attachments_root.rglob('*'):
                     if p.is_file():
                         z.write(p, arcname='attachments/' + p.relative_to(attachments_root).as_posix())

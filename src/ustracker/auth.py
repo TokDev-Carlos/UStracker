@@ -246,6 +246,11 @@ class AuthService:
                         (now.isoformat(), row['slot'], 'LOGIN', json.dumps({'environment': environment})))
             return session
 
+    def clear_sessions(self) -> None:
+        """After a cloud restore replaced the access vault, every open session is void."""
+        with self._lock:
+            self._sessions.clear()
+
     def get_session(self, token: str | None, *, human_activity: bool = False) -> Session | None:
         if not token:
             return None

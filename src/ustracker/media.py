@@ -157,14 +157,11 @@ def remove(root: Path | str, db: Database, actor: int, mid: str) -> dict:
     if not row:
         raise KeyError('media not found')
     public = {key: row[key] for key in ('id', 'entity_type', 'entity_id', 'mime', 'width', 'height', 'sha256', 'created_at')}
+    # C-09: the photo goes to the 14-day trash; encrypted files stay until the purge.
+    from .trash import put as trash_put
+    label = {'client': 'Foto do cliente', 'vehicle': 'Foto do veículo', 'fleet': 'Foto da frota'}.get(row['entity_type'], 'Foto')
     with db.transaction() as con:
+        trash_put(con, actor, 'media', mid, label, {'row': dict(row)})
         con.execute('DELETE FROM media WHERE id=?', (mid,))
         audit(con, actor, 'MEDIA_DELETE', 'media', mid, public, None)
-    for column in ('variant_path', 'thumb_path', 'original_path'):
-        relative = row[column]
-        if relative:
-            try:
-                resolve_stored_path(root, relative).unlink(missing_ok=True)
-            except ValueError:
-                pass
     return {'id': mid, 'removed': True}
