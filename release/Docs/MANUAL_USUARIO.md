@@ -1,7 +1,7 @@
-# Manual do Usuário — UStracker 1.007
+# Manual do Usuário — UStracker 2.0.0
 
 ## Instalar
-1. Execute **install_UStracker.exe** e siga as telas (pasta sugerida: `C:\UStracker`).
+1. Execute **UStracker_install_x64.exe** e siga as telas (pasta sugerida: `C:\UStracker`). Ele já leva tudo: programa, WebView2 e o endereço da nuvem da empresa.
 2. Abra pelo atalho **UStracker** na Área de Trabalho ou no Menu Iniciar.
 3. **Primeiro computador da empresa:** cadastre o Administrador 1.
    **Outros computadores:** a tela já pede **usuário e senha** — os dados da empresa chegam sozinhos e o computador vira o próximo **Servidor**.
@@ -56,9 +56,10 @@ Atualizar é igual: execute o instalador novo por cima. Seus dados (`UserData`) 
 - O histórico financeiro é sempre mantido.
 
 ## Nuvem (Google Drive)
-Configure uma vez seguindo `NUVEM_GOOGLE_DRIVE.md`. Depois o sistema envia tudo sozinho, cifrado, segundos depois de cada alteração e ao fechar. Guarde a **URL** e o **Código de conexão** fora do computador.
+Configurada uma vez pelo Administrador (`NUVEM_GOOGLE_DRIVE.md`). Depois o sistema envia tudo sozinho, cifrado, segundos depois de cada alteração e ao fechar. Computador novo: só instalar e entrar. Guarde a **URL** e o **Código de conexão** fora do computador.
 
 ## Problemas comuns
 - **"Nuvem: o Google pediu login…"** → no Apps Script, a implantação precisa estar como *Qualquer pessoa*.
-- **"Outra máquina enviou dados mais novos"** → um Servidor salvou sem internet enquanto outro gravava; escolha qual fica valendo em Sistema → Nuvem.
+- **"Outra máquina enviou dados mais novos"** → um Servidor salvou sem internet enquanto outro gravava; o Administrador escolhe qual fica valendo em Sistema → Nuvem.
+- **"Conectando à nuvem da empresa…" na primeira abertura** → falta internet; o sistema tenta de novo sozinho.
 - **Algo sumiu?** Veja a Lixeira. Passou de 14 dias? Use um ponto de restauração em Sistema → Nuvem.

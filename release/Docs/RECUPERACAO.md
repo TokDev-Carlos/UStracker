@@ -1,16 +1,16 @@
-# Recuperação — UStracker 1.006
+# Recuperação — UStracker 2.0.0
 
-**Caminho principal: a Nuvem.**
-1. Instale com `install_UStracker.exe` no computador novo.
-2. Na tela inicial: **Já uso o UStracker: restaurar da nuvem** → URL + Código de conexão.
-3. Entre com seu usuário e senha de sempre. Este computador passa a ser o que grava.
-4. Se o computador antigo voltar, ele não consegue sobrescrever a nuvem (conflito); desligue-o ou escolha qual vale em Sistema → Nuvem.
+**Computador novo ou perdido: só instalar.**
+1. Execute `UStracker_install_x64.exe` no computador novo.
+2. Abra o UStracker e entre com seu usuário e senha de sempre. Os dados chegam sozinhos da nuvem e o computador vira o próximo **Servidor**.
+3. Sem internet na primeira abertura? A tela espera a nuvem e tenta de novo sozinha (nada é criado às cegas).
 
 **Voltar no tempo:** Sistema → Nuvem → Pontos de restauração (últimos 14 dias; o mais recente nunca expira).
 
-**Sem nuvem (backup manual):** Sistema → Cópia de segurança gera `.usbk` cifrado em `UserData\Backups`. Para restaurar, use "Restaurar cópia de segurança" no mesmo sistema.
+**Uso interno do Administrador:** Sistema → Nuvem → Avançado → *Restaurar da nuvem* troca à força os dados **deste** computador pelos de uma nuvem (URL + código). Os dados atuais vão antes para `UserData\Backups`.
 
-Regras de segurança:
-- Nunca copie o banco com o sistema aberto.
-- Só um computador grava por vez (estação escritora). "Assumir gravação" é só para quando o antigo foi perdido.
-- `UserData` e `Trust` nunca são substituídos por atualizações.
+**Sem nuvem (backup manual):** Sistema → Backup gera `.usbk` cifrado em `UserData\Backups`.
+
+Regras:
+- Nunca copie o banco com o sistema aberto (use **Encerrar**).
+- `UserData` nunca é substituído por atualizações nem pela desinstalação.
