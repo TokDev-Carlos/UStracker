@@ -1,0 +1,38 @@
+# Python / Node
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+node_modules/
+
+# .NET
+bin/
+obj/
+**/bin/
+**/obj/
+.vs/
+
+# Dados e segredos: nunca no repositório
+UserData/
+*.db
+*.usbk
+*.usre
+Trust/placa-bootstrap.json
+placa-bootstrap.json
+github_token*
+.env*
+*.pfx
+*.p12
+*.key
+*private*.pem
+
+# Binários (vão para Releases)
+*.exe
+Redist/
+Instalador/
+Dist/
+
+# Editores
+.idea/
+.vscode/
