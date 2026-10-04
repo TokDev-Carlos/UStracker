@@ -189,4 +189,12 @@ body.is-navigating::before{content:'';position:fixed;top:0;left:0;height:3px;wid
 @keyframes us-progress{from{background-position:-50% 0}to{background-position:150% 0}}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}.us-ripple{display:none}}
 .overview-table th{text-transform:none;letter-spacing:0;font-size:.8rem}
-.sidebar{min-height:calc(100vh - var(--shell-header-height))}
+@media(min-width:801px){.sidebar{min-height:calc(100vh - var(--shell-header-height))}}
+/* R23 — laptop widths (1024–1366 with Windows scaling): nothing may be clipped */
+@media(min-width:801px){.shell-topbar{grid-template-columns:auto minmax(160px,520px) minmax(max-content,1fr)}.topbar-brand{min-width:0}}
+@media(min-width:801px) and (max-width:1180px){.shell-topbar{gap:10px}.topbar-actions .ui-btn span{display:none}.topbar-actions .ui-btn{padding:7px 9px}}
+.mobility-page{grid-template-columns:minmax(0,1fr)}
+.mobility-page>*{min-width:0}
+.main>#content{min-width:0}
+.mobility-table{table-layout:auto;min-width:1040px}.mobility-table th,.mobility-table td{width:auto!important}.mobility-table td:last-child{white-space:nowrap}
+@media(max-width:600px){.vehicle-breakdown-label{font-size:.68rem;overflow-wrap:anywhere}.vehicle-breakdown-groups{grid-template-columns:repeat(3,minmax(0,1fr))}}

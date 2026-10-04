@@ -21,7 +21,7 @@ export function renderCatalogPage({items=[]}={}){
   }).join('');
   return `<h2>Planos/Produtos</h2>
   <div class="panel"><details class="more-options" ${items.length?'':'open'}><summary class="ui-btn ui-btn-primary">+ Novo plano ou produto</summary><form id="catalogForm" class="catalog-form">${productFields()}<div class="actions"><button class="ui-btn ui-btn-primary">Salvar</button></div></form></details></div>
-  <div class="panel"><table class="compact-table"><thead><tr><th>Código</th><th>Descrição</th><th>Tipo</th><th class="num">Preço</th><th class="num">Custo</th><th class="num">Margem</th><th>Ações</th></tr></thead><tbody>${rows||'<tr><td colspan="7" class="muted">Nenhum produto cadastrado.</td></tr>'}</tbody></table></div>`;
+  <div class="panel"><div class="table-wrap"><table class="compact-table"><thead><tr><th>Código</th><th>Descrição</th><th>Tipo</th><th class="num">Preço</th><th class="num">Custo</th><th class="num">Margem</th><th>Ações</th></tr></thead><tbody>${rows||'<tr><td colspan="7" class="muted">Nenhum produto cadastrado.</td></tr>'}</tbody></table></div></div>`;
 }
 export function catalogPayload(form){
   const fd=new FormData(form);
