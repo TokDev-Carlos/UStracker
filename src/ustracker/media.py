@@ -10,6 +10,7 @@ from PIL import Image, ImageOps
 
 from .crypto import random_bytes
 from .db import Database
+from .paths import resolve_stored_path
 from .services import audit, now, uid
 
 MAX_BYTES = 20 * 1024 * 1024
@@ -62,8 +63,8 @@ def recover_media_journals(root: Path | str, db: Database) -> dict:
             if row:
                 ok = True
                 for entry in entries:
-                    pending = root / entry['pending']
-                    final = root / entry['final']
+                    pending = resolve_stored_path(root, entry['pending'])
+                    final = resolve_stored_path(root, entry['final'])
                     if not final.exists() and pending.exists():
                         final.parent.mkdir(parents=True, exist_ok=True)
                         pending.replace(final)
@@ -74,8 +75,8 @@ def recover_media_journals(root: Path | str, db: Database) -> dict:
                     journal.unlink(missing_ok=True)
             else:
                 for entry in entries:
-                    (root / entry['pending']).unlink(missing_ok=True)
-                    (root / entry['final']).unlink(missing_ok=True)
+                    resolve_stored_path(root, entry['pending']).unlink(missing_ok=True)
+                    resolve_stored_path(root, entry['final']).unlink(missing_ok=True)
                     removed += 1
                 journal.unlink(missing_ok=True)
         except Exception:
@@ -104,16 +105,16 @@ def store(root: Path, db: Database, actor: int, media_key: bytes, entity_type: s
     for final, payload in payloads:
         pending = final.with_suffix(final.suffix + '.pending')
         pending.write_bytes(payload)
-        files.append({'pending': str(pending.relative_to(root)), 'final': str(final.relative_to(root))})
+        files.append({'pending': pending.relative_to(root).as_posix(), 'final': final.relative_to(root).as_posix()})
     journal = _journal_dir(root) / f'{mid}.json'
     journal.write_text(json.dumps({'id': mid, 'environment': db.environment, 'files': files}, indent=2), encoding='utf-8')
     rec = {
         'id': mid,
         'entity_type': entity_type,
         'entity_id': entity_id,
-        'variant_path': str(op_path.relative_to(root)),
-        'thumb_path': str(th_path.relative_to(root)),
-        'original_path': str(orig_path.relative_to(root)) if orig_path else None,
+        'variant_path': op_path.relative_to(root).as_posix(),
+        'thumb_path': th_path.relative_to(root).as_posix(),
+        'original_path': orig_path.relative_to(root).as_posix() if orig_path else None,
         'mime': 'image/webp',
         'width': w,
         'height': h,
@@ -129,8 +130,8 @@ def store(root: Path, db: Database, actor: int, media_key: bytes, entity_type: s
             )
             audit(con, actor, 'MEDIA_CREATE', 'media', mid, None, {k:v for k,v in rec.items() if k not in {'variant_path','thumb_path','original_path'}})
         for entry in files:
-            pending = root / entry['pending']
-            final = root / entry['final']
+            pending = resolve_stored_path(root, entry['pending'])
+            final = resolve_stored_path(root, entry['final'])
             pending.replace(final)
         journal.unlink(missing_ok=True)
         return rec
@@ -146,7 +147,7 @@ def load(root: Path, db: Database, media_key: bytes, mid: str, variant: str = 'o
     col = {'operational':'variant_path','thumb':'thumb_path','original':'original_path'}.get(variant)
     if not col or not row[col]:
         raise KeyError('variant not found')
-    raw = (Path(root) / row[col]).read_bytes()
+    raw = resolve_stored_path(root, row[col]).read_bytes()
     return _open(media_key, raw, f'{mid}:{variant}:v1'.encode()), ('image/webp' if variant != 'original' else 'application/octet-stream')
 
 
@@ -162,5 +163,8 @@ def remove(root: Path | str, db: Database, actor: int, mid: str) -> dict:
     for column in ('variant_path', 'thumb_path', 'original_path'):
         relative = row[column]
         if relative:
-            (root / relative).unlink(missing_ok=True)
+            try:
+                resolve_stored_path(root, relative).unlink(missing_ok=True)
+            except ValueError:
+                pass
     return {'id': mid, 'removed': True}

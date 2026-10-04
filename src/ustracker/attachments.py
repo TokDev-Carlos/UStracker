@@ -8,6 +8,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from .crypto import random_bytes
 from .db import Database
+from .paths import resolve_stored_path
 from .services import audit, now, uid
 
 MAX_ATTACHMENT_BYTES=25*1024*1024
@@ -49,11 +50,11 @@ class LocalAttachmentStore:
         pending.write_bytes(_seal(self.key,data,f'{attachment_id}:attachment:v1'.encode()))
         pending.replace(final); return rel.as_posix()
     def get(self,attachment_id:str,local_path:str)->bytes:
-        path=self.root/Path(local_path)
+        path=resolve_stored_path(self.root,local_path)
         if not path.exists(): raise FileNotFoundError('attachment file missing')
         return _open(self.key,path.read_bytes(),f'{attachment_id}:attachment:v1'.encode())
     def delete(self,local_path:str|None):
-        if local_path:(self.root/Path(local_path)).unlink(missing_ok=True)
+        if local_path:resolve_stored_path(self.root,local_path).unlink(missing_ok=True)
 
 
 class DriveAttachmentStore:

@@ -37,3 +37,26 @@ class ProductPaths:
     def ensure_runtime_directories(self) -> None:
         for path in (self.data_root, self.state_root, self.cache_root, self.backup_root, self.log_root):
             path.mkdir(parents=True, exist_ok=True)
+
+
+def resolve_stored_path(root: Path | str, value: Path | str) -> Path:
+    """Resolve a data path stored in the database or a journal.
+
+    Accepts both the portable layout (``UserData/...``) and the 1.001 System+Data layout
+    (``Data/...``), with either slash style, and always maps into ``APP_ROOT/UserData``.
+    Absolute paths and parent traversal are refused.
+    """
+    from pathlib import PurePosixPath
+    normalized = str(value or '').replace('\\', '/')
+    relative = PurePosixPath(normalized)
+    if not normalized or relative.is_absolute() or ':' in (relative.parts[0] if relative.parts else '') or '..' in relative.parts:
+        raise ValueError('stored data path must be relative and cannot traverse parents')
+    if relative.parts[0].casefold() not in {'data', 'userdata'}:
+        raise ValueError('stored data path must begin with Data or UserData')
+    base = ProductPaths.from_root(root).data_root
+    candidate = base.joinpath(*relative.parts[1:]).resolve()
+    try:
+        candidate.relative_to(base.resolve())
+    except ValueError as exc:
+        raise ValueError('stored data path escapes UserData') from exc
+    return candidate
