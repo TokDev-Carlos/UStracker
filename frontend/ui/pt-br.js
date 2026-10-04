@@ -46,6 +46,7 @@ const COLUMN_LABELS = Object.freeze({
   entity_type: 'Tipo de registro', entity_id: 'Identificador do registro', created_at: 'Criado em',
   updated_at: 'Atualizado em', at: 'Data/hora', action: 'Ação', actor_slot: 'Administrador',
   external_ref: 'Referência externa', retain_original: 'Manter original', environment: 'Ambiente',
+  size: 'Tamanho', modified_at: 'Modificado em', file: 'Arquivo', path: 'Local', role: 'Perfil', is_writer: 'Gravação',
 });
 
 const MESSAGES = Object.freeze({

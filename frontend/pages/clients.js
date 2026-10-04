@@ -36,7 +36,7 @@ export function clientTableDefinition(onView = () => {}) {
       { key: 'realized_revenue_cents', label: 'Receita realizada', format: value => formatBRL(Number(value || 0)) },
       { key: 'status', label: 'Status' },
     ],
-    actions: [{ key: 'view', label: 'Abrir Ficha', icon: 'view', onClick: onView }],
+    actions: [{ key: 'view', label: 'Abrir ficha', icon: 'view', onClick: onView }],
   };
 }
 

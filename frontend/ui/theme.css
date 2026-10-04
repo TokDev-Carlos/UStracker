@@ -259,3 +259,11 @@ body.is-navigating::before{content:'';position:fixed;top:0;left:0;height:3px;wid
 .sw-thumb img{width:100%;height:100%;object-fit:contain}
 .sw-thumb-empty{font-weight:700;color:var(--us-blue-600)}
 .sw-text{display:flex;flex-direction:column;line-height:1.2;min-width:0}.sw-text small{color:#5b6884;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* 1.006 usability: tabs never push the page sideways on small screens */
+.system-tabs{overflow-x:auto;scrollbar-width:thin}.system-tabs button{white-space:nowrap;flex:0 0 auto}
+.ui-workspace tbody tr[data-open-row]{cursor:pointer}
+
+/* 1.006: forms stacked in the same panel get breathing room and a divider */
+.panel form+form,.panel .data-table+form,.panel form+.data-table{margin-top:18px;padding-top:16px;border-top:1px solid #e3e9f4}
+.panel form .actions,.panel form>button,.panel form>.ui-btn{margin-top:10px}

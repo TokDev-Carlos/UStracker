@@ -13,7 +13,7 @@ function expenseActions(x){
   if(x.status!=='PAID')out.push(`<button type="button" class="ui-btn ui-btn-primary ui-btn-sm" data-expense-pay="${esc(x.id)}">Pagar</button>`);
   if(x.is_template&&Number(x.repeat_active))out.push(`<button type="button" class="ui-btn ui-btn-subtle ui-btn-sm" data-expense-stop="${esc(x.id)}">Parar repetição</button>`);
   if((x.repeat||'ONCE')==='ONCE'&&!x.converted_sale_id)out.push(`<button type="button" class="ui-btn ui-btn-subtle ui-btn-sm" data-expense-sell="${esc(x.id)}">Vender ao cliente</button>`);
-  if(!Number(x.paid_cents)&&!x.converted_sale_id)out.push(`<button type="button" class="ui-btn ui-btn-danger ui-btn-sm" data-expense-delete="${esc(x.id)}">Excluir</button>`);
+  if(!Number(x.paid_cents)&&!x.converted_sale_id)out.push(`<button type="button" class="ui-btn ui-btn-subtle ui-btn-sm ui-btn-del" data-expense-delete="${esc(x.id)}">Excluir</button>`);
   return `<div class="row-actions">${out.join('')}</div>`;
 }
 const expenseRows=items=>items.map(x=>`<tr><td><span class="cat-chip">${esc(x.category_label||x.category)}</span></td><td>${esc(x.description)}${x.sale_code?` <span class="muted">→ venda</span> ${codeTag(x.sale_code)}`:''}</td><td><span class="badge ${x.repeat==='ONCE'||!x.repeat?'badge-muted':'badge-info'}">${esc(x.repeat_label||'Única')}</span></td><td>${formatDateBR(x.due_on||x.competence)}</td><td class="num">${formatBRL(x.expected_amount_cents)}</td><td><span class="badge ${x.status==='PAID'?'badge-ok':x.status==='PARTIAL'?'badge-warn':'badge-alert'}">${esc(STATUS[x.status]||x.status)}</span></td><td>${expenseActions(x)}</td></tr>`).join('')||'<tr><td colspan="7" class="muted">Nenhuma despesa.</td></tr>';

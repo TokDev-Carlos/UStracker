@@ -57,6 +57,11 @@ export function mountTableController(host, controller, { onSelectionChange = () 
     host.querySelectorAll('[data-sort]').forEach(header => { header.onclick = () => { controller.sortBy(header.dataset.sort); render(); }; });
     host.querySelectorAll('[data-select]').forEach(input => { input.onchange = () => { controller.select(input.dataset.select); render(); onSelectionChange(controller.view().selectedIds); }; });
     host.querySelectorAll('[data-action]').forEach(button => { button.onclick = () => { const action = state.actions.find(item => item.key === button.dataset.action); const row = state.rows.find(item => String(item.id) === button.dataset.row); action?.onClick?.(row); }; });
+    // 1.006: clicking anywhere on a row runs its first action (e.g. "Abrir ficha"); checkboxes and buttons keep their own behavior.
+    if (state.actions.length) host.querySelectorAll('tbody tr').forEach((tr, index) => {
+      tr.setAttribute('data-open-row', '');
+      tr.onclick = event => { if (event.target.closest?.('input,button,a,label,select')) return; const row = state.rows[index]; if (row) state.actions[0]?.onClick?.(row); };
+    });
     host.querySelector('.prev').onclick = () => { controller.setPage(state.page - 1); render(); };
     host.querySelector('.next').onclick = () => { controller.setPage(state.page + 1); render(); };
   };
