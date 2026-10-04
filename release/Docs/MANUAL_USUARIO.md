@@ -1,4 +1,4 @@
-# Manual do Usuário — UStracker 2.0.0
+# Manual do Usuário — UStracker 2.0.1
 
 ## Instalar
 1. Execute **UStracker_install_x64.exe** e siga as telas (pasta sugerida: `C:\UStracker`). Ele já leva tudo: programa, WebView2 e o endereço da nuvem da empresa.
@@ -16,7 +16,8 @@ Atualizar é igual: execute o instalador novo por cima. Seus dados (`UserData`) 
 - Cada um troca a própria senha clicando no nome, no topo.
 
 ## Entrar
-- **Real** = dados de verdade. **Teste** = área de treino, separada (pode apagar à vontade).
+- Todos entram direto nos dados **Reais** com usuário e senha.
+- **Banco de Teste** (só Administrador): Sistema › Administração › *Entrar no banco de Teste*. Fica só neste computador, nunca vai para a nuvem e não aparece no Real. Uma faixa vermelha avisa enquanto estiver nele; *Voltar ao Real* no mesmo lugar.
 - **Sair** encerra a sessão. **Encerrar** fecha o sistema todo (use antes de desligar ou atualizar).
 
 ## O dia a dia, na ordem
