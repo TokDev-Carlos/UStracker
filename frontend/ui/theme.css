@@ -267,3 +267,4 @@ body.is-navigating::before{content:'';position:fixed;top:0;left:0;height:3px;wid
 /* 1.006: forms stacked in the same panel get breathing room and a divider */
 .panel form+form,.panel .data-table+form,.panel form+.data-table{margin-top:18px;padding-top:16px;border-top:1px solid #e3e9f4}
 .panel form .actions,.panel form>button,.panel form>.ui-btn{margin-top:10px}
+.mobility-tree{min-width:0;max-width:100%}.tree-client{max-width:100%;box-sizing:border-box;min-width:0}

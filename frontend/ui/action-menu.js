@@ -49,8 +49,11 @@ export function openActionMenu(anchor, allItems = [], documentRef = globalThis.d
   const onDown = event => { if (!host.contains(event.target) && event.target !== anchor && !anchor.contains(event.target)) closeActionMenu(documentRef); };
   documentRef.addEventListener('keydown', onKey);
   documentRef.addEventListener('mousedown', onDown);
-  globalThis.addEventListener?.('scroll', () => closeActionMenu(documentRef), { once: true, capture: true });
-  host._cleanup = () => { documentRef.removeEventListener('keydown', onKey); documentRef.removeEventListener('mousedown', onDown); };
-  buttons[0]?.focus();
+  // 1.006: page scroll closes the menu, but not the scroll caused by opening it (focus / click-into-view).
+  const openedAt = Date.now();
+  const onScroll = event => { if (Date.now() - openedAt < 400 || host.contains(event.target)) return; closeActionMenu(documentRef); };
+  globalThis.addEventListener?.('scroll', onScroll, { capture: true });
+  host._cleanup = () => { documentRef.removeEventListener('keydown', onKey); documentRef.removeEventListener('mousedown', onDown); globalThis.removeEventListener?.('scroll', onScroll, { capture: true }); };
+  buttons[0]?.focus?.({ preventScroll: true });
   return host;
 }
