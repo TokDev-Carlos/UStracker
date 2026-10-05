@@ -1,14 +1,25 @@
-# Manual do Usuário — UStracker 2.1.1
+# Manual do Usuário — UStracker 2.2.0
 
 ## Instalar
-1. Execute **UStracker_install_x64.exe** e siga as telas (pasta sugerida: `C:\UStracker`). Ele já leva tudo: programa, WebView2 e o endereço da nuvem da empresa.
+1. Execute **UStracker_install_x64.exe** (o Windows pede permissão de administrador) e siga as telas. Ele já leva tudo: programa, WebView2 e o endereço da nuvem da empresa.
+   - Programa: `C:\Program Files\UStracker` (protegido; só administradores do Windows alteram).
+   - Dados: `C:\ProgramData\UStracker\UserData` (clientes, finanças, fotos, backups).
+   - Se existir uma instalação antiga em `C:\UStracker`, os dados são copiados para o lugar novo e a pasta antiga vira `C:\UStracker_antigo` (pode ser apagada depois de conferir).
 2. Abra pelo atalho **UStracker** na Área de Trabalho ou no Menu Iniciar.
-3. **Primeiro computador da empresa:** cadastre o Administrador 1.
-   **Outros computadores:** a tela já pede **usuário e senha** — os dados da empresa chegam sozinhos e o computador vira o próximo **Servidor**.
+3. **Primeira abertura em qualquer computador: Ativar este computador.** Quem ativa é sempre o **Adm Global** (acesso do dono + PIN + pergunta de segurança).
+   - A empresa já usa o UStracker: os dados chegam da nuvem e o computador vira mais um **Servidor**.
+   - Primeiro computador da empresa: logo depois o Adm Global cria o **Administrador da empresa**, que já é guardado na nuvem e vale em todos os computadores.
+4. Depois da ativação, cada pessoa entra com o próprio usuário e senha.
+
+## Desinstalar
+Painel de Controle › Programas (ou Menu Iniciar › UStracker › Desinstalar):
+- **Manter dados** (padrão): remove só o programa. Os dados ficam em `C:\ProgramData\UStracker` para uma reinstalação.
+- **Remover tudo**: digite `REMOVER` para confirmar. Antes de apagar, uma cópia dos dados vai para `Documentos\UStracker_Backups\Desinstalacao_<data>`. A nuvem da empresa não é apagada.
 
 **Atualizações chegam sozinhas** (o sistema confere ao abrir e a cada 3 horas):
 - **Normal**: aparece uma faixa azul "Versão X disponível". Ela é instalada quando o sistema for fechado (Encerrar, Sair ou X) e já vale na próxima abertura. Administrador e Gerente também podem clicar em **Atualizar agora** (o sistema fecha e reabre sozinho).
 - **Obrigatória** (correção importante): o sistema mostra a tela "Atualização obrigatória"; clique em **Atualizar agora**.
+- Como o programa fica protegido em *Arquivos de Programas*, o Windows pede a permissão de administrador (UAC) para instalar a versão nova. Se não houver permissão agora, ela fica guardada e é instalada na próxima vez.
 - Se a versão nova não abrir, o sistema volta sozinho para a anterior. Seus dados (`UserData`) nunca são tocados.
 
 ## Administrador e Chave de Recuperação
@@ -65,10 +76,11 @@
 - O histórico financeiro é sempre mantido.
 
 ## Nuvem (Google Drive)
-Configurada uma vez pelo Administrador (`NUVEM_GOOGLE_DRIVE.md`). Depois o sistema envia tudo sozinho, cifrado, segundos depois de cada alteração e ao fechar. Computador novo: só instalar e entrar. Guarde a **URL** e o **Código de conexão** fora do computador.
+Configurada uma vez pelo Adm Global (`NUVEM_GOOGLE_DRIVE.md`). Depois o sistema envia tudo sozinho, cifrado, segundos depois de cada alteração e ao clicar em **Encerrar**. Usuários e senhas também ficam na nuvem: quem é criado num computador entra em todos. Computador novo: instalar e ativar com o Adm Global.
 
 ## Problemas comuns
 - **"Nuvem: o Google pediu login…"** → no Apps Script, a implantação precisa estar como *Qualquer pessoa*.
 - **"Outra máquina enviou dados mais novos"** → um Servidor salvou sem internet enquanto outro gravava; o Administrador escolhe qual fica valendo em Sistema → Nuvem.
-- **"Conectando à nuvem da empresa…" na primeira abertura** → falta internet; o sistema tenta de novo sozinho.
+- **"Sem internet: a ativação precisa de internet uma vez"** → conecte e tente de novo.
+- **"Erro interno"** → tente de novo; se repetir, envie `C:\ProgramData\UStracker\UserData\Logs\erros.log` ao suporte.
 - **Algo sumiu?** Veja a Lixeira. Passou de 14 dias? Use um ponto de restauração em Sistema → Nuvem.

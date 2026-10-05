@@ -3,7 +3,7 @@
 Uso (lado do desenvolvimento, nunca na máquina do cliente):
     python tools/publish_update.py --version 2.1.0 --level normal --notes "..." --key <update_signing_key.pem>
 O pacote leva o programa inteiro (ustracker + frontend + Docs + metadados). Nunca leva UserData nem Trust.
-A chave privada fica só no cofre Chaves-Tokens/UStracker/update_signing_key.pem.
+A chave privada fica só na pasta Tokens do Google Drive do dono (Tokens/UStracker/update_signing_key.pem).
 """
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ def stage(repo: Path, out: Path) -> Path:
     shutil.copytree(repo / 'frontend', out / 'frontend', ignore=shutil.ignore_patterns('node_modules', 'package.json'))
     docs = out / 'Docs'; docs.mkdir()
     for folder in (repo / 'release' / 'Docs', repo / 'docs'):
-        for name in ('MANUAL_USUARIO.md', 'RECUPERACAO.md', 'NUVEM_GOOGLE_DRIVE.md', 'RELEASE_2.0.0.md'):
+        for name in ('MANUAL_USUARIO.md', 'RECUPERACAO.md', 'NUVEM_GOOGLE_DRIVE.md', 'NOVIDADES.md'):
             if (folder / name).exists() and not (docs / name).exists():
                 shutil.copy2(folder / name, docs / name)
     if (repo / 'cloud' / 'Code.gs').exists():
@@ -45,7 +45,7 @@ def main() -> int:
     ap.add_argument('--version', required=True)
     ap.add_argument('--level', choices=('normal', 'critical'), default='normal')
     ap.add_argument('--notes', default='')
-    ap.add_argument('--key', required=True, help='update_signing_key.pem (Ed25519, cofre Chaves-Tokens)')
+    ap.add_argument('--key', required=True, help='update_signing_key.pem (Ed25519, pasta Tokens do Drive)')
     ap.add_argument('--repo', default=str(ROOT))
     args = ap.parse_args()
     repo = Path(args.repo)

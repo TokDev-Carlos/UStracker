@@ -1,3 +1,13 @@
+# UStracker 2.2.0
+
+- **Ativação pelo Adm Global**: a primeira entrada em qualquer computador é do Adm Global. Com a nuvem já usada, os dados chegam sozinhos; na primeira instalação, o Adm Global cria o Administrador da empresa (guardado na nuvem na hora).
+- Corrigido o **"Internal Server Error"** na primeira entrada de um computador novo (acessos antigos vindos da nuvem). Erros inesperados agora aparecem em português e ficam em `UserData/Logs/erros.log`.
+- **Segurança**: a chave da empresa saiu do instalador (chega na ativação, cifrada para o Adm Global); só endereços locais exatos são aceitos; custos/margens nunca saem do servidor para quem não tem a permissão; cancelar/encerrar assinatura e cancelar cliente pedem a permissão de excluir; ajuste de cobrança pede a de estornar; o Token Mestre novo é baixado, não fica no disco; "Encerrar" exige a sessão; o pedido interno de "zerar tudo" por arquivo foi desativado.
+- **Estrutura Windows**: programa em `C:\Program Files\UStracker` (protegido) e dados em `C:\ProgramData\UStracker`. A instalação antiga em `C:\UStracker` é migrada sozinha.
+- **Instalador novo**: detecta e fecha o sistema aberto, migra dados, instalação silenciosa (`/S`), registro em `UserData/Logs/instalacao.log`; desinstalação com **Manter dados** ou **Remover tudo** (cópia automática em Documentos antes de apagar).
+- Atualizações pela nuvem pedem a permissão do Windows (UAC) quando o programa está protegido.
+- "Encerrar" envia as últimas alterações para a nuvem antes de fechar.
+
 # UStracker 2.1.1
 
 - Primeira atualização entregue pela nuvem (validação do canal de atualização). Sem mudança no banco de dados.
