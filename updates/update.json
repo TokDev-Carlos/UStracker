@@ -1,0 +1,12 @@
+{
+  "format": "ustracker-update/1",
+  "product": "UStracker",
+  "version": "2.1.1",
+  "level": "normal",
+  "notes": "Primeira atualização pela nuvem (validação do canal). Sem mudança nos dados.",
+  "package": "UStracker-2.1.1.usup",
+  "sha256": "621a3996c5014341f387670935b6e582a1b41f029916aea7ed0ba5c1b5fc9bbc",
+  "size": 5245465,
+  "published_at": "2026-10-05T02:58:04.521478+00:00",
+  "sig": "79521556a8d687b0de04a17e9a44ed9110302e647d70f9557f5b0f56f09e05d5e59bf778aa9c97c9d811d9d3d268bf5d15b701dcfd37d2f2b8224191c6798e04"
+}

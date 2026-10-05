@@ -3,7 +3,7 @@
 Sistema de controle de **clientes, frotas e veículos, planos e assinaturas, financeiro, despesas e fiscal** para Windows 10/11 (x64).
 Funciona no computador (local-first), guarda tudo cifrado e sincroniza entre vários computadores pela nuvem da empresa (Google Drive).
 
-**Versão atual: 2.1.0**: veja [CHANGELOG.md](CHANGELOG.md) e [docs/RELEASE_2.0.0.md](docs/RELEASE_2.0.0.md).
+**Versão atual: 2.1.1**: veja [CHANGELOG.md](CHANGELOG.md) e [docs/RELEASE_2.0.0.md](docs/RELEASE_2.0.0.md).
 
 ## Instalar
 1. Baixe **`UStracker_install_x64.exe`** na página [Releases](../../releases/latest).

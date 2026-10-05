@@ -2,6 +2,9 @@
 
 Formato: versão semântica a partir da 2.0.0 (2.0.1 = correção, 2.1.0 = novidade compatível).
 
+## 2.1.1 — 2026-10-05
+- Primeira atualização entregue pela nuvem (validação do canal). Sem mudança no banco.
+
 ## 2.1.0 — 2026-10-05
 - Atualização pela nuvem: canal assinado em `updates/`; checagem ao abrir e a cada 3 h; normal instala ao fechar; crítica é obrigatória; "Atualizar agora" (Administrador, Gerente ou permissão *Atualizar o sistema*); volta sozinho se a versão nova não abrir.
 - Nova chave de atualização (`Trust/update_public_key.pem`) e ferramenta `tools/publish_update.py`.
