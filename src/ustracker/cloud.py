@@ -691,12 +691,48 @@ class CloudSync:
             self.last_pull = 0.0
         return {'primary': primary['url'], 'mirrors': len(mirrors), 'switched': switched}
 
+    COMPANY_KEY_SETTING = 'placa_company_key'
+
+    def company_key(self, session, db=None) -> str | None:
+        """Company key (opens the placa): master in the database > activation copy > legacy Trust file."""
+        from .db import Database
+        from .placa import load_bootstrap
+        db = db or Database(self.root, 'production', session.db_key)
+        try:
+            master = self.master(session, db)
+            if master and master.get('company_key'):
+                return master['company_key']
+            row = db.one('SELECT value FROM settings WHERE key=?', (self.COMPANY_KEY_SETTING,))
+            if row:
+                return self.state.unseal(session.vrk, row[0])
+        except Exception:
+            pass
+        return (load_bootstrap(self.root) or {}).get('company_key')
+
+    def keep_company_key(self, session, company_key: str, db=None) -> None:
+        """Activation: store the company key sealed with the VRK (travels with the cloud copy)."""
+        from .db import Database
+        db = db or Database(self.root, 'production', session.db_key)
+        if db.one('SELECT 1 FROM settings WHERE key=?', (self.COMPANY_KEY_SETTING,)):
+            return
+        master = self.master(session, db)
+        if master and master.get('company_key') == company_key:
+            return
+        with db.transaction() as con:
+            con.execute('INSERT OR REPLACE INTO settings(key,value,updated_at) VALUES(?,?,?)',
+                        (self.COMPANY_KEY_SETTING, self.state.seal(session.vrk, company_key), _now_iso()))
+        self.mark_dirty()
+
     def check_placa(self, session, *, force: bool = False) -> dict:
-        from .placa import fetch_placa, load_bootstrap, read_placa
+        from .placa import fetch_placa, load_bootstrap, read_placa, strip_company_key
         boot = load_bootstrap(self.root)
         if not boot or not boot.get('placa_url'):
             return {'configured': False}
-        placa = read_placa(fetch_placa(boot['placa_url']), boot)
+        key = self.company_key(session)
+        placa = read_placa(fetch_placa(boot['placa_url']), boot, key)
+        if boot.get('company_key'):  # 2.2.0: the plain copy leaves Trust/ once the database holds it
+            self.keep_company_key(session, boot['company_key'])
+            strip_company_key(self.root)
         self.status['placa_error'] = None
         if not force and placa['seq'] <= int(self.state.get('placa_seq') or 0) and self.enabled():
             return {'configured': True, 'seq': placa['seq'], 'changed': False}
@@ -859,7 +895,10 @@ def apply_pending_restore(root: Path, db, session, sync: CloudSync | None = None
     pending = root / 'UserData' / 'State' / 'cloud_restore.usbk'
     if not pending.exists():
         return None
-    restore_backup(root, db, session.vrk, pending)
+    try:
+        restore_backup(root, db, session.vrk, pending)
+    except Exception as exc:  # wrong key / damaged copy: keep the file, never start with an empty base
+        raise ValueError(f'a cópia baixada da nuvem não pôde ser aplicada ({type(exc).__name__}); nada foi alterado') from exc
     pending.unlink(missing_ok=True)
     from .db import Database
     fresh = Database(root, 'production', session.db_key)

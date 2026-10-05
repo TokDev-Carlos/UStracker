@@ -12,11 +12,14 @@ test('Login não oferece restaurar da nuvem e pede Usuário', async () => {
   assert.match(html, /<label>Usuário<\/label>/);
 });
 
-test('Configuração inicial sem restaurar; nuvem sem resposta não cria Administrador às cegas', () => {
+test('Computador novo: só o Adm Global ativa; nada de "login de sempre"', () => {
   const setup = app.slice(app.indexOf('function setupFirstScreen'), app.indexOf('function enrollmentScreen'));
   assert.doesNotMatch(setup, /restaurar da nuvem|data-cloud-restore-open/i);
-  assert.match(app, /function cloudWaitScreen/);
-  assert.match(app, /info\.available&&info\.reachable===false\)return cloudWaitScreen/);
+  assert.match(app, /if\(info\.activation\)return activationScreen\(\)/);
+  assert.match(app, /api\('\/auth\/activate'/);
+  assert.match(app, /if\(r\.challenge\)return activationChallenge/);
+  assert.match(app, /api\('\/auth\/activate\/admin'/);
+  assert.doesNotMatch(app, /auth\/join|de sempre/);
 });
 
 test('Restaurar da nuvem existe só no painel do Administrador', async () => {
