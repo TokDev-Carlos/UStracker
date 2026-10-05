@@ -123,7 +123,8 @@ class CloudClient:
         if not url.startswith('https://') and not url.startswith('http://127.0.0.1') and not url.startswith('http://localhost'):
             raise CloudError('BAD_URL', 'a URL do App da Web deve começar com https://')
         if url.startswith('https://'):
-            if '/macros/' not in url or 'script.google' not in url:
+            from urllib.parse import urlsplit
+            if '/macros/' not in url or (urlsplit(url).hostname or '').lower() != 'script.google.com':
                 raise CloudError('BAD_URL', 'cole a URL do App da Web (começa com https://script.google.com/macros/s/ e termina em /exec), não a URL do editor do script')
             if url.rstrip('/').endswith('/dev'):
                 raise CloudError('BAD_URL', 'esta é a URL de teste (/dev), que só funciona com login. Use Implantar → Gerenciar implantações e copie a URL que termina em /exec')

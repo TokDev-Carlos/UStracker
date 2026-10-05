@@ -191,8 +191,15 @@ def strip_company_key(root: Path | str) -> bool:
         return False
     data.pop('company_key')
     tmp = path.with_suffix('.tmp')
-    tmp.write_text(json.dumps(data, indent=2), encoding='utf-8')
-    tmp.replace(path)
+    try:
+        tmp.write_text(json.dumps(data, indent=2), encoding='utf-8')
+        tmp.replace(path)
+    except OSError:  # Program Files is read-only for users: the installer of 2.2.0 already ships it without the key
+        try:
+            tmp.unlink(missing_ok=True)
+        except OSError:
+            pass
+        return False
     return True
 
 

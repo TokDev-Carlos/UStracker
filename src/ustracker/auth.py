@@ -295,6 +295,10 @@ class AuthService:
                 self._init_store()
             user = None if row else con.execute('SELECT * FROM users WHERE name=? AND active=1', (name.strip(),)).fetchone()
             if not row and not user:
+                try:  # same cost as a real check: the answer time does not reveal which names exist
+                    derive_password_key(password if len(password) >= 4 else 'xxxx', b'\0' * 16)
+                except Exception:
+                    pass
                 self._record_login_failure(identity)
                 raise ValueError('invalid credentials')
             env = row or user

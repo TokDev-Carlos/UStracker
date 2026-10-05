@@ -104,6 +104,9 @@ from .station import (
 from .versioning import read_version
 
 
+_LOCAL_ORIGIN = __import__('re').compile(r'http://(127\.0\.0\.1|localhost)(:\d{1,5})?')
+
+
 def create_app(root: Path | str) -> FastAPI:
     paths = ProductPaths.from_root(root)
     root = paths.app_root
@@ -134,17 +137,14 @@ def create_app(root: Path | str) -> FastAPI:
             correlation = str(uuid.uuid4())
         request.state.correlation_id = correlation
         host = request.headers.get('host', '').split(':')[0].lower()
-        if host not in {'127.0.0.1', 'localhost', 'testserver'}:
+        if host not in {'127.0.0.1', 'localhost'}:
             return JSONResponse({'error': 'INVALID_HOST', 'correlation_id': correlation}, status_code=400)
         if request.method not in {'GET', 'HEAD', 'OPTIONS'}:
             origin = request.headers.get('origin')
-            if origin and not (
-                origin.startswith('http://127.0.0.1:')
-                or origin.startswith('http://localhost:')
-                or origin.startswith('http://testserver')
-            ):
+            if origin and not _LOCAL_ORIGIN.fullmatch(origin):
                 return JSONResponse({'error': 'INVALID_ORIGIN', 'correlation_id': correlation}, status_code=403)
         # U-05: package permissions are enforced here for every API route (the UI only hides).
+        hide_costs = False
         if request.url.path.startswith('/api/v1/'):
             session = auth.get_session(request.cookies.get('us_session'))
             if session is not None and session.is_admin and not session.is_global and global_only(request.method, request.url.path):
@@ -154,7 +154,17 @@ def create_app(root: Path | str) -> FastAPI:
                 if not session.can(need):
                     return JSONResponse({'error': 'FORBIDDEN', 'detail': 'permission denied', 'permission': need if isinstance(need, str) else list(need),
                                          'correlation_id': correlation}, status_code=403)
+                hide_costs = request.method == 'GET' and not session.can('catalog.costs')
         response = await call_next(request)
+        if hide_costs and response.headers.get('content-type', '').startswith('application/json'):
+            # 2.2.0: no cost/margin field leaves the server for packages without "Ver custo e margem", on ANY screen
+            raw = b''.join([chunk async for chunk in response.body_iterator])
+            try:
+                cleaned = json.dumps(strip_costs(json.loads(raw)), ensure_ascii=False).encode('utf-8')
+            except ValueError:
+                cleaned = raw
+            headers = {k: v for k, v in response.headers.items() if k.lower() != 'content-length'}
+            response = Response(cleaned, status_code=response.status_code, headers=headers, media_type='application/json')
         response.headers['Cache-Control'] = 'no-store'
         response.headers['X-Content-Type-Options'] = 'nosniff'
         response.headers['X-Frame-Options'] = 'DENY'
@@ -402,7 +412,9 @@ def create_app(root: Path | str) -> FastAPI:
     @app.post('/api/v1/auth/recover')
     def auth_recover(request: Request, p: dict = Body(...)):
         csrf_required(request)
-        return auth.recover(p.get('code', ''), p.get('new_password', ''))
+        out = auth.recover(p.get('code', ''), p.get('new_password', ''))
+        cloud.mark_dirty()
+        return out
 
     def global_session(request: Request):
         session = session_required(request, True); csrf_required(request, session)
@@ -412,11 +424,15 @@ def create_app(root: Path | str) -> FastAPI:
 
     @app.post('/api/v1/admin-local/password')
     def admin_local_password(request: Request, p: dict = Body(...)):
-        return auth.reset_local_admin(global_session(request), p.get('new_password', ''))
+        out = auth.reset_local_admin(global_session(request), p.get('new_password', ''))
+        cloud.mark_dirty()  # accesses live in the cloud: the new password reaches every Servidor
+        return out
 
     @app.post('/api/v1/admin-local/recovery-key')
     def admin_local_recovery(request: Request):
-        return {'recovery_key': auth.regenerate_recovery(global_session(request))}
+        code = auth.regenerate_recovery(global_session(request))
+        cloud.mark_dirty()
+        return {'recovery_key': code}
 
     @app.post('/api/v1/global/pass')
     def global_pass(request: Request):
@@ -431,10 +447,10 @@ def create_app(root: Path | str) -> FastAPI:
         """New PIN: a new Token Mestre goes to UserData/State for publishing in acesso-UStracker."""
         from . import adm_global
         session = global_session(request)
+        if str(p.get('new_pin', '')) != str(p.get('pin_confirm', p.get('new_pin', ''))):
+            raise ValueError('PIN confirmation does not match')
         token = adm_global.change_pin({'login': session.name}, session.global_keys, p.get('new_pin', ''))
-        out = root / 'UserData' / 'State' / 'token-mestre-novo.json'
-        out.write_text(json.dumps(token, indent=2), encoding='utf-8')
-        return {'ok': True, 'file': str(out.name)}
+        return {'ok': True, 'token': token, 'file': 'token-mestre.json'}  # downloaded by the browser, never left on disk
 
     @app.post('/api/v1/global/setup')
     def global_setup(request: Request, p: dict = Body(...)):
@@ -452,8 +468,8 @@ def create_app(root: Path | str) -> FastAPI:
         trust, token, _ = adm_global.create(login_name, p.get('pin', ''), url=adm_global.DEFAULT_URL, read_token='')
         adm_global.save_trust(root, trust)
         auth.ensure_global_wrap(session, trust)
-        (root / 'UserData' / 'State' / 'token-mestre-novo.json').write_text(json.dumps(token, indent=2), encoding='utf-8')
-        return {'ok': True, 'login': login_name}
+        cloud.mark_dirty()
+        return {'ok': True, 'login': login_name, 'token': token, 'file': 'token-mestre.json'}
 
     # ------------------------------------------------------------------ G-05 atualização pela nuvem
     @app.get('/api/v1/update/status')
@@ -555,6 +571,7 @@ def create_app(root: Path | str) -> FastAPI:
         session = session_required(request, True)
         csrf_required(request, session)
         auth.change_password(session, p.get('current_password', ''), p.get('new_password', ''))
+        cloud.mark_dirty()
         response.delete_cookie('us_session')
         response.delete_cookie('us_csrf')
         return {'ok': True, 'session_revoked': True}
@@ -588,6 +605,8 @@ def create_app(root: Path | str) -> FastAPI:
     @app.patch('/api/v1/clients/{cid}')
     def clients_update(cid: str, request: Request, p: dict = Body(...)):
         session = session_required(request, True)
+        if str(p.get('status') or '').upper() == 'CANCELLED' and not session.can('clients.delete'):
+            raise HTTPException(403, 'permission denied')
         def action(db):
             rec = update_client(db, session.slot, cid, p)
             if session.environment == 'production': rebuild_public(root, db)
@@ -802,7 +821,7 @@ def create_app(root: Path | str) -> FastAPI:
     @app.patch('/api/v1/subscriptions/{sid}/status')
     def subscriptions_status(sid: str, request: Request, p: dict = Body(...)):
         session = session_required(request, True)
-        if str(p.get('lifecycle_status') or '').upper() == 'CANCELLED' and not session.can('commercial.delete'):
+        if str(p.get('lifecycle_status') or '').upper() in {'CANCELLED', 'ENDED'} and not session.can('commercial.delete'):
             raise HTTPException(403, 'permission denied')
         return mutation(request, session, f'PATCH /subscriptions/{sid}/status', p, lambda db: set_subscription_status(db, session.slot, sid, p))
 
@@ -1430,12 +1449,17 @@ def create_app(root: Path | str) -> FastAPI:
             published = github_publish(placa, repo=gh['repo'], path=gh.get('path') or 'placa.json', branch=gh.get('branch') or 'main',
                                        token=cloud.state.unseal(session.vrk, gh['token']))
             url = raw_url(gh['repo'], gh.get('path') or 'placa.json', gh.get('branch') or 'main')
+        bootstrap_saved = None
         if url:
-            save_bootstrap(root, url=url, master=master)
+            try:
+                save_bootstrap(root, url=url, master=master)
+                bootstrap_saved = True
+            except OSError:  # Program Files: only the installer writes Trust/ (the next installer carries the new address)
+                bootstrap_saved = False
             placa_cache.clear()
         applied = cloud.apply_banks(session, banks, seq)
         cloud.mark_dirty()
-        return {'placa': placa, 'seq': seq, 'published': published, 'placa_url': url, 'applied': applied,
+        return {'placa': placa, 'seq': seq, 'published': published, 'placa_url': url, 'applied': applied, 'bootstrap_saved': bootstrap_saved,
                 'banks': [{'n': i, 'url': b['url']} for i, b in enumerate(banks, 1)]}
 
     @app.post('/api/v1/cloud/placa/check')
@@ -1490,6 +1514,8 @@ def create_app(root: Path | str) -> FastAPI:
 
     @app.post('/api/v1/system/shutdown')
     def shutdown(request: Request):
+        session = auth.get_session(request.cookies.get('us_session'))
+        csrf_required(request, session)  # 2.2.0: no anonymous shutdown
         try:
             cloud.flush(timeout=60)  # C-03: send pending changes before closing
         except Exception:

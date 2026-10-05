@@ -75,7 +75,7 @@ def apply(root: Path, package: Path, *, keep_rollback: Path | None = None) -> di
     from .update_channel import version_key
     if version_key(manifest['to_version']) < version_key(journal['from']): raise RuntimeError('downgrade is not allowed')
     for item in manifest['files']:
-        first=Path(item['path']).parts[0].casefold()
+        first=Path(item['path']).parts[0].casefold().rstrip(' .')  # Windows ignores trailing dots/spaces
         if first in {'userdata','trust'}: raise RuntimeError('update package cannot replace UserData or Trust')
     _write_journal(root,journal,'VALIDATED')
     if _backend_running(root): raise RuntimeError('UStracker backend is running; use Encerrar sistema before applying the update')
