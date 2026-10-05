@@ -2,6 +2,10 @@
 
 Formato: versão semântica a partir da 2.0.0 (2.0.1 = correção, 2.1.0 = novidade compatível).
 
+## 2.0.1 — 2026-10-04
+- Login sem escolha de ambiente: todos entram no Real.
+- Banco de Teste só do Administrador (Sistema › Administração), com faixa de aviso; local, nunca vai para a nuvem; Gerentes e Operadores sem acesso.
+
 ## 2.0.0 — 2026-10-04 · Release 2 (entrega oficial)
 - Instalador único `UStracker_install_x64.exe` com programa, WebView2 e endereço da nuvem embutidos.
 - Computador novo: instalar e entrar; os dados vêm sozinhos da nuvem. Sem internet, a tela espera a nuvem (não cria Administrador separado).

@@ -92,7 +92,7 @@ test('A ficha do cliente usa abas enxutas (AJ-07) e reutiliza miniaturas', async
   assert.match(html, /data-cp-panel="resumo" role="tabpanel">/);
 });
 
-test('O Login tem logo, duas áreas e REAL selecionado em cada abertura', async () => {
+test('O Login tem logo e duas áreas; sem escolha de ambiente (G-03)', async () => {
   const { renderLoginScreen } = await import('../frontend/ui/r2-ui.js');
   setIconSet({ name: 'teste', icons: { 'brand.logo': '/assets/icons/default/brand/logo.png' } });
   const html = renderLoginScreen({ complete: true }, {
@@ -101,11 +101,9 @@ test('O Login tem logo, duas áreas e REAL selecionado em cada abertura', async 
   });
   assert.match(html, /class="r2-login-grid"/);
   assert.match(html, /src="\/public-assets\/logo.png"/);
-  assert.match(html, /name="environment" value="production" checked/);
-  assert.match(html, /name="environment" value="test"/);
+  assert.doesNotMatch(html, /name="environment"/);
   assert.match(html, /&lt;Plano&gt;/);
   assert.doesNotMatch(html, /<Plano>/);
   const fallback = renderLoginScreen({ complete: false }, { brand: {}, catalog: [] });
   assert.match(fallback, /src="\/assets\/icons\/default\/brand\/logo.png"/);
-  assert.match(fallback, /name="environment" value="production" checked/);
 });

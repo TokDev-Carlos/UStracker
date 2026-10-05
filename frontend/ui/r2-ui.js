@@ -77,7 +77,6 @@ export function renderLoginScreen(setup = {}, publicData = {}) {
       <section class="r2-login-access"><h2>Acesso</h2><p>${setup.complete ? 'Entre com seu usuário e senha.' : 'Configuração ainda incompleta.'}</p>
         <form id="login"><div class="field"><label>Usuário</label><input name="name" autocomplete="username" required></div>
           <div class="field"><label>Senha ou PIN (mínimo 4 caracteres)</label><input name="password" type="password" autocomplete="current-password" required></div>
-          <fieldset class="r2-env-choice"><legend>Ambiente</legend><label><input type="radio" name="environment" value="production" checked> REAL</label><label><input type="radio" name="environment" value="test"> TESTE</label></fieldset>
           <div class="actions"><button type="submit" class="ui-btn ui-btn-primary">Entrar</button></div></form><div id="loginOut"></div>
       </section>
       <section class="r2-login-marketing"><h2>Planos e Serviços</h2><p class="muted">${escapeHtml(brand.company_display_name || 'UStracker')}</p>

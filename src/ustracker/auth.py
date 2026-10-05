@@ -278,6 +278,8 @@ class AuthService:
                 self._record_login_failure(identity)
                 raise ValueError('invalid credentials') from exc
             self._login_failures.pop(identity, None)
+            if environment == 'test' and not row:
+                raise ValueError('test environment is for administrators only')
             now = self._now()
             extra = {}
             if user:
@@ -295,6 +297,23 @@ class AuthService:
             con.execute('INSERT INTO auth_audit(at,actor_slot,action,detail) VALUES(?,?,?,?)',
                         (now.isoformat(), slot, 'LOGIN', json.dumps({'environment': environment})))
             return session
+
+    def switch_environment(self, session: Session, environment: str) -> Session:
+        """G-03 — an Administrator moves between Real and Teste without typing the password again."""
+        if environment not in ('production', 'test'):
+            raise ValueError('invalid environment')
+        if not session.is_admin:
+            raise PermissionError('administrator required')
+        vault = self._read_vault(session.vrk)
+        now = self._now()
+        new = Session(token=secrets.token_urlsafe(32), csrf=secrets.token_urlsafe(24), slot=session.slot, name=session.name,
+                      environment=environment, created_at=now, last_human_activity=now, vrk=session.vrk,
+                      db_key=b64d(vault[environment]['db_key']), media_key=b64d(vault[environment]['media_key']))
+        with self._lock, self._connection() as con:
+            self._sessions[new.token] = new
+            con.execute('INSERT INTO auth_audit(at,actor_slot,action,detail) VALUES(?,?,?,?)',
+                        (now.isoformat(), session.slot, 'ENVIRONMENT', json.dumps({'environment': environment})))
+        return new
 
     def clear_sessions(self) -> None:
         """After a cloud restore replaced the access vault, every open session is void."""
