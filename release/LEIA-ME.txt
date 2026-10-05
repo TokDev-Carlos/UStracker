@@ -1,15 +1,19 @@
-UStracker 2.0.0
+UStracker 2.2.0
 
 Instalar ou atualizar:
-  Execute UStracker_install_x64.exe e siga as telas. Ele ja leva tudo
-  (programa, Microsoft WebView2 e o endereco da nuvem da empresa).
-  Os dados (pasta UserData) nunca sao apagados.
+  Execute UStracker_install_x64.exe (pede permissao de administrador).
+  Programa: C:\Program Files\UStracker   Dados: C:\ProgramData\UStracker\UserData
+  Uma instalacao antiga em C:\UStracker e copiada para o lugar novo;
+  a pasta antiga vira C:\UStracker_antigo (apague depois de conferir).
 
-Primeiro uso:
-  - A empresa ja usa o UStracker: entre com seu usuario e senha;
-    os dados chegam sozinhos da nuvem.
-  - Primeiro computador da empresa: cadastre o Administrador 1.
+Primeiro uso em cada computador:
+  Ativar este computador com o Adm Global. Se a empresa ja usa o UStracker,
+  os dados chegam da nuvem. Se for o primeiro computador, o Adm Global cria
+  o Administrador da empresa. Depois, cada pessoa entra com o proprio usuario.
+
+Desinstalar: Manter dados (padrao) ou Remover tudo (copia antes em Documentos).
 
 Manual: Docs\MANUAL_USUARIO.md
 Nuvem:  Docs\NUVEM_GOOGLE_DRIVE.md
 Recuperacao: Docs\RECUPERACAO.md
+Erros:  C:\ProgramData\UStracker\UserData\Logs\erros.log

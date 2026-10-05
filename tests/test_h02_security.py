@@ -80,3 +80,33 @@ class Security(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class WindowsLayout(unittest.TestCase):
+    """2.2.0 — programa em Program Files (protegido), dados em ProgramData, migração sem apagar nada."""
+    nsi = (ROOT / 'release' / 'installer' / 'UStracker.nsi').read_text(encoding='utf-8')
+    ps = (ROOT / 'release' / 'installer' / 'setup-data.ps1').read_text(encoding='utf-8')
+    rm = (ROOT / 'release' / 'installer' / 'remove-data.ps1').read_text(encoding='utf-8')
+
+    def test_program_files_and_programdata(self):
+        self.assertIn('InstallDir "$PROGRAMFILES64\\${APP}"', self.nsi)
+        self.assertNotIn('icacls "$INSTDIR"', self.nsi, 'a pasta do programa não fica gravável por usuários')
+        self.assertIn("/grant '*S-1-5-32-545:(OI)(CI)M'", self.ps)
+        self.assertIn('-ItemType Junction', self.ps)
+        self.assertNotRegex(self.ps, r'Remove-Item|rmdir|del ', 'a instalação nunca apaga dados')
+
+    def test_app_opens_as_user_and_closes_running_copy(self):
+        self.assertIn('explorer.exe" "$INSTDIR\\UStracker.exe"', self.nsi)
+        self.assertNotIn('MUI_FINISHPAGE_RUN "$INSTDIR', self.nsi)
+        self.assertIn('Stop-Process -Force', self.nsi)
+        self.assertNotIn('WaitAppClosed', self.nsi)
+
+    def test_uninstall_keep_or_remove_with_backup(self):
+        self.assertIn('"REMOVER"', self.nsi)
+        self.assertIn("rmdir \"$INSTDIR\\UserData\"", self.nsi, 'a junção sai sem seguir para os dados')
+        self.assertLess(self.rm.index('robocopy'), self.rm.index('Remove-Item'), 'cópia antes de apagar')
+        self.assertIn('if ($code -ge 8) { exit 10 }', self.rm)
+
+    def test_trust_always_from_this_version_and_no_company_key(self):
+        self.assertIn('File "${SRC}/Trust/adm-global.json"', self.nsi)
+        self.assertNotIn('SetOverwrite off', self.nsi)
