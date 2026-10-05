@@ -39,6 +39,7 @@ PERMISSIONS: list[tuple[str, str, str]] = [
     ('reports.view', 'Relatórios', 'Baixar relatórios'),
     ('trash.view', 'Lixeira', 'Ver'),
     ('trash.restore', 'Lixeira', 'Restaurar'),
+    ('update.apply', 'Sistema', 'Atualizar o sistema (aceitar versão nova)'),
     ('system', 'Sistema', 'Administração (usuários, backup, nuvem, servidores)'),
 ]
 ALL = frozenset(p for p, _, _ in PERMISSIONS)
@@ -85,6 +86,7 @@ _RULES: list[tuple[str, str, object]] = [
     ('*', r'/(system/shutdown|shell/detach)$', ANY),
     ('GET', r'/(search|entities/clients)$', ANY),
     ('GET', r'/(cloud/status|sync/state)$', ANY),
+    ('*', r'/update/(status|apply-now)$', ANY),  # G-05: the handler decides who may apply
     ('GET', r'/dashboard$', 'dashboard.view'),
     ('GET', r'/dashboard/drilldown$', 'dashboard.full'),
     ('POST', r'/clients/archive$', 'clients.delete'),

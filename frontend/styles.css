@@ -44,3 +44,6 @@ button[aria-busy=true],form[aria-busy=true] button{cursor:progress}.actions>butt
 
 /* G-04 */
 .recovery-key code{display:block;padding:12px;font-size:1.25rem;letter-spacing:.08em;text-align:center;background:#f2f4f7;border-radius:8px}.login-hint{margin-top:6px;font-style:italic}
+
+/* G-05 */
+.update-banner{position:fixed;left:0;right:0;bottom:0;z-index:90;display:flex;gap:12px;align-items:center;justify-content:center;padding:8px 12px;background:#123c8c;color:#fff}.update-banner .ui-btn{min-height:30px}.update-block{position:fixed;inset:0;z-index:200;display:grid;place-items:center;background:rgba(16,24,40,.72)}.update-block .auth{background:#fff;max-width:520px}
