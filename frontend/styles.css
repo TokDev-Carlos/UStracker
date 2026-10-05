@@ -41,3 +41,6 @@ button[aria-busy=true],form[aria-busy=true] button{cursor:progress}.actions>butt
 
 /* G-03 — banco de Teste (Administrador) */
 .test-banner{position:sticky;top:0;z-index:100;padding:6px 12px;background:#b42318;color:#fff;font-weight:700;text-align:center;letter-spacing:.02em}
+
+/* G-04 */
+.recovery-key code{display:block;padding:12px;font-size:1.25rem;letter-spacing:.08em;text-align:center;background:#f2f4f7;border-radius:8px}.login-hint{margin-top:6px;font-style:italic}
