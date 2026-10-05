@@ -15,7 +15,9 @@ empresa e o arquivo inteiro é ASSINADO (Ed25519) com a chave mestre. O arquivo 
 Banco 1 = principal; Banco 2+ = espelhos (recebem cópia de tudo).
 
 Arquivos:
-* ``APP_ROOT/Trust/placa-bootstrap.json`` (vai DENTRO do UStracker_install_x64.exe): endereço da placa, chave pública, chave da empresa.
+* ``APP_ROOT/Trust/placa-bootstrap.json`` (vai DENTRO do UStracker_install_x64.exe): endereço da placa e chave pública.
+  Desde a 2.2.0 a chave da empresa NÃO vai no instalador: chega na ativação pelo Adm Global (company-key.json no
+  repositório privado acesso-<Empresa>) e fica guardada no banco, cifrada com a VRK.
 * chave mestre (privada): no banco, cifrada com a VRK (só administradores usam; viaja com a nuvem).
 """
 from __future__ import annotations
@@ -125,7 +127,7 @@ def build_placa(banks: list[dict], master: dict, seq: int) -> dict:
     return {**body, 'sig': _b64e(private.sign(_canonical(body)))}
 
 
-def read_placa(placa: dict, bootstrap: dict) -> dict:
+def read_placa(placa: dict, bootstrap: dict, company_key: str | None = None) -> dict:
     """Verify the signature and reveal the banks. Raises PlacaError on anything wrong."""
     if not isinstance(placa, dict) or placa.get('format') != FORMAT:
         raise PlacaError('placa em formato desconhecido')
@@ -134,11 +136,18 @@ def read_placa(placa: dict, bootstrap: dict) -> dict:
         Ed25519PublicKey.from_public_bytes(_b64d(bootstrap['public'])).verify(_b64d(placa.get('sig') or ''), _canonical(body))
     except Exception as exc:
         raise PlacaError('assinatura da placa inválida (placa ignorada)') from exc
-    company = AESGCM(_b64d(bootstrap['company_key']))
+    key = company_key or bootstrap.get('company_key')
+    if not key:
+        raise PlacaError('chave da empresa ausente: ative este computador com o Adm Global')
+    company = AESGCM(_b64d(key))
     banks = []
     for item in sorted(body.get('banks') or [], key=lambda b: int(b.get('n') or 0)):
         raw = _b64d(item['key'])
-        banks.append({'n': int(item['n']), 'url': item['url'], 'key': company.decrypt(raw[:12], raw[12:], b'UStracker/placa/key').decode()})
+        try:
+            secret = company.decrypt(raw[:12], raw[12:], b'UStracker/placa/key').decode()
+        except Exception as exc:
+            raise PlacaError('a chave da empresa não abre esta placa') from exc
+        banks.append({'n': int(item['n']), 'url': item['url'], 'key': secret})
     if not banks:
         raise PlacaError('placa sem bancos')
     return {'seq': int(body.get('seq') or 0), 'issued_at': body.get('issued_at'), 'banks': banks}
@@ -155,13 +164,13 @@ def load_bootstrap(root: Path | str) -> dict | None:
         return None
     try:
         data = json.loads(path.read_text(encoding='utf-8'))
-        return data if data.get('public') and data.get('company_key') else None
+        return data if data.get('public') and data.get('placa_url') else None
     except Exception:
         return None
 
 
 def save_bootstrap(root: Path | str, *, url: str, master: dict) -> dict:
-    data = {'format': 'ustracker-placa-bootstrap/1', 'placa_url': url.strip(), 'public': master['public'], 'company_key': master['company_key']}
+    data = {'format': 'ustracker-placa-bootstrap/1', 'placa_url': url.strip(), 'public': master['public']}
     path = bootstrap_path(root)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix('.tmp')
@@ -169,6 +178,29 @@ def save_bootstrap(root: Path | str, *, url: str, master: dict) -> dict:
     tmp.replace(path)
     # Release 2: the build embeds this file inside UStracker_install_x64.exe (no kit folder)
     return data
+
+
+def strip_company_key(root: Path | str) -> bool:
+    """2.2.0: once the key is safe inside the database, remove it from the plain file in Trust/."""
+    path = bootstrap_path(root)
+    try:
+        data = json.loads(path.read_text(encoding='utf-8'))
+    except Exception:
+        return False
+    if 'company_key' not in data:
+        return False
+    data.pop('company_key')
+    tmp = path.with_suffix('.tmp')
+    try:
+        tmp.write_text(json.dumps(data, indent=2), encoding='utf-8')
+        tmp.replace(path)
+    except OSError:  # Program Files is read-only for users: the installer of 2.2.0 already ships it without the key
+        try:
+            tmp.unlink(missing_ok=True)
+        except OSError:
+            pass
+        return False
+    return True
 
 
 def fetch_placa(url: str, timeout: float = 20.0, opener=None) -> dict:

@@ -82,7 +82,7 @@ _VIEW_MEDIA = ('files.view', 'clients.view', 'mobility.view', 'commercial.view')
 
 # (métodos, regex do caminho depois de /api/v1, permissão). A primeira que casar vale.
 _RULES: list[tuple[str, str, object]] = [
-    ('*', r'/(health|public|auth/(csrf|login|join|logout|me|setup-status|bootstrap|enroll|change-password|recover)|cloud/bootstrap)$', ANY),
+    ('*', r'/(health|public|auth/(csrf|login|join|activate|activate/admin|logout|me|setup-status|bootstrap|enroll|change-password|recover)|cloud/bootstrap)$', ANY),
     ('*', r'/(system/shutdown|shell/detach)$', ANY),
     ('GET', r'/(search|entities/clients)$', ANY),
     ('GET', r'/(cloud/status|sync/state)$', ANY),
@@ -104,6 +104,7 @@ _RULES: list[tuple[str, str, object]] = [
     ('GET', r'/finance$', ('finance.view', 'expenses.view', 'fiscal.view')),
     ('GET', r'/payments(/.*)?$', 'finance.view'),
     ('GET', r'/billing(/.*)?$', ('finance.view', 'commercial.view')),
+    ('POST', r'/charges/[^/]+/adjustments$', 'finance.reverse'),  # changes what the client owes
     ('GET', r'/(subscriptions|commercial|direct-sales|credits|charges)(/.*)?$', 'commercial.view'),
     ('POST|PATCH|PUT', r'/(subscriptions|commercial|direct-sales|credits|charges)(/.*)?$', 'commercial.edit'),
     ('DELETE', r'/expenses/[^/]+$', 'expenses.delete'),

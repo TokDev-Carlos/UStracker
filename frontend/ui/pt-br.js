@@ -90,6 +90,15 @@ const MESSAGES = Object.freeze({
   'animated images are not supported': 'Imagens animadas não são compatíveis.',
   'image exceeds 40 MP': 'A imagem excede 40 megapixels.',
   INTEGRATION_NOT_IMPLEMENTED: 'Integração ainda não implementada.',
+  'this computer is already activated; use the normal sign in': 'Este computador já está ativado. Use a entrada normal.',
+  'this installation has no Adm Global': 'Esta instalação não tem o Adm Global configurado.',
+  'activation expired; sign in with the Adm Global again': 'O tempo da ativação acabou. Entre de novo com o Adm Global.',
+  'activation by the Adm Global required': 'Este computador precisa ser ativado pelo Adm Global.',
+  'no internet: activation needs the internet once': 'Sem internet: a ativação precisa de internet uma vez.',
+  'access vault missing on this computer': 'Os acessos deste computador estão incompletos.',
+  'access vault does not match this key': 'Os acessos deste computador não conferem com esta chave.',
+  'admin name is required': 'Informe o usuário do Administrador.',
+  'bootstrap already completed': 'O Administrador já foi criado.',
 });
 
 export const labelPtBR = key => COLUMN_LABELS[key] || String(key ?? '').replaceAll('_', ' ');
@@ -104,6 +113,13 @@ export function messagePtBR(value) {
   if (message.startsWith('Backup automático: ')) return `Cópia de segurança automática: ${messagePtBR(message.slice(19))}`;
   const lock = message.match(/^login temporarily locked; try again in (\d+) seconds$/);
   if (lock) return `Acesso temporariamente bloqueado; tente novamente em ${lock[1]} segundo(s).`;
+  if (message.startsWith('Adm Global unavailable: ')) {
+    const why = message.slice(24);
+    if (/sem internet e sem passe/.test(why)) return 'Sem internet e sem passe do Adm Global. Conecte à internet ou use o passe de 1 dia.';
+    if (/revogado/.test(why)) return 'O acesso do Adm Global foi revogado.';
+    return `Adm Global indisponível agora (${why}).`;
+  }
+  if (message.startsWith('Erro interno (')) return `${message.split('.')[0]}. Tente de novo; se repetir, envie o arquivo UserData/Logs/erros.log ao suporte.`;
   const revision = message.match(/^revision conflict: current=(\d+)$/);
   if (revision) return `Conflito de edição: a revisão atual é ${revision[1]}.`;
   return message;

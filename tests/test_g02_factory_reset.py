@@ -99,7 +99,8 @@ if __name__ == '__main__':
 
 
 class ResetOnLogin(unittest.TestCase):
-    def test_admin_login_runs_pending_reset(self):
+    def test_marker_file_is_ignored_at_login(self):
+        """2.2.0 security: a file dropped in UserData/State must never erase data at the next sign in."""
         from tests.test_g01_release2 import call
         from ustracker.server import create_app
         with tempfile.TemporaryDirectory() as d:
@@ -109,6 +110,5 @@ class ResetOnLogin(unittest.TestCase):
             create_client(Database(root, 'production', s.db_key), 1, doc(9))
             request_reset(root)
             self.assertEqual(call(app, 'POST', '/api/v1/auth/login', {'name': 'Admin', 'password': PW, 'environment': 'production'}, precsrf=True), 200)
-            self.assertFalse(reset_pending(root))
-            self.assertEqual(Database(root, 'production', s.db_key).one('SELECT COUNT(*) FROM clients')[0], 0)
+            self.assertEqual(Database(root, 'production', s.db_key).one('SELECT COUNT(*) FROM clients')[0], 1)
             app.state.cloud.stop()

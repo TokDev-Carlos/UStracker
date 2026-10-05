@@ -217,9 +217,14 @@ class AuthService:
         tmp.replace(self.vault_path)
 
     def _read_vault(self, vrk: bytes) -> dict:
-        raw = json.loads(self.vault_path.read_text(encoding='utf-8'))
-        plain = aes_decrypt(vrk, b64d(raw['nonce']), b64d(raw['cipher']), b'UStracker/VaultStore/v1')
-        return json.loads(plain.decode('utf-8'))
+        try:
+            raw = json.loads(self.vault_path.read_text(encoding='utf-8'))
+            plain = aes_decrypt(vrk, b64d(raw['nonce']), b64d(raw['cipher']), b'UStracker/VaultStore/v1')
+            return json.loads(plain.decode('utf-8'))
+        except FileNotFoundError as exc:
+            raise ValueError('access vault missing on this computer') from exc
+        except Exception as exc:  # InvalidTag / corrupted file: never a 500
+            raise ValueError('access vault does not match this key') from exc
 
     def _issue_enrollment(self, con: sqlite3.Connection, slot: int, vrk: bytes) -> str:
         ticket = secrets.token_urlsafe(32)
@@ -290,6 +295,10 @@ class AuthService:
                 self._init_store()
             user = None if row else con.execute('SELECT * FROM users WHERE name=? AND active=1', (name.strip(),)).fetchone()
             if not row and not user:
+                try:  # same cost as a real check: the answer time does not reveal which names exist
+                    derive_password_key(password if len(password) >= 4 else 'xxxx', b'\0' * 16)
+                except Exception:
+                    pass
                 self._record_login_failure(identity)
                 raise ValueError('invalid credentials')
             env = row or user
@@ -511,6 +520,7 @@ class AuthService:
             return True
 
     def global_lock_state(self, identity: str) -> dict:
+        self._init_store()  # auth.db may have come from the cloud (older version)
         with self._connection() as con:
             row = con.execute('SELECT * FROM login_lock WHERE identity=?', (identity,)).fetchone()
         out = {'attempts': row['attempts'] if row else 0, 'question_id': row['question_id'] if row else None, 'locked_minutes': 0}
@@ -536,6 +546,7 @@ class AuthService:
 
     def global_failure(self, identity: str, reason: str) -> dict:
         from . import adm_global
+        self._init_store()
         with self._lock, self._connection() as con:
             row = con.execute('SELECT * FROM login_lock WHERE identity=?', (identity,)).fetchone()
             attempts = (row['attempts'] if row else 0) + 1
@@ -550,12 +561,24 @@ class AuthService:
         from . import adm_global
         token = adm_global.current_token(root, trust)
         keys = adm_global.open_keys(token, pin, trust)
+        return self.global_session(trust, keys, environment)
+
+    def global_session(self, trust: dict, keys: dict, environment: str = 'production') -> Session:
+        """Keys already opened with the PIN (Token Mestre): unlock this installation's VRK."""
+        from . import adm_global
+        self._init_store()
         with self._connection() as con:
             row = con.execute('SELECT wrap FROM global_access WHERE id=1').fetchone()
         if not row:
             raise adm_global.AccessDenied('installation not prepared')
-        vrk = adm_global.unwrap(json.loads(row['wrap']), keys)
-        vault = self._read_vault(vrk)
+        wrapped = json.loads(row['wrap'])
+        if wrapped.get('x_pub') != trust['x_pub']:
+            raise adm_global.AccessDenied('installation not prepared')
+        vrk = adm_global.unwrap(wrapped, keys)
+        try:
+            vault = self._read_vault(vrk)
+        except ValueError as exc:
+            raise adm_global.AccessDenied('installation not prepared') from exc
         now = self._now()
         session = Session(token=secrets.token_urlsafe(32), csrf=secrets.token_urlsafe(24), slot=self.GLOBAL_SLOT, name=trust['login'],
                           environment=environment, created_at=now, last_human_activity=now, vrk=vrk,
@@ -766,9 +789,17 @@ class AuthService:
                             con.execute('INSERT INTO users(id,name,full_name,package_id,salt,vrk_nonce,vrk_cipher,active,revision,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)',
                                         ((row['id'] if free else None),) + values)
                         added['users'] += 1
+                from .adm_global import load_trust
+                trust = load_trust(self.root)
                 for table, key in (('recovery', 'slot'), ('global_access', 'id')):
                     if table in tables:
                         for row in con.execute(f'SELECT * FROM r.{table}').fetchall():
+                            if table == 'global_access':
+                                try:
+                                    if not trust or json.loads(row['wrap']).get('x_pub') != trust['x_pub']:
+                                        continue  # only the Adm Global this installer trusts
+                                except Exception:
+                                    continue
                             mine = con.execute(f'SELECT updated_at FROM {table} WHERE {key}=?', (row[key],)).fetchone()
                             if not mine or str(row['updated_at']) > str(mine['updated_at']):
                                 cols = row.keys()

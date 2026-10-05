@@ -3,6 +3,7 @@ import asyncio, json, os, re, sys, tempfile, unittest, uuid
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+INSTALLER = ROOT / 'installer' if (ROOT / 'installer').exists() else ROOT / 'release' / 'installer'
 sys.path.insert(0, str(ROOT / 'src'))
 os.environ['USTRACKER_DEV_PLAINTEXT'] = '1'
 
@@ -48,7 +49,7 @@ class CloudRestoreIsGlobalOnly(unittest.TestCase):
 
 
 class SingleInstaller(unittest.TestCase):
-    nsi = (ROOT / 'release' / 'installer' / 'UStracker.nsi').read_text(encoding='utf-8')
+    nsi = (INSTALLER / 'UStracker.nsi').read_text(encoding='utf-8')
 
     def test_single_file_with_placa_inside(self):
         self.assertIn('UStracker_install_x64.exe', self.nsi)
@@ -67,9 +68,9 @@ class SingleInstaller(unittest.TestCase):
 
 
 class VersionTwo(unittest.TestCase):
-    def test_version_is_2_1_1(self):
+    def test_version_is_2_2_0(self):
         for name in ('VERSION.json', 'current.json'):
-            self.assertEqual(json.loads((ROOT / name).read_text(encoding='utf-8'))['version'], '2.1.1', name)
+            self.assertEqual(json.loads((ROOT / name).read_text(encoding='utf-8'))['version'], '2.2.0', name)
 
 
 if __name__ == '__main__':

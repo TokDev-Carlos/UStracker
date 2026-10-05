@@ -10,7 +10,7 @@ from ustracker.auth import AuthService
 from ustracker.server import create_app
 
 
-def asgi_post(app, path):
+def asgi_post(app, path, extra=()):
     sent = []
     received = False
 
@@ -27,7 +27,7 @@ def asgi_post(app, path):
     scope = {
         'type': 'http', 'asgi': {'version': '3.0'}, 'http_version': '1.1',
         'method': 'POST', 'scheme': 'http', 'path': path, 'raw_path': path.encode(),
-        'query_string': b'', 'headers': [(b'host', b'127.0.0.1:50000')],
+        'query_string': b'', 'headers': [(b'host', b'127.0.0.1:50000'), *extra],
         'client': ('127.0.0.1', 12345), 'server': ('127.0.0.1', 50000),
         'root_path': '',
     }
@@ -42,10 +42,12 @@ class R2Regressions(unittest.TestCase):
         with self.assertRaises(ValueError):
             AuthService._validate_secret('abc')
 
-    def test_shutdown_can_be_requested_from_login_without_session(self):
+    def test_shutdown_from_login_needs_the_csrf_pair(self):
         with tempfile.TemporaryDirectory() as directory:
-            status = asgi_post(create_app(Path(directory)), '/api/v1/system/shutdown')
-            self.assertEqual(status, 200)
+            app = create_app(Path(directory))
+            self.assertEqual(asgi_post(app, '/api/v1/system/shutdown'), 403)
+            ok = asgi_post(app, '/api/v1/system/shutdown', [(b'cookie', b'us_csrf=abc123abc123'), (b'x-csrf-token', b'abc123abc123')])
+            self.assertEqual(ok, 200)
 
 
 if __name__ == '__main__':

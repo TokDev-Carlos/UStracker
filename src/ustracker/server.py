@@ -104,6 +104,9 @@ from .station import (
 from .versioning import read_version
 
 
+_LOCAL_ORIGIN = __import__('re').compile(r'http://(127\.0\.0\.1|localhost)(:\d{1,5})?')
+
+
 def create_app(root: Path | str) -> FastAPI:
     paths = ProductPaths.from_root(root)
     root = paths.app_root
@@ -134,17 +137,14 @@ def create_app(root: Path | str) -> FastAPI:
             correlation = str(uuid.uuid4())
         request.state.correlation_id = correlation
         host = request.headers.get('host', '').split(':')[0].lower()
-        if host not in {'127.0.0.1', 'localhost', 'testserver'}:
+        if host not in {'127.0.0.1', 'localhost'}:
             return JSONResponse({'error': 'INVALID_HOST', 'correlation_id': correlation}, status_code=400)
         if request.method not in {'GET', 'HEAD', 'OPTIONS'}:
             origin = request.headers.get('origin')
-            if origin and not (
-                origin.startswith('http://127.0.0.1:')
-                or origin.startswith('http://localhost:')
-                or origin.startswith('http://testserver')
-            ):
+            if origin and not _LOCAL_ORIGIN.fullmatch(origin):
                 return JSONResponse({'error': 'INVALID_ORIGIN', 'correlation_id': correlation}, status_code=403)
         # U-05: package permissions are enforced here for every API route (the UI only hides).
+        hide_costs = False
         if request.url.path.startswith('/api/v1/'):
             session = auth.get_session(request.cookies.get('us_session'))
             if session is not None and session.is_admin and not session.is_global and global_only(request.method, request.url.path):
@@ -154,7 +154,17 @@ def create_app(root: Path | str) -> FastAPI:
                 if not session.can(need):
                     return JSONResponse({'error': 'FORBIDDEN', 'detail': 'permission denied', 'permission': need if isinstance(need, str) else list(need),
                                          'correlation_id': correlation}, status_code=403)
+                hide_costs = request.method == 'GET' and not session.can('catalog.costs')
         response = await call_next(request)
+        if hide_costs and response.headers.get('content-type', '').startswith('application/json'):
+            # 2.2.0: no cost/margin field leaves the server for packages without "Ver custo e margem", on ANY screen
+            raw = b''.join([chunk async for chunk in response.body_iterator])
+            try:
+                cleaned = json.dumps(strip_costs(json.loads(raw)), ensure_ascii=False).encode('utf-8')
+            except ValueError:
+                cleaned = raw
+            headers = {k: v for k, v in response.headers.items() if k.lower() != 'content-length'}
+            response = Response(cleaned, status_code=response.status_code, headers=headers, media_type='application/json')
         response.headers['Cache-Control'] = 'no-store'
         response.headers['X-Content-Type-Options'] = 'nosniff'
         response.headers['X-Frame-Options'] = 'DENY'
@@ -186,6 +196,26 @@ def create_app(root: Path | str) -> FastAPI:
     async def runtime_error(request: Request, exc: RuntimeError):
         status = 409 if 'pending from a previous interrupted attempt' in str(exc) else 500
         return JSONResponse(_err(request, 'CONFLICT' if status == 409 else 'RUNTIME', str(exc)), status_code=status)
+
+    def _log_error(request: Request, exc: BaseException) -> None:
+        try:
+            import traceback
+            log = root / 'UserData' / 'Logs' / 'erros.log'
+            log.parent.mkdir(parents=True, exist_ok=True)
+            if log.exists() and log.stat().st_size > 2_000_000:
+                log.replace(log.with_suffix('.log.1'))
+            stamp = datetime.now().isoformat(timespec='seconds')
+            text = ''.join(traceback.format_exception(type(exc), exc, exc.__traceback__))[-6000:]
+            with log.open('a', encoding='utf-8') as fh:
+                fh.write(f"--- {stamp} {request.method} {request.url.path} cid={getattr(request.state, 'correlation_id', '')}\n{text}\n")
+        except Exception:
+            pass
+
+    @app.exception_handler(Exception)
+    async def unexpected_error(request: Request, exc: Exception):
+        _log_error(request, exc)
+        return JSONResponse(_err(request, 'INTERNAL', f'Erro interno ({type(exc).__name__}). Detalhes em UserData/Logs/erros.log'),
+                            status_code=500)
 
     def session_required(request: Request, human: bool = False) -> Session:
         token = request.cookies.get('us_session')
@@ -261,6 +291,9 @@ def create_app(root: Path | str) -> FastAPI:
     @app.post('/api/v1/auth/bootstrap')
     def bootstrap(request: Request, p: dict = Body(...)):
         csrf_required(request)
+        from .adm_global import load_trust
+        if load_trust(root):  # 2.2.0: installations with an Adm Global are activated by it (/auth/activate)
+            raise HTTPException(403, 'activation by the Adm Global required')
         return auth.bootstrap(p.get('name', ''), p.get('password', ''))
 
     @app.post('/api/v1/auth/enroll')
@@ -295,10 +328,14 @@ def create_app(root: Path | str) -> FastAPI:
         else:
             session = auth.login(p.get('name', ''), p.get('password', ''), p.get('environment', 'production'))
             if session.kind == 'admin':
-                auth.ensure_global_wrap(session, trust)
+                if auth.ensure_global_wrap(session, trust):
+                    cloud.mark_dirty()
                 recovery_key = auth.ensure_recovery(session)
-        from .factory_reset import run_if_requested
-        factory_reset = run_if_requested(root, auth, session, cloud)  # G-02: internal one-time "zerar tudo"
+        return enter(response, session, recovery_key)
+
+    def enter(response: Response, session: Session, recovery_key: str | None = None, extra: dict | None = None) -> dict:
+        """Common end of every sign in: cookies, cloud restore/attach, station, backups."""
+        factory_reset = None
         response.set_cookie('us_session', session.token, httponly=True, samesite='strict', secure=False, max_age=43200)
         response.set_cookie('us_csrf', session.csrf, httponly=False, samesite='strict', secure=False, max_age=43200)
         db = get_db(session)
@@ -346,6 +383,7 @@ def create_app(root: Path | str) -> FastAPI:
             'media_recovery': media_recovery,
             'automatic_backup': backup_info,
             'backup_warning': backup_warning,
+            **(extra or {}),
         }
 
     @app.post('/api/v1/session/environment')
@@ -374,7 +412,9 @@ def create_app(root: Path | str) -> FastAPI:
     @app.post('/api/v1/auth/recover')
     def auth_recover(request: Request, p: dict = Body(...)):
         csrf_required(request)
-        return auth.recover(p.get('code', ''), p.get('new_password', ''))
+        out = auth.recover(p.get('code', ''), p.get('new_password', ''))
+        cloud.mark_dirty()
+        return out
 
     def global_session(request: Request):
         session = session_required(request, True); csrf_required(request, session)
@@ -384,11 +424,15 @@ def create_app(root: Path | str) -> FastAPI:
 
     @app.post('/api/v1/admin-local/password')
     def admin_local_password(request: Request, p: dict = Body(...)):
-        return auth.reset_local_admin(global_session(request), p.get('new_password', ''))
+        out = auth.reset_local_admin(global_session(request), p.get('new_password', ''))
+        cloud.mark_dirty()  # accesses live in the cloud: the new password reaches every Servidor
+        return out
 
     @app.post('/api/v1/admin-local/recovery-key')
     def admin_local_recovery(request: Request):
-        return {'recovery_key': auth.regenerate_recovery(global_session(request))}
+        code = auth.regenerate_recovery(global_session(request))
+        cloud.mark_dirty()
+        return {'recovery_key': code}
 
     @app.post('/api/v1/global/pass')
     def global_pass(request: Request):
@@ -403,10 +447,10 @@ def create_app(root: Path | str) -> FastAPI:
         """New PIN: a new Token Mestre goes to UserData/State for publishing in acesso-UStracker."""
         from . import adm_global
         session = global_session(request)
+        if str(p.get('new_pin', '')) != str(p.get('pin_confirm', p.get('new_pin', ''))):
+            raise ValueError('PIN confirmation does not match')
         token = adm_global.change_pin({'login': session.name}, session.global_keys, p.get('new_pin', ''))
-        out = root / 'UserData' / 'State' / 'token-mestre-novo.json'
-        out.write_text(json.dumps(token, indent=2), encoding='utf-8')
-        return {'ok': True, 'file': str(out.name)}
+        return {'ok': True, 'token': token, 'file': 'token-mestre.json'}  # downloaded by the browser, never left on disk
 
     @app.post('/api/v1/global/setup')
     def global_setup(request: Request, p: dict = Body(...)):
@@ -424,8 +468,8 @@ def create_app(root: Path | str) -> FastAPI:
         trust, token, _ = adm_global.create(login_name, p.get('pin', ''), url=adm_global.DEFAULT_URL, read_token='')
         adm_global.save_trust(root, trust)
         auth.ensure_global_wrap(session, trust)
-        (root / 'UserData' / 'State' / 'token-mestre-novo.json').write_text(json.dumps(token, indent=2), encoding='utf-8')
-        return {'ok': True, 'login': login_name}
+        cloud.mark_dirty()
+        return {'ok': True, 'login': login_name, 'token': token, 'file': 'token-mestre.json'}
 
     # ------------------------------------------------------------------ G-05 atualização pela nuvem
     @app.get('/api/v1/update/status')
@@ -527,6 +571,7 @@ def create_app(root: Path | str) -> FastAPI:
         session = session_required(request, True)
         csrf_required(request, session)
         auth.change_password(session, p.get('current_password', ''), p.get('new_password', ''))
+        cloud.mark_dirty()
         response.delete_cookie('us_session')
         response.delete_cookie('us_csrf')
         return {'ok': True, 'session_revoked': True}
@@ -560,6 +605,8 @@ def create_app(root: Path | str) -> FastAPI:
     @app.patch('/api/v1/clients/{cid}')
     def clients_update(cid: str, request: Request, p: dict = Body(...)):
         session = session_required(request, True)
+        if str(p.get('status') or '').upper() == 'CANCELLED' and not session.can('clients.delete'):
+            raise HTTPException(403, 'permission denied')
         def action(db):
             rec = update_client(db, session.slot, cid, p)
             if session.environment == 'production': rebuild_public(root, db)
@@ -774,7 +821,7 @@ def create_app(root: Path | str) -> FastAPI:
     @app.patch('/api/v1/subscriptions/{sid}/status')
     def subscriptions_status(sid: str, request: Request, p: dict = Body(...)):
         session = session_required(request, True)
-        if str(p.get('lifecycle_status') or '').upper() == 'CANCELLED' and not session.can('commercial.delete'):
+        if str(p.get('lifecycle_status') or '').upper() in {'CANCELLED', 'ENDED'} and not session.can('commercial.delete'):
             raise HTTPException(403, 'permission denied')
         return mutation(request, session, f'PATCH /subscriptions/{sid}/status', p, lambda db: set_subscription_status(db, session.slot, sid, p))
 
@@ -1145,6 +1192,9 @@ def create_app(root: Path | str) -> FastAPI:
         cloud.attach(session)
         return session
 
+    def CloudErrorHTTP(code: str, detail: str) -> HTTPException:  # noqa: N802 — reads like an exception at the raise site
+        return HTTPException(502, detail={'code': f'CLOUD_{code}', 'detail': detail, 'message': detail})
+
     def cloud_call(fn):
         try:
             return fn()
@@ -1197,6 +1247,7 @@ def create_app(root: Path | str) -> FastAPI:
         if p.get('confirm') != 'RESTAURAR DA NUVEM':
             raise ValueError('confirmation RESTAURAR DA NUVEM required')
         out = cloud_call(lambda: restore_from_cloud(root, p.get('url', ''), p.get('secret', '')))
+        auth._init_store()  # the cloud copy may come from an older version
         auth.clear_sessions()
         cloud.state = type(cloud.state)(root)
         cloud.pending_secret = str(p.get('secret', '')).strip()
@@ -1219,36 +1270,137 @@ def create_app(root: Path | str) -> FastAPI:
 
     @app.get('/api/v1/cloud/bootstrap')
     def cloud_bootstrap():
-        """S-08 — new computer: is there a company cloud to join? (no secrets in the answer)"""
-        try:
-            placa = placa_banks_public()
-        except Exception as exc:
-            return {'available': False, 'error': str(exc)[:200]}
-        if not placa:
-            return {'available': False}
-        from .cloud import CloudClient
-        try:
-            ping = CloudClient(placa['banks'][0]['url'], placa['banks'][0]['key']).call('ping', {}, retries=1)
-        except CloudError as exc:
-            return {'available': True, 'reachable': False, 'error': exc.detail}
-        return {'available': True, 'reachable': True, 'has_data': bool(ping.get('head') and ping.get('auth_head'))}
+        """New computer: which first screen? (no secrets in the answer)
 
-    @app.post('/api/v1/auth/join')
-    def auth_join(request: Request, response: Response, p: dict = Body(...)):
-        """S-08 — first use on a new computer: bring the company data from the cloud and sign in."""
+        2.2.0 — with an Adm Global in Trust/, every new computer is ACTIVATED by the Adm Global (the company key
+        is not in the installer any more). Without it (old installers), the first Administrator is created here."""
+        from .adm_global import load_trust
+        from .placa import load_bootstrap
+        trust = load_trust(root)
+        boot = load_bootstrap(root)
+        return {'activation': bool(trust), 'available': bool(boot), 'global_login': trust['login'] if trust else None}
+
+    activations: dict = {}
+
+    def _activation_ticket(p: dict) -> dict:
+        now = time.time()
+        for key in [k for k, v in activations.items() if v['expires'] < now]:
+            activations.pop(key, None)
+        item = activations.get(str(p.get('ticket') or ''))
+        if not item:
+            raise ValueError('activation expired; sign in with the Adm Global again')
+        return item
+
+    @app.post('/api/v1/auth/activate')
+    def auth_activate(request: Request, response: Response, p: dict = Body(...)):
+        """2.2.0 — first use on a new computer: ONLY the Adm Global activates it.
+
+        1) name + PIN, the fake question (answer = PIN) and the 30-minute lock, exactly like the normal sign in;
+        2) the Token Mestre opens with the PIN → company key (company-key.json) → placa → company cloud;
+        3a) the cloud has data: everything comes down and the Adm Global enters;
+        3b) the cloud is empty (new company): the Adm Global creates the company Administrator next."""
+        from . import adm_global
+        from .cloud import CloudClient
+        from .placa import fetch_placa, load_bootstrap, read_placa
         csrf_required(request)
         if auth.setup_status()['enrolled']:
-            raise ValueError('this computer already has users; use the normal sign in')
-        placa = placa_banks_public()
-        if not placa:
-            raise ValueError('no company cloud configured in this installation')
-        bank = placa['banks'][0]
-        cloud_call(lambda: restore_from_cloud(root, bank['url'], bank['key']))
-        auth.clear_sessions()
-        cloud.state = type(cloud.state)(root)
-        cloud.pending_secret = bank['key']
-        cloud.state.set(placa_seq=0)
-        return login(request, response, p)
+            raise ValueError('this computer is already activated; use the normal sign in')
+        trust = adm_global.load_trust(root)
+        if not trust:
+            raise ValueError('this installation has no Adm Global')
+        denied = {'error': 'INVALID', 'detail': 'invalid credentials'}
+        ident = trust['login'].casefold()
+        state = auth.global_lock_state(ident)
+        if state['locked_minutes']:
+            return JSONResponse({'error': 'LOCKED', 'detail': f"login temporarily locked; try again in {state['locked_minutes']} minutes",
+                                 'retry_minutes': state['locked_minutes']}, status_code=429)
+        if str(p.get('name', '')).strip().casefold() != ident:
+            return JSONResponse({**denied, 'hint': auth.global_failure(ident, 'name')['hint']}, status_code=422)
+        if 'answer' not in p:
+            return {'challenge': auth.global_question(ident)}
+        pin = str(p.get('password', ''))
+        if str(p.get('answer', '')) != pin:
+            return JSONResponse({**denied, 'hint': auth.global_failure(ident, 'answer')['hint']}, status_code=422)
+        try:
+            token = adm_global.current_token(root, trust)
+            keys = adm_global.open_keys(token, pin, trust)
+        except adm_global.AccessDenied as exc:
+            if str(exc) == 'invalid credentials':
+                return JSONResponse({**denied, 'hint': auth.global_failure(ident, 'pin')['hint']}, status_code=422)
+            raise ValueError(f'Adm Global unavailable: {exc}') from exc
+        # --- credentials verified: nothing was changed on this computer before this point
+        try:
+            doc = adm_global.fetch_company_key(trust)
+        except OSError as exc:
+            raise CloudErrorHTTP('OFFLINE', 'no internet: activation needs the internet once') from exc
+        boot = load_bootstrap(root)
+        company_key = adm_global.open_company_key(doc, keys) if doc else (boot or {}).get('company_key')
+        banks, seq = [], 0
+        if boot and company_key:
+            try:
+                placa = read_placa(fetch_placa(boot['placa_url']), boot, company_key)
+            except ValueError as exc:
+                raise CloudErrorHTTP('PLACA', str(exc)) from exc
+            banks, seq = placa['banks'], placa['seq']
+        has_data = False
+        if banks:
+            try:
+                ping = CloudClient(banks[0]['url'], banks[0]['key']).call('ping', {}, retries=2)
+            except CloudError as exc:
+                raise CloudErrorHTTP(exc.code, exc.detail) from exc
+            has_data = bool(ping.get('head') and ping.get('auth_head'))
+        if has_data:
+            bank = banks[0]
+            cloud_call(lambda: restore_from_cloud(root, bank['url'], bank['key']))
+            auth._init_store()  # the cloud copy may come from an older version
+            auth.clear_sessions()
+            cloud.state = type(cloud.state)(root)
+            cloud.pending_secret = bank['key']
+            cloud.state.set(placa_seq=0)
+            try:
+                session = auth.global_session(trust, keys, 'production')
+            except adm_global.AccessDenied:
+                return {'activated': True, 'restored': True, 'needs_admin_login': True}
+            out = enter(response, session, None, {'activated': True, 'restored': True})
+            try:
+                cloud.keep_company_key(session, company_key)
+            except Exception:
+                pass
+            return out
+        ticket = secrets.token_urlsafe(24)
+        activations[ticket] = {'expires': time.time() + 900, 'banks': banks, 'seq': seq, 'company_key': company_key,
+                               'keys': keys, 'trust': trust}
+        return {'activated': False, 'create_admin': True, 'ticket': ticket, 'cloud': bool(banks)}
+
+    @app.post('/api/v1/auth/activate/admin')
+    def auth_activate_admin(request: Request, response: Response, p: dict = Body(...)):
+        """2.2.0 — new company: the Adm Global (just verified) creates the company Administrator; accesses go to the cloud at once."""
+        csrf_required(request)
+        item = _activation_ticket(p)
+        if auth.setup_status()['enrolled']:
+            raise ValueError('this computer is already activated; use the normal sign in')
+        created = auth.bootstrap(str(p.get('name', '')), str(p.get('password', '')))
+        activations.pop(str(p.get('ticket')), None)
+        session = auth.login(str(p.get('name', '')), str(p.get('password', '')), 'production')
+        auth.ensure_global_wrap(session, item['trust'])
+        cloud_info = {'connected': False}
+        if item['banks']:
+            if item['company_key']:
+                cloud.keep_company_key(session, item['company_key'])
+            cloud.apply_banks(session, item['banks'], item['seq'])
+            cloud.mark_dirty()
+        out = enter(response, session, created.get('recovery_key'), {'activated': True, 'created_admin': True})
+        if item['banks']:
+            try:  # accesses and the empty base go up right now (verified by the upload answer)
+                cloud_info = {'connected': True, **cloud.sync_now(session, force=True)}
+            except Exception as exc:
+                cloud_info = {'connected': True, 'error': str(exc)[:200]}
+        out['cloud'] = cloud_info
+        return out
+
+    @app.post('/api/v1/auth/join')
+    def auth_join(request: Request):
+        raise HTTPException(410, 'replaced by /auth/activate (Adm Global)')
 
     def admin_session(request: Request):
         session = session_required(request, True)
@@ -1297,12 +1449,17 @@ def create_app(root: Path | str) -> FastAPI:
             published = github_publish(placa, repo=gh['repo'], path=gh.get('path') or 'placa.json', branch=gh.get('branch') or 'main',
                                        token=cloud.state.unseal(session.vrk, gh['token']))
             url = raw_url(gh['repo'], gh.get('path') or 'placa.json', gh.get('branch') or 'main')
+        bootstrap_saved = None
         if url:
-            save_bootstrap(root, url=url, master=master)
+            try:
+                save_bootstrap(root, url=url, master=master)
+                bootstrap_saved = True
+            except OSError:  # Program Files: only the installer writes Trust/ (the next installer carries the new address)
+                bootstrap_saved = False
             placa_cache.clear()
         applied = cloud.apply_banks(session, banks, seq)
         cloud.mark_dirty()
-        return {'placa': placa, 'seq': seq, 'published': published, 'placa_url': url, 'applied': applied,
+        return {'placa': placa, 'seq': seq, 'published': published, 'placa_url': url, 'applied': applied, 'bootstrap_saved': bootstrap_saved,
                 'banks': [{'n': i, 'url': b['url']} for i, b in enumerate(banks, 1)]}
 
     @app.post('/api/v1/cloud/placa/check')
@@ -1357,6 +1514,8 @@ def create_app(root: Path | str) -> FastAPI:
 
     @app.post('/api/v1/system/shutdown')
     def shutdown(request: Request):
+        session = auth.get_session(request.cookies.get('us_session'))
+        csrf_required(request, session)  # 2.2.0: no anonymous shutdown
         try:
             cloud.flush(timeout=60)  # C-03: send pending changes before closing
         except Exception:
