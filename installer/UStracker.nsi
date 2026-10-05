@@ -1,8 +1,14 @@
-; UStracker — instalador para Windows 10/11 x64 (NSIS 3)
-; Compilar: makensis -DSRC=<pasta do programa> -DVERSION=2.0.0 -DWV2=<MicrosoftEdgeWebView2RuntimeInstallerX64.exe>
-;           -DPLACA=<placa-bootstrap.json> [-DOUT=UStracker_install_x64.exe] UStracker.nsi
-; Release 2: um único arquivo leva tudo (programa + WebView2 + endereço da nuvem). Nada ao lado do instalador.
-; Regras: instala ou atualiza por cima; NUNCA apaga ou substitui UserData; a chave de atualização (Trust) só entra se faltar.
+; UStracker — instalador para Windows 10/11 x64 (NSIS 3, script UTF-8: makensis -INPUTCHARSET UTF8)
+; Compilar: makensis -INPUTCHARSET UTF8 -DSRC=<pasta do programa> -DVERSION=2.2.0
+;           -DWV2=<MicrosoftEdgeWebView2RuntimeInstallerX64.exe> -DPLACA=<placa-bootstrap.json> [-DOUT=...] [-DICON=...] UStracker.nsi
+;
+; 2.2.0 — estrutura Windows:
+;   Programa  C:\Program Files\UStracker          (protegido: só administradores do Windows alteram)
+;   Dados     C:\ProgramData\UStracker\UserData   (usuários do Windows podem gravar)
+;   O programa enxerga os dados em "UserData" por uma junção (Program Files\UStracker\UserData → ProgramData).
+; Instalação antiga em C:\UStracker: os dados são COPIADOS para ProgramData e a pasta antiga vira C:\UStracker_antigo.
+; Nada de dados é apagado na instalação. Desinstalar: "Manter dados" (padrão) ou "Remover tudo" (com cópia antes).
+; Silencioso: /S (instala/atualiza).  Desinstalação silenciosa: Desinstalar_UStracker.exe /S [/REMOVERTUDO]
 
 Unicode true
 SetCompressor lzma
@@ -11,7 +17,7 @@ RequestExecutionLevel admin
 ManifestDPIAware true
 
 !ifndef VERSION
-  !define VERSION "2.0.0"
+  !define VERSION "2.2.0"
 !endif
 !ifndef SRC
   !error "Defina -DSRC=<pasta do programa>"
@@ -30,59 +36,122 @@ ManifestDPIAware true
 !define PUBLISHER "CRJ"
 !define UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\UStracker"
 !define WV2_GUID "{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+!define OLD_DEFAULT "C:\UStracker"
 
 Name "${APP} ${VERSION}"
 OutFile "${OUT}"
-InstallDir "C:\UStracker"
-InstallDirRegKey HKLM "${UNINST_KEY}" "InstallLocation"
-BrandingText "${APP} ${VERSION}"
+InstallDir "$PROGRAMFILES64\${APP}"
+BrandingText "${APP} ${VERSION} — ${PUBLISHER}"
 VIProductVersion "${VERSION}.0"
 VIAddVersionKey /LANG=1046 "ProductName" "${APP}"
+VIAddVersionKey /LANG=1046 "CompanyName" "${PUBLISHER}"
 VIAddVersionKey /LANG=1046 "FileDescription" "Instalador do ${APP}"
 VIAddVersionKey /LANG=1046 "ProductVersion" "${VERSION}"
 VIAddVersionKey /LANG=1046 "FileVersion" "${VERSION}"
-VIAddVersionKey /LANG=1046 "LegalCopyright" "${PUBLISHER}"
+VIAddVersionKey /LANG=1046 "LegalCopyright" "© ${PUBLISHER}"
 
 !include "MUI2.nsh"
 !include "LogicLib.nsh"
 !include "FileFunc.nsh"
+!include "x64.nsh"
+!include "nsDialogs.nsh"
+
+Var DataDir
+Var OldDir
+Var OldVersion
+Var LogFile
+Var UnMode
+Var UnText
+Var UnRadioKeep
+Var UnRadioAll
 
 !ifdef ICON
   !define MUI_ICON "${ICON}"
   !define MUI_UNICON "${ICON}"
 !endif
 !define MUI_ABORTWARNING
+!define MUI_ABORTWARNING_TEXT "Cancelar a instalação do ${APP}? Nada foi alterado ainda se você ainda não clicou em Instalar."
 !define MUI_WELCOMEPAGE_TITLE "Instalar o ${APP} ${VERSION}"
-!define MUI_WELCOMEPAGE_TEXT "Este assistente instala ou atualiza o ${APP} neste computador.$\r$\n$\r$\nSe o ${APP} já estiver instalado, só o programa é atualizado: seus dados (pasta UserData) continuam intactos.$\r$\n$\r$\nAntes de continuar, feche o ${APP} pelo botão Encerrar."
-!define MUI_DIRECTORYPAGE_TEXT_TOP "Pasta do ${APP}. Use uma pasta local (não use pasta de rede nem pasta sincronizada). Para atualizar, escolha a pasta onde ele já está."
-!define MUI_FINISHPAGE_TITLE "${APP} pronto"
-!define MUI_FINISHPAGE_TEXT "Instalação concluída.$\r$\n$\r$\nAbra o ${APP}. Se a empresa já usa o ${APP}, entre com seu usuário e senha: os dados chegam sozinhos da nuvem. Se for o primeiro computador, cadastre o Administrador."
-!define MUI_FINISHPAGE_RUN "$INSTDIR\UStracker.exe"
+!define MUI_WELCOMEPAGE_TEXT "Este assistente instala ou atualiza o ${APP} neste computador.$\r$\n$\r$\n• Programa: Arquivos de Programas\${APP} (protegido)$\r$\n• Dados: ProgramData\${APP} (clientes, finanças, fotos e backups)$\r$\n$\r$\nSe houver uma versão antiga aberta, ela será fechada. Seus dados nunca são apagados pela instalação: uma instalação antiga em C:\UStracker é copiada para o lugar novo."
+!define MUI_LICENSEPAGE_TEXT_TOP "Leia os termos de uso do ${APP}."
+!define MUI_FINISHPAGE_TITLE "${APP} ${VERSION} instalado"
+!define MUI_FINISHPAGE_TEXT "Pronto.$\r$\n$\r$\nNa primeira abertura em um computador novo, o ${APP} pede a ATIVAÇÃO pelo Adm Global. Depois disso, cada pessoa entra com o próprio usuário e senha."
+!define MUI_FINISHPAGE_RUN
 !define MUI_FINISHPAGE_RUN_TEXT "Abrir o ${APP} agora"
+!define MUI_FINISHPAGE_RUN_FUNCTION OpenAppAsUser
 
 !insertmacro MUI_PAGE_WELCOME
-!insertmacro MUI_PAGE_DIRECTORY
+!insertmacro MUI_PAGE_LICENSE "${SRC}/LICENSE.txt"
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_PAGE_FINISH
+
 !insertmacro MUI_UNPAGE_CONFIRM
+UninstPage custom un.ModePage un.ModeLeave
 !insertmacro MUI_UNPAGE_INSTFILES
+
 !insertmacro MUI_LANGUAGE "PortugueseBR"
 
-Function .onInit
-  ${IfNot} ${FileExists} "$WINDIR\SysWOW64\*.*"
-    MessageBox MB_ICONSTOP "O ${APP} precisa do Windows 64 bits."
+; ----------------------------------------------------------------------------------------------- comuns
+!macro LOG text
+  FileOpen $9 "$LogFile" a
+  ${If} $9 != ""
+    FileSeek $9 0 END
+    FileWrite $9 "${text}$\r$\n"
+    FileClose $9
+  ${EndIf}
+  DetailPrint "${text}"
+!macroend
+
+; Close every UStracker process (program folder new or old). Asks first, unless silent.
+!macro CLOSE_APP un
+Function ${un}CloseApp
+  StrCpy $1 "$$p=Get-Process | Where-Object { $$_.Path -and ($$_.Path -like '$INSTDIR\*' -or $$_.Path -like '${OLD_DEFAULT}\*'"
+  ${If} $OldDir != ""
+    StrCpy $1 "$1 -or $$_.Path -like '$OldDir\*'"
+  ${EndIf}
+  StrCpy $1 "$1) };"
+  nsExec::ExecToStack 'powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$1 if($$p){exit 1}else{exit 0}"'
+  Pop $0
+  Pop $2
+  ${If} $0 == "1"
+    MessageBox MB_ICONEXCLAMATION|MB_OKCANCEL "O ${APP} está aberto neste computador.$\r$\n$\r$\nClique em OK para fechá-lo e continuar (as alterações já gravadas não se perdem)." /SD IDOK IDOK close
     Abort
+    close:
+    nsExec::ExecToStack 'powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$1 $$p | Stop-Process -Force; Start-Sleep -Seconds 2"'
+    Pop $0
+    Pop $2
   ${EndIf}
 FunctionEnd
+!macroend
+!insertmacro CLOSE_APP ""
+!insertmacro CLOSE_APP "un."
 
-; The app writes UserData\State\backend.json while it is running.
-Function WaitAppClosed
-  loop:
-  ${If} ${FileExists} "$INSTDIR\UserData\State\backend.json"
-    MessageBox MB_ICONEXCLAMATION|MB_ABORTRETRYIGNORE "O ${APP} parece estar aberto.$\r$\n$\r$\nFeche pelo botão Encerrar e clique em Repetir.$\r$\n(Ignorar: continuar mesmo assim, se ele já estiver fechado.)" IDRETRY loop IDIGNORE done
+Function .onInit
+  ${IfNot} ${RunningX64}
+    MessageBox MB_ICONSTOP "O ${APP} precisa do Windows 64 bits." /SD IDOK
     Abort
   ${EndIf}
-  done:
+  SetRegView 64
+  SetShellVarContext all
+  ReadEnvStr $0 PROGRAMDATA
+  ${If} $0 == ""
+    StrCpy $0 "C:\ProgramData"
+  ${EndIf}
+  StrCpy $DataDir "$0\${APP}"
+  ; old install: registry first, then the old default folder
+  ReadRegStr $OldDir HKLM "${UNINST_KEY}" "InstallLocation"
+  ReadRegStr $OldVersion HKLM "${UNINST_KEY}" "DisplayVersion"
+  ${If} $OldDir == ""
+  ${AndIf} ${FileExists} "${OLD_DEFAULT}\UStracker.exe"
+    StrCpy $OldDir "${OLD_DEFAULT}"
+  ${EndIf}
+  ${If} $OldDir == "$INSTDIR"
+    StrCpy $OldDir ""
+  ${EndIf}
+  ${If} $OldDir != ""
+  ${AndIfNot} ${FileExists} "$OldDir\*.*"
+    StrCpy $OldDir ""
+  ${EndIf}
 FunctionEnd
 
 ; offline WebView2 runtime embedded at build time (installed only when missing)
@@ -94,100 +163,193 @@ Function EnsureWebView2
   ${EndIf}
   ${If} $0 == ""
   ${OrIf} $0 == "0.0.0.0"
-    DetailPrint "Instalando o Microsoft WebView2 (componente da tela do sistema)..."
+    !insertmacro LOG "Instalando o Microsoft WebView2 (componente da tela do sistema)..."
     InitPluginsDir
     SetOutPath "$PLUGINSDIR"
     SetCompress off
     File /oname=MicrosoftEdgeWebView2RuntimeInstallerX64.exe "${WV2}"
     SetCompress auto
-    ExecWait '"$PLUGINSDIR\MicrosoftEdgeWebView2RuntimeInstallerX64.exe" /silent /install'
+    ExecWait '"$PLUGINSDIR\MicrosoftEdgeWebView2RuntimeInstallerX64.exe" /silent /install' $0
+    !insertmacro LOG "WebView2: código $0"
     SetOutPath "$INSTDIR"
   ${Else}
-    DetailPrint "Microsoft WebView2 encontrado ($0)."
+    !insertmacro LOG "Microsoft WebView2 encontrado ($0)."
   ${EndIf}
 FunctionEnd
 
+; The finish page runs elevated: open the app as the signed-in user instead (never as administrator).
+Function OpenAppAsUser
+  Exec '"$WINDIR\explorer.exe" "$INSTDIR\UStracker.exe"'
+FunctionEnd
+
+; ----------------------------------------------------------------------------------------------- instalar
 Section "Programa" SecMain
   SectionIn RO
-  Call WaitAppClosed
+  CreateDirectory "$DataDir\UserData\Logs"
+  StrCpy $LogFile "$DataDir\UserData\Logs\instalacao.log"
+  !insertmacro LOG "=== ${APP} ${VERSION}: instalação iniciada (anterior: $OldVersion $OldDir)"
+  Call CloseApp
+
+  ; 1) program files (old program code removed first so no stale file survives)
   SetOutPath "$INSTDIR"
-  ${If} ${FileExists} "$INSTDIR\UserData\*.*"
-    DetailPrint "Atualizando: seus dados em UserData são mantidos."
-  ${EndIf}
-  ; remove only replaceable program code so no stale file survives an update
   RMDir /r "$INSTDIR\Runtime\Lib\site-packages\ustracker"
   RMDir /r "$INSTDIR\frontend"
-  ; Release 2: leftovers of the old kit-based installer
-  RMDir /r "$INSTDIR\Redist"
   RMDir /r "$INSTDIR\Instalador"
-  ; program files
+  RMDir /r "$INSTDIR\Redist"
   File /r /x "UserData" /x "Trust" /x "Instalador" /x "Redist" /x "*.pdb" /x "__pycache__" "${SRC}/*.*"
-  ; Trust (update public key) is installed only when missing
-  SetOverwrite off
+  ; Trust: always the keys of THIS version (update key, Adm Global, cloud address without the company key)
   SetOutPath "$INSTDIR\Trust"
-  File /nonfatal /r "${SRC}/Trust/*.*"
-  SetOverwrite on
-  ; S-08: company cloud address (placa), embedded at build time — new computers download the data by themselves
+  Delete "$INSTDIR\Trust\*.*"
+  File "${SRC}/Trust/update_public_key.pem"
+  File "${SRC}/Trust/adm-global.json"
+  File "${SRC}/Trust/README.txt"
   File /oname=placa-bootstrap.json "${PLACA}"
   SetOutPath "$INSTDIR"
-  CreateDirectory "$INSTDIR\UserData"
-  ; normal (non-admin) Windows users must be able to write their data
-  nsExec::ExecToLog 'icacls "$INSTDIR" /grant *S-1-5-32-545:(OI)(CI)M /T /C /Q'
+  !insertmacro LOG "Programa copiado para $INSTDIR"
+
+  ; 2) data folder in ProgramData + junction + migration of the old install (copy, never delete)
+  InitPluginsDir
+  File /oname=$PLUGINSDIR\setup-data.ps1 "setup-data.ps1"
+  nsExec::ExecToLog 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$PLUGINSDIR\setup-data.ps1" -App "$INSTDIR" -Data "$DataDir" -Old "$OldDir" -Log "$LogFile"'
+  Pop $0
+  ${If} $0 != "0"
+    !insertmacro LOG "ERRO na pasta de dados (código $0)"
+    MessageBox MB_ICONSTOP "Não foi possível preparar a pasta de dados (código $0).$\r$\nNenhum dado foi apagado. Detalhes em:$\r$\n$LogFile" /SD IDOK
+    Abort
+  ${EndIf}
+  !insertmacro LOG "Dados em $DataDir\UserData"
+
+  ; 3) faster first start: compile the program once (users cannot write in Program Files)
+  nsExec::ExecToLog '"$INSTDIR\Runtime\python.exe" -m compileall -q "$INSTDIR\Runtime\Lib\site-packages"'
   Pop $0
 
   Call EnsureWebView2
 
-  SetShellVarContext all
+  ; 4) shortcuts (all users) — the old ones are replaced
+  Delete "$DESKTOP\${APP}.lnk"
+  RMDir /r "$SMPROGRAMS\${APP}"
   CreateDirectory "$SMPROGRAMS\${APP}"
   CreateShortCut "$SMPROGRAMS\${APP}\${APP}.lnk" "$INSTDIR\UStracker.exe" "" "$INSTDIR\UStracker.exe" 0
   CreateShortCut "$SMPROGRAMS\${APP}\Manual do ${APP}.lnk" "$INSTDIR\Docs\MANUAL_USUARIO.md"
   CreateShortCut "$SMPROGRAMS\${APP}\Desinstalar ${APP}.lnk" "$INSTDIR\Desinstalar_UStracker.exe"
   CreateShortCut "$DESKTOP\${APP}.lnk" "$INSTDIR\UStracker.exe" "" "$INSTDIR\UStracker.exe" 0
 
+  ; 5) Programs and Features
   WriteUninstaller "$INSTDIR\Desinstalar_UStracker.exe"
   WriteRegStr HKLM "${UNINST_KEY}" "DisplayName" "${APP}"
   WriteRegStr HKLM "${UNINST_KEY}" "DisplayVersion" "${VERSION}"
   WriteRegStr HKLM "${UNINST_KEY}" "Publisher" "${PUBLISHER}"
   WriteRegStr HKLM "${UNINST_KEY}" "InstallLocation" "$INSTDIR"
+  WriteRegStr HKLM "${UNINST_KEY}" "DataLocation" "$DataDir"
   WriteRegStr HKLM "${UNINST_KEY}" "DisplayIcon" "$INSTDIR\UStracker.exe"
   WriteRegStr HKLM "${UNINST_KEY}" "UninstallString" '"$INSTDIR\Desinstalar_UStracker.exe"'
+  WriteRegStr HKLM "${UNINST_KEY}" "QuietUninstallString" '"$INSTDIR\Desinstalar_UStracker.exe" /S'
   WriteRegDWORD HKLM "${UNINST_KEY}" "NoModify" 1
   WriteRegDWORD HKLM "${UNINST_KEY}" "NoRepair" 1
   ${GetSize} "$INSTDIR" "/S=0K /G=0" $0 $1 $2
   WriteRegDWORD HKLM "${UNINST_KEY}" "EstimatedSize" $0
+  !insertmacro LOG "=== ${APP} ${VERSION} instalado"
 SectionEnd
 
-; Uninstall removes the program only. UserData (clients, finance, photos, backups) stays.
+; ----------------------------------------------------------------------------------------------- desinstalar
+Function un.onInit
+  SetRegView 64
+  SetShellVarContext all
+  ReadRegStr $DataDir HKLM "${UNINST_KEY}" "DataLocation"
+  ${If} $DataDir == ""
+    ReadEnvStr $0 PROGRAMDATA
+    StrCpy $DataDir "$0\${APP}"
+  ${EndIf}
+  StrCpy $UnMode "keep"
+  ${GetParameters} $0
+  ClearErrors
+  ${GetOptions} $0 "/REMOVERTUDO" $1
+  ${IfNot} ${Errors}
+    StrCpy $UnMode "all"
+  ${EndIf}
+  StrCpy $OldDir ""
+FunctionEnd
+
+Function un.ModePage
+  !insertmacro MUI_HEADER_TEXT "O que fazer com os dados?" "Clientes, finanças, fotos e backups deste computador."
+  nsDialogs::Create 1018
+  Pop $0
+  ${NSD_CreateRadioButton} 0 0 100% 14u "Manter dados (recomendado) — remove só o programa; os dados ficam para reinstalar."
+  Pop $UnRadioKeep
+  ${NSD_CreateRadioButton} 0 22u 100% 14u "Remover tudo — apaga os dados deste computador (antes, uma cópia vai para Documentos)."
+  Pop $UnRadioAll
+  ${NSD_CreateLabel} 12u 42u 100% 22u "Para remover tudo, digite REMOVER abaixo. A nuvem da empresa NÃO é apagada; os outros computadores continuam funcionando."
+  Pop $0
+  ${NSD_CreateText} 12u 66u 120u 13u ""
+  Pop $UnText
+  ${If} $UnMode == "all"
+    ${NSD_Check} $UnRadioAll
+  ${Else}
+    ${NSD_Check} $UnRadioKeep
+  ${EndIf}
+  nsDialogs::Show
+FunctionEnd
+
+Function un.ModeLeave
+  ${NSD_GetState} $UnRadioAll $0
+  ${If} $0 == ${BST_CHECKED}
+    ${NSD_GetText} $UnText $1
+    ${If} $1 != "REMOVER"
+      MessageBox MB_ICONEXCLAMATION "Para remover todos os dados, digite REMOVER (em maiúsculas)."
+      Abort
+    ${EndIf}
+    StrCpy $UnMode "all"
+  ${Else}
+    StrCpy $UnMode "keep"
+  ${EndIf}
+FunctionEnd
+
 Section "Uninstall"
-  ${If} ${FileExists} "$INSTDIR\UserData\State\backend.json"
-    MessageBox MB_ICONEXCLAMATION "Feche o ${APP} pelo botão Encerrar e rode a desinstalação de novo."
-    Abort
+  StrCpy $LogFile "$DataDir\UserData\Logs\instalacao.log"
+  !insertmacro LOG "=== desinstalação ($UnMode)"
+  Call un.CloseApp
+
+  ; the junction goes first, WITHOUT following it (the data stays untouched here)
+  nsExec::ExecToLog 'cmd.exe /c rmdir "$INSTDIR\UserData"'
+  Pop $0
+  ${If} ${FileExists} "$INSTDIR\UserData\*.*"
+    !insertmacro LOG "a pasta UserData do programa não é uma junção: mantida"
   ${EndIf}
   RMDir /r "$INSTDIR\Runtime"
   RMDir /r "$INSTDIR\runtimes"
   RMDir /r "$INSTDIR\frontend"
   RMDir /r "$INSTDIR\Docs"
+  RMDir /r "$INSTDIR\Trust"
   RMDir /r "$INSTDIR\Redist"
-  Delete "$INSTDIR\UStracker.exe"
-  Delete "$INSTDIR\UStracker.exe.config"
-  Delete "$INSTDIR\UStracker.Shell.exe"
-  Delete "$INSTDIR\UStracker.Shell.exe.config"
-  Delete "$INSTDIR\UStracker.Updater.exe"
-  Delete "$INSTDIR\UStracker.Updater.exe.config"
-  Delete "$INSTDIR\Microsoft.Web.WebView2.*.dll"
-  Delete "$INSTDIR\WebView2Loader.dll"
-  Delete "$INSTDIR\VERSION.json"
-  Delete "$INSTDIR\current.json"
-  Delete "$INSTDIR\version.md"
-  Delete "$INSTDIR\SBOM.json"
-  Delete "$INSTDIR\LEIA-ME.txt"
-  Delete "$INSTDIR\LICENSE.txt"
-  Delete "$INSTDIR\NOTICE.txt"
-  Delete "$INSTDIR\UStracker.ico"
-  Delete "$INSTDIR\Desinstalar_UStracker.exe"
-  SetShellVarContext all
+  RMDir /r "$INSTDIR\.update-work"
+  Delete "$INSTDIR\*.exe"
+  Delete "$INSTDIR\*.config"
+  Delete "$INSTDIR\*.dll"
+  Delete "$INSTDIR\*.json"
+  Delete "$INSTDIR\*.md"
+  Delete "$INSTDIR\*.txt"
+  Delete "$INSTDIR\*.ico"
+  RMDir "$INSTDIR"
+
   Delete "$DESKTOP\${APP}.lnk"
   RMDir /r "$SMPROGRAMS\${APP}"
   DeleteRegKey HKLM "${UNINST_KEY}"
-  MessageBox MB_ICONINFORMATION "Programa removido.$\r$\n$\r$\nSeus dados continuam em:$\r$\n$INSTDIR\UserData$\r$\n$\r$\nPara apagá-los de vez, exclua essa pasta manualmente."
+
+  ${If} $UnMode == "all"
+    SetShellVarContext current
+    ${GetTime} "" "L" $0 $1 $2 $3 $4 $5 $6
+    StrCpy $7 "$DOCUMENTS\UStracker_Backups\Desinstalacao_$2$1$0_$4$5"
+    SetShellVarContext all
+    InitPluginsDir
+    File /oname=$PLUGINSDIR\remove-data.ps1 "remove-data.ps1"
+    nsExec::ExecToLog 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$PLUGINSDIR\remove-data.ps1" -Data "$DataDir" -Backup "$7" -Log "$7\desinstalacao.log"'
+    Pop $0
+    ${If} $0 == "0"
+      MessageBox MB_ICONINFORMATION "${APP} removido, com os dados deste computador.$\r$\n$\r$\nCópia de segurança dos dados:$\r$\n$7" /SD IDOK
+    ${Else}
+      MessageBox MB_ICONEXCLAMATION "O programa foi removido, mas os dados NÃO foram apagados (código $0).$\r$\nEles continuam em:$\r$\n$DataDir" /SD IDOK
+    ${EndIf}
+  ${Else}
+    MessageBox MB_ICONINFORMATION "Programa removido.$\r$\n$\r$\nSeus dados continuam em:$\r$\n$DataDir$\r$\n$\r$\nAo reinstalar, tudo volta como estava." /SD IDOK
+  ${EndIf}
 SectionEnd

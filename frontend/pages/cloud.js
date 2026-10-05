@@ -45,7 +45,7 @@ export function renderPointsTable(items = []) {
 }
 
 export function renderRecoveryKit(s = {}) {
-  return `<div class="cloud-kit"><p>Guarde estas duas informações fora do computador (papel, cofre de senhas). Com elas e a sua senha de sempre você recupera tudo em outra máquina.</p>
+  return `<div class="cloud-kit"><p>Guarde estas duas informações fora do computador (papel, cofre de senhas). Com elas e a sua senha você recupera tudo em outra máquina.</p>
     <dl class="cloud-facts"><dt>URL do App da Web</dt><dd><code>${esc(s.url || '')}</code></dd><dt>Código de conexão</dt><dd>O mesmo exibido pelo script ao executar <code>instalar</code> (não fica visível aqui por segurança).</dd></dl>
     <p class="muted">Computador novo: instale com <b>UStracker_install_x64.exe</b> e entre com seu usuário e senha — os dados chegam sozinhos da nuvem.</p></div>`;
 }

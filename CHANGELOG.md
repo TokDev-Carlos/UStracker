@@ -2,6 +2,14 @@
 
 Formato: versão semântica a partir da 2.0.0 (2.0.1 = correção, 2.1.0 = novidade compatível).
 
+## 2.2.0 — 2026-10-05
+- Ativação de computador novo só pelo Adm Global; na primeira instalação ele cria o Administrador da empresa (guardado na nuvem na hora).
+- Corrige o "Internal Server Error" na primeira entrada (acessos antigos vindos da nuvem); erros inesperados em JSON + `UserData/Logs/erros.log`.
+- Segurança: chave da empresa fora do instalador (`company-key.json` cifrado para o Adm Global em `acesso-UStracker`); host/origem exatos; custos nunca saem para quem não tem a permissão; cancelar/encerrar e ajustes de cobrança com permissões próprias; Token Mestre baixado (não fica no disco); "Encerrar" exige sessão; pedido de "zerar tudo" por arquivo desativado; `global_access` só aceita o Adm Global confiável.
+- Windows: Program Files (protegido) + ProgramData (dados) com junção `UserData`; migração automática de `C:\UStracker`.
+- Instalador: fecha o sistema aberto, migra, `/S`, log; desinstalar com Manter dados / Remover tudo (cópia antes).
+- Atualização pela nuvem com UAC quando o programa está protegido; pacote conferido contra a versão anunciada.
+
 ## 2.1.1 — 2026-10-05
 - Primeira atualização entregue pela nuvem (validação do canal). Sem mudança no banco.
 

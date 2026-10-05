@@ -1,5 +1,5 @@
 # Trust
 
-Chave publica Ed25519 usada para validar patches UStracker. A chave privada correspondente nao deve entrar no repositorio nem no pacote de usuario.
+Chave publica Ed25519 usada para validar as atualizacoes do UStracker. A chave privada fica so na pasta Tokens/UStracker do Google Drive do dono.
 
-O arquivo `placa-bootstrap.json` (gerado pelo sistema) fica só nas instalações e dentro do instalador; nunca no repositório.
+Os arquivos `placa-bootstrap.json` e `adm-global.json` (token so de leitura) ficam so nas instalacoes e dentro do instalador; nunca no repositorio.

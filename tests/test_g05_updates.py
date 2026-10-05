@@ -96,6 +96,33 @@ class UpdateChannel(unittest.TestCase):
         self.publish('2.0.1')
         self.assertFalse(self.svc().check()['available'], 'nunca volta versão')
 
+    def test_channel_must_announce_the_package_version(self):
+        self.publish('2.1.0')
+        m = json.loads((self.pub / 'update.json').read_text())
+        body = {k: v for k, v in m.items() if k != 'sig'}; body['version'] = '2.9.0'
+        m = {**body, 'sig': self.key.sign(uc._canonical(body)).hex()}
+        (self.pub / 'update.json').write_text(json.dumps(m))
+        s = self.svc(); self.assertTrue(s.check()['available'])
+        with self.assertRaises(uc.UpdateError):
+            s.download()
+        self.assertFalse((self.root / 'UserData' / 'Updates' / 'pending.usup').exists())
+
+    def test_read_only_program_folder_asks_windows_for_elevation(self):
+        self.publish('2.1.0'); s = self.svc(); s.check(); s.download()
+        asked = []
+        orig = uc._root_writable
+        uc._root_writable = lambda root: False
+        try:
+            with self.assertRaises(uc.UpdateError):
+                uc.apply_pending(self.root, sanity=lambda r: True, elevate=lambda root: asked.append(root) or None)
+            self.assertEqual(len(asked), 1)
+            self.assertTrue((self.root / 'UserData' / 'Updates' / 'pending.usup').exists(), 'continua guardada')
+            out = uc.apply_pending(self.root, sanity=lambda r: True, elevate=lambda root: uc.main(['--apply-pending', '--root', str(root)]))
+            self.assertEqual(out['result'], 'applied')
+        finally:
+            uc._root_writable = orig
+        self.assertEqual((self.root / 'version.md').read_text().strip(), '2.1.0')
+
     def test_failed_start_rolls_back(self):
         self.publish('2.1.0'); s = self.svc(); s.check(); s.download()
         with self.assertRaises(uc.UpdateError):

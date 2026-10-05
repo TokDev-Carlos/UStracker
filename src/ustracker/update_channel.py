@@ -155,10 +155,13 @@ class UpdateService:
             tmp = self.dir / 'pending.usup.tmp'
             tmp.write_bytes(data)
             try:
-                inspect_package(tmp, _public_key(self.root))
+                inner = inspect_package(tmp, _public_key(self.root))
             except Exception as exc:
                 tmp.unlink(missing_ok=True)
                 raise UpdateError('assinatura do pacote inválida') from exc
+            if str(inner.get('to_version')) != str(m['version']):
+                tmp.unlink(missing_ok=True)
+                raise UpdateError('o pacote não é da versão anunciada no canal')
             tmp.replace(self.dir / 'pending.usup')
             (self.dir / 'pending.json').write_text(json.dumps({k: m[k] for k in ('version', 'level', 'notes', 'sha256')}),
                                                    encoding='utf-8')
@@ -212,14 +215,73 @@ def _sanity(root: Path) -> bool:
         return False
 
 
-def apply_pending(root: Path | str, sanity=_sanity) -> dict | None:
+def _root_writable(root: Path) -> bool:
+    probe = Path(root) / f'.write-test-{os.getpid()}'
+    try:
+        probe.write_bytes(b'')
+        probe.unlink()
+        return True
+    except OSError:
+        return False
+
+
+def _run_elevated(root: Path) -> int | None:
+    """Program Files (2.2.0): only an administrator writes the program. Ask Windows (UAC) and wait.
+
+    Returns the exit code, or None when elevation is not possible or was refused."""
+    if os.name != 'nt':
+        return None
+    import ctypes
+    from ctypes import wintypes
+
+    class SHELLEXECUTEINFOW(ctypes.Structure):
+        _fields_ = [('cbSize', wintypes.DWORD), ('fMask', ctypes.c_ulong), ('hwnd', wintypes.HWND),
+                    ('lpVerb', wintypes.LPCWSTR), ('lpFile', wintypes.LPCWSTR), ('lpParameters', wintypes.LPCWSTR),
+                    ('lpDirectory', wintypes.LPCWSTR), ('nShow', ctypes.c_int), ('hInstApp', wintypes.HINSTANCE),
+                    ('lpIDList', ctypes.c_void_p), ('lpClass', wintypes.LPCWSTR), ('hkeyClass', wintypes.HKEY),
+                    ('dwHotKey', wintypes.DWORD), ('hIconOrMonitor', wintypes.HANDLE), ('hProcess', wintypes.HANDLE)]
+    info = SHELLEXECUTEINFOW()
+    info.cbSize = ctypes.sizeof(info)
+    info.fMask = 0x00000040 | 0x00000400  # SEE_MASK_NOCLOSEPROCESS | SEE_MASK_FLAG_NO_UI
+    info.lpVerb = 'runas'
+    info.lpFile = sys.executable
+    info.lpParameters = f'-m ustracker.update_channel --apply-pending --root "{root}"'
+    info.lpDirectory = str(root)
+    info.nShow = 0
+    try:
+        if not ctypes.windll.shell32.ShellExecuteExW(ctypes.byref(info)) or not info.hProcess:
+            return None
+        ctypes.windll.kernel32.WaitForSingleObject(info.hProcess, 15 * 60 * 1000)
+        code = wintypes.DWORD()
+        ctypes.windll.kernel32.GetExitCodeProcess(info.hProcess, ctypes.byref(code))
+        ctypes.windll.kernel32.CloseHandle(info.hProcess)
+        return int(code.value)
+    except Exception:
+        return None
+
+
+def apply_pending(root: Path | str, sanity=_sanity, *, elevate=_run_elevated) -> dict | None:
     """Install the downloaded package (app closed). Returns the journal, or None when nothing is pending."""
-    from .apply_update import _replace_file, apply
     root = Path(root)
     pdir = root / 'UserData' / 'Updates'
     pkg, meta = pdir / 'pending.usup', pdir / 'pending.json'
     if not pkg.exists() or not meta.exists():
         return None
+    if not _root_writable(root):
+        code = elevate(root)
+        if code == 0:
+            return {'result': 'applied', 'elevated': True}
+        if code is None:
+            _log(root, {'result': 'waiting', 'error': 'precisa da permissão de administrador do Windows (UAC)'})
+            raise UpdateError('a atualização precisa da permissão de administrador do Windows; ela fica guardada para a próxima vez')
+        raise UpdateError('a atualização não foi aplicada (veja Sistema › Atualização)')
+    return _apply_here(root, sanity)
+
+
+def _apply_here(root: Path, sanity=_sanity) -> dict:
+    from .apply_update import _replace_file, apply
+    pdir = root / 'UserData' / 'Updates'
+    pkg, meta = pdir / 'pending.usup', pdir / 'pending.json'
     keep = pdir / 'previous'
     try:
         journal = apply(root, pkg, keep_rollback=keep)
@@ -240,8 +302,41 @@ def apply_pending(root: Path | str, sanity=_sanity) -> dict | None:
         raise UpdateError('a versão nova não abriu; o sistema voltou para a anterior')
     pkg.unlink(missing_ok=True); meta.unlink(missing_ok=True)
     shutil.rmtree(keep, ignore_errors=True)
+    _precompile(root)
     _log(root, {'result': 'applied', 'from': journal.get('from'), 'to': journal.get('to')})
     return journal
+
+
+def _precompile(root: Path) -> None:
+    """Faster first start: compile the new code once (only matters where users cannot write the program)."""
+    try:
+        import compileall
+        import ustracker
+        compileall.compile_dir(str(Path(ustracker.__file__).parent), quiet=1)
+    except Exception:
+        pass
+
+
+def main(argv=None) -> int:
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--apply-pending', action='store_true')
+    parser.add_argument('--root', required=True)
+    args = parser.parse_args(argv)
+    if not args.apply_pending:
+        return 2
+    try:
+        return 0 if _apply_here(Path(args.root)) else 1
+    except Exception as exc:
+        try:
+            _log(Path(args.root), {'result': 'failed', 'error': str(exc)[:300]})
+        except Exception:
+            pass
+        return 1
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())
 
 
 def _log(root: Path, entry: dict) -> None:

@@ -129,7 +129,13 @@ def verify(token: dict, trust: dict, *, offline: bool = False) -> dict:
     if offline:
         if token.get('kind') != 'pass':
             raise AccessDenied('passe inválido')
-        if datetime.fromisoformat(token['expires_at']) <= _now():
+        try:
+            expires = datetime.fromisoformat(str(token['expires_at']))
+            if expires.tzinfo is None:
+                expires = expires.replace(tzinfo=UTC)
+        except Exception as exc:
+            raise AccessDenied('passe inválido') from exc
+        if expires <= _now():
             raise AccessDenied('passe vencido')
     elif token.get('kind') != 'online':
         raise AccessDenied('token inválido')
@@ -155,25 +161,67 @@ def open_keys(token: dict, pin: str, trust: dict) -> dict:
 
 
 # ----------------------------------------------------------------------------- VRK para o Adm Global
-def _wrap_key(shared: bytes) -> bytes:
-    return HKDF(algorithm=hashes.SHA256(), length=32, salt=None, info=AAD_WRAP).derive(shared)
+def _wrap_key(shared: bytes, aad: bytes = AAD_WRAP) -> bytes:
+    return HKDF(algorithm=hashes.SHA256(), length=32, salt=None, info=aad).derive(shared)
 
 
-def wrap(vrk: bytes, trust: dict) -> dict:
+def wrap(vrk: bytes, trust: dict, aad: bytes = AAD_WRAP) -> dict:
     eph = X25519PrivateKey.generate()
     shared = eph.exchange(X25519PublicKey.from_public_bytes(_b64d(trust['x_pub'])))
     nonce = secrets.token_bytes(12)
     return {'x_pub': trust['x_pub'], 'eph': _b64e(_raw(eph.public_key())), 'nonce': _b64e(nonce),
-            'cipher': _b64e(AESGCM(_wrap_key(shared)).encrypt(nonce, vrk, AAD_WRAP))}
+            'cipher': _b64e(AESGCM(_wrap_key(shared, aad)).encrypt(nonce, vrk, aad))}
 
 
-def unwrap(wrapped: dict, keys: dict) -> bytes:
+def unwrap(wrapped: dict, keys: dict, aad: bytes = AAD_WRAP) -> bytes:
     try:
         priv = X25519PrivateKey.from_private_bytes(_b64d(keys['x_priv']))
         shared = priv.exchange(X25519PublicKey.from_public_bytes(_b64d(wrapped['eph'])))
-        return AESGCM(_wrap_key(shared)).decrypt(_b64d(wrapped['nonce']), _b64d(wrapped['cipher']), AAD_WRAP)
+        return AESGCM(_wrap_key(shared, aad)).decrypt(_b64d(wrapped['nonce']), _b64d(wrapped['cipher']), aad)
     except Exception as exc:
         raise AccessDenied('invalid credentials') from exc
+
+
+# ----------------------------------------------------------------------------- chave da empresa (ativação)
+# O instalador NÃO leva a chave da empresa. Ela fica no repositório privado acesso-<Empresa> como
+# ``company-key.json``, cifrada para a chave pública do Adm Global: só quem abre o Token Mestre com o PIN usa.
+COMPANY_FORMAT = 'ustracker-company-key/1'
+AAD_COMPANY = b'UStracker/adm-global/company-key/v1'
+
+
+def company_url(trust: dict) -> str:
+    return trust.get('company_url') or trust['url'].rsplit('/', 1)[0] + '/company-key.json'
+
+
+def wrap_company_key(company_key_b64: str, trust: dict) -> dict:
+    raw = _b64d(company_key_b64)
+    if len(raw) != 32:
+        raise ValueError('company key must have 32 bytes')
+    return {'format': COMPANY_FORMAT, 'login': trust['login'], 'wrap': wrap(raw, trust, AAD_COMPANY)}
+
+
+def open_company_key(doc: dict, keys: dict) -> str:
+    if not isinstance(doc, dict) or doc.get('format') != COMPANY_FORMAT:
+        raise AccessDenied('chave da empresa em formato desconhecido')
+    return _b64e(unwrap(doc['wrap'], keys, AAD_COMPANY))
+
+
+def fetch_company_key(trust: dict, timeout: float = 10.0, opener=None) -> dict | None:
+    """company-key.json from the private repo; None when it was not published (404)."""
+    req = urllib.request.Request(company_url(trust), headers={
+        'Authorization': f"Bearer {trust.get('read_token', '')}", 'Accept': 'application/vnd.github.raw',
+        'Cache-Control': 'no-cache', 'User-Agent': 'UStracker'})
+    try:
+        with (opener or urllib.request.build_opener()).open(req, timeout=timeout) as resp:
+            return json.loads(resp.read().decode('utf-8'))
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            return None
+        raise AccessDenied('chave da empresa indisponível') from exc
+    except (urllib.error.URLError, TimeoutError) as exc:
+        raise OSError('offline') from exc
+    except ValueError:
+        return None
 
 
 # ----------------------------------------------------------------------------- pergunta falsa e pistas
