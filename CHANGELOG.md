@@ -2,6 +2,11 @@
 
 Formato: versão semântica a partir da 2.0.0 (2.0.1 = correção, 2.1.0 = novidade compatível).
 
+## 2.0.2 — 2026-10-05
+- Um Administrador por instalação (Adm Local) com Chave de Recuperação ("Esqueci a senha").
+- Adm Global: login + PIN + pergunta de segurança com pistas; validado pelo Token Mestre no repositório privado `acesso-UStracker` ou passe de 1 dia sem internet; bloqueio de 30 minutos.
+- Funções técnicas reservadas ao Adm Global (nuvem, placa, restaurações, recuperação, assumir gravação, auditoria, integrações).
+
 ## 2.0.1 — 2026-10-04
 - Login sem escolha de ambiente: todos entram no Real.
 - Banco de Teste só do Administrador (Sistema › Administração), com faixa de aviso; local, nunca vai para a nuvem; Gerentes e Operadores sem acesso.

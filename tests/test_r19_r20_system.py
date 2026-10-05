@@ -17,7 +17,9 @@ class R19SecretExposureTests(unittest.TestCase):
             app = create_app(Path(tmp))
             app.state.auth.bootstrap('Admin', '1234')
             session = app.state.auth.login('Admin', '1234', 'test')
-            for path in ('/api/v1/system/runtime', '/api/v1/settings', '/api/v1/auth/setup-status', '/api/v1/stations', '/api/v1/integrations'):
+            # G-04: /integrations is Adm Global only (local admin gets 403)
+            self.assertEqual(asgi_get(app, '/api/v1/integrations', session)[0], 403)
+            for path in ('/api/v1/system/runtime', '/api/v1/settings', '/api/v1/auth/setup-status', '/api/v1/stations'):
                 status, body = asgi_get(app, path, session)
                 self.assertEqual(status, 200, path)
                 keys = []

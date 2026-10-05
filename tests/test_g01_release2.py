@@ -33,7 +33,7 @@ def call(app, method, path, payload=None, session=None, precsrf=False):
     return next(m['status'] for m in out if m['type'] == 'http.response.start')
 
 
-class CloudRestoreIsAdminOnly(unittest.TestCase):
+class CloudRestoreIsGlobalOnly(unittest.TestCase):
     def test_restore_needs_admin_session(self):
         with tempfile.TemporaryDirectory() as d:
             app = create_app(Path(d))
@@ -41,7 +41,7 @@ class CloudRestoreIsAdminOnly(unittest.TestCase):
             self.assertEqual(call(app, 'POST', '/api/v1/cloud/restore', payload, precsrf=True), 401, 'antes do login: recusado')
             app.state.auth.bootstrap('Admin', 'senha-1234')
             admin = app.state.auth.login('Admin', 'senha-1234', 'production')
-            self.assertNotIn(call(app, 'POST', '/api/v1/cloud/restore', payload, session=admin), (401, 403), 'administrador pode')
+            self.assertEqual(call(app, 'POST', '/api/v1/cloud/restore', payload, session=admin), 403, 'G-04: só o Adm Global')
             app.state.auth.create_user(admin, {'name': 'gil', 'password': '1234', 'package_id': 'GERENTE'})
             gil = app.state.auth.login('gil', '1234', 'production')
             self.assertEqual(call(app, 'POST', '/api/v1/cloud/restore', payload, session=gil), 403, 'gerente não pode')
@@ -67,9 +67,9 @@ class SingleInstaller(unittest.TestCase):
 
 
 class VersionTwo(unittest.TestCase):
-    def test_version_is_2_0_1(self):
+    def test_version_is_2_0_2(self):
         for name in ('VERSION.json', 'current.json'):
-            self.assertEqual(json.loads((ROOT / name).read_text(encoding='utf-8'))['version'], '2.0.1', name)
+            self.assertEqual(json.loads((ROOT / name).read_text(encoding='utf-8'))['version'], '2.0.2', name)
 
 
 if __name__ == '__main__':
