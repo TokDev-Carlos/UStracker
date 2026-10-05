@@ -316,6 +316,28 @@ def create_app(root: Path | str) -> FastAPI:
             'backup_warning': backup_warning,
         }
 
+    @app.post('/api/v1/session/environment')
+    def session_environment(request: Request, response: Response, p: dict = Body(...)):
+        """G-03 — Administrator only: enter the Teste database (local, never sent to the cloud) or go back to Real."""
+        session = session_required(request, True); csrf_required(request, session)
+        if not session.is_admin:
+            raise HTTPException(403, 'administrator required')
+        target = p.get('environment')
+        new = auth.switch_environment(session, target)
+        if session.environment == 'test':
+            auth.logout(session.token)
+        if target == 'production':
+            old = auth.get_session(cloud.token)
+            if old is not None and old.slot == new.slot and old.token != new.token:
+                auth.logout(old.token)
+            cloud.attach(new)
+            cloud.start()
+        response.set_cookie('us_session', new.token, httponly=True, samesite='strict', secure=False, max_age=43200)
+        response.set_cookie('us_csrf', new.csrf, httponly=False, samesite='strict', secure=False, max_age=43200)
+        db = get_db(new)
+        station = ensure_station(root, db) if target == 'production' else None
+        return {'slot': new.slot, 'name': new.name, 'environment': new.environment, **access_profile(new), 'csrf': new.csrf, 'station': station}
+
     @app.post('/api/v1/auth/logout')
     def logout(request: Request, response: Response):
         session = session_required(request)

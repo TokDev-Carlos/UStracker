@@ -1,3 +1,8 @@
+# UStracker 2.0.1
+
+- Login sem escolha de ambiente: todos entram no Real.
+- **Banco de Teste só do Administrador**, pelo Sistema (entra e volta sem digitar a senha), com faixa de aviso. Local, nunca vai para a nuvem, nunca aparece no Real; Gerentes e Operadores não têm acesso (o servidor recusa).
+
 # UStracker 2.0.0 — Release 2 (entrega oficial)
 
 Data: 2026-10-04 · Schema do banco: **14** · Windows 10/11 x64 · Instalador: `UStracker_install_x64.exe`
