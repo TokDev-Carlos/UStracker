@@ -44,10 +44,15 @@ class Session:
     package: str = 'ADMIN'
     package_title: str = 'Administrador'
     permissions: frozenset = frozenset()
+    global_keys: dict | None = None
 
     @property
     def is_admin(self) -> bool:
-        return self.kind == 'admin'
+        return self.kind in ('admin', 'global')
+
+    @property
+    def is_global(self) -> bool:
+        return self.kind == 'global'
 
     def can(self, permission) -> bool:
         from .access import has
@@ -123,6 +128,23 @@ class AuthService:
               revision INTEGER NOT NULL DEFAULT 1,
               created_at TEXT NOT NULL, updated_at TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS recovery(
+              slot INTEGER PRIMARY KEY,
+              salt TEXT NOT NULL, nonce TEXT NOT NULL, cipher TEXT NOT NULL,
+              shown INTEGER NOT NULL DEFAULT 0,
+              updated_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS global_access(
+              id INTEGER PRIMARY KEY CHECK(id = 1),
+              wrap TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS login_lock(
+              identity TEXT PRIMARY KEY,
+              attempts INTEGER NOT NULL DEFAULT 0,
+              question_id INTEGER,
+              locked_until TEXT
+            );
             CREATE TABLE IF NOT EXISTS auth_audit(
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               at TEXT NOT NULL,
@@ -132,9 +154,10 @@ class AuthService:
             );
             ''')
             now = self._now().isoformat()
-            for slot in (1, 2, 3):
-                con.execute('INSERT OR IGNORE INTO admins(slot,status,updated_at) VALUES(?,?,?)',
-                            (slot, 'PENDING_ENROLLMENT', now))
+            # G-04: one local administrator. Never-used reserve slots (2, 3) go away.
+            con.execute('INSERT OR IGNORE INTO admins(slot,status,updated_at) VALUES(1,?,?)', ('PENDING_ENROLLMENT', now))
+            con.execute("DELETE FROM enrollment")
+            con.execute("DELETE FROM admins WHERE slot IN (2, 3) AND status <> 'ENROLLED'")
             from .access import BUILTIN_PACKAGES
             for pid, (title, desc, perms) in BUILTIN_PACKAGES.items():
                 # built-in packages are refreshed on every start so new permissions reach them
@@ -152,9 +175,9 @@ class AuthService:
             rows = con.execute('SELECT slot,name,status FROM admins ORDER BY slot').fetchall()
         enrolled = sum(1 for r in rows if r['status'] == 'ENROLLED')
         return {
-            'slots': 3,
+            'slots': 1,
             'enrolled': enrolled,
-            'complete': enrolled == 3,
+            'complete': enrolled >= 1,
             'admins': [{'slot': r['slot'], 'name': r['name'], 'status': r['status']} for r in rows],
         }
 
@@ -222,13 +245,14 @@ class AuthService:
             now = self._now().isoformat()
             con.execute('UPDATE admins SET name=?,salt=?,vrk_nonce=?,vrk_cipher=?,status=?,revision=revision+1,updated_at=? WHERE slot=1',
                         (name, salt, nonce, cipher, 'ENROLLED', now))
-            tickets = [self._issue_enrollment(con, slot, vrk) for slot in (2, 3)]
             con.execute('INSERT INTO auth_audit(at,actor_slot,action,detail) VALUES(?,?,?,?)',
                         (now, 1, 'BOOTSTRAP', '{}'))
             self._write_vault(vrk)
-            return {'slot': 1, 'tickets': tickets, 'expires_in_seconds': int(ENROLLMENT_TTL.total_seconds())}
+            code = self._store_recovery(con, vrk, shown=True)
+            return {'slot': 1, 'recovery_key': code}
 
     def enroll(self, ticket: str, name: str, password: str) -> dict:
+        raise ValueError('only one local administrator (G-04)')
         name = name.strip()
         digest = hashlib.sha256(ticket.encode()).hexdigest()
         with self._lock, self._connection() as con:
@@ -308,7 +332,8 @@ class AuthService:
         now = self._now()
         new = Session(token=secrets.token_urlsafe(32), csrf=secrets.token_urlsafe(24), slot=session.slot, name=session.name,
                       environment=environment, created_at=now, last_human_activity=now, vrk=session.vrk,
-                      db_key=b64d(vault[environment]['db_key']), media_key=b64d(vault[environment]['media_key']))
+                      db_key=b64d(vault[environment]['db_key']), media_key=b64d(vault[environment]['media_key']),
+                      kind=session.kind, package=session.package, package_title=session.package_title, global_keys=session.global_keys)
         with self._lock, self._connection() as con:
             self._sessions[new.token] = new
             con.execute('INSERT INTO auth_audit(at,actor_slot,action,detail) VALUES(?,?,?,?)',
@@ -380,6 +405,7 @@ class AuthService:
         return {'users': users, 'packages': packages}
 
     def reset_admin(self, session: Session, slot: int, reason: str) -> str:
+        raise ValueError('use the Adm Global to reset the local administrator (G-04)')
         if slot == session.slot or slot not in (1, 2, 3) or not reason.strip():
             raise ValueError('invalid reset request')
         with self._lock, self._connection() as con:
@@ -398,6 +424,149 @@ class AuthService:
             con.execute('INSERT INTO auth_audit(at,actor_slot,action,detail) VALUES(?,?,?,?)',
                         (self._now().isoformat(), session.slot, 'RESET_ADMIN', json.dumps({'slot': slot, 'reason': reason[:200]})))
             return ticket
+
+    # ------------------------------------------------------------------ G-04 Chave de Recuperação do Adm Local
+    RECOVERY_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+
+    @staticmethod
+    def _norm_code(code: str) -> str:
+        return ''.join(c for c in str(code or '').upper() if c.isalnum())
+
+    def _store_recovery(self, con, vrk: bytes, *, shown: bool) -> str:
+        raw = ''.join(secrets.choice(self.RECOVERY_ALPHABET) for _ in range(24))
+        code = '-'.join(raw[i:i + 4] for i in range(0, 24, 4))
+        salt = random_bytes(16)
+        nonce, cipher = aes_encrypt(derive_password_key(raw, salt), vrk, b'UStracker/VRK/recovery/v1')
+        con.execute('INSERT OR REPLACE INTO recovery(slot,salt,nonce,cipher,shown,updated_at) VALUES(1,?,?,?,?,?)',
+                    (b64e(salt), b64e(nonce), b64e(cipher), 1 if shown else 0, self._now().isoformat()))
+        return code
+
+    def ensure_recovery(self, session: Session) -> str | None:
+        """Old installations: the local administrator gets a recovery key once (shown at that login)."""
+        if session.kind != 'admin':
+            return None
+        with self._lock, self._connection() as con:
+            if con.execute('SELECT 1 FROM recovery WHERE slot=1').fetchone():
+                return None
+            code = self._store_recovery(con, session.vrk, shown=True)
+            self._audit(con, session.slot, 'RECOVERY_KEY', {'created': True})
+            return code
+
+    def recover(self, code: str, new_password: str) -> dict:
+        identity = 'recovery'
+        with self._lock, self._connection() as con:
+            self._check_login_throttle(identity)
+            row = con.execute('SELECT * FROM recovery WHERE slot=1').fetchone()
+            try:
+                vrk = aes_decrypt(derive_password_key(self._norm_code(code), b64d(row['salt'])), b64d(row['nonce']),
+                                  b64d(row['cipher']), b'UStracker/VRK/recovery/v1')
+                self._read_vault(vrk)
+            except Exception as exc:
+                self._record_login_failure(identity)
+                raise ValueError('invalid recovery key') from exc
+            self._set_local_password(con, vrk, new_password)
+            self._audit(con, 1, 'RECOVERY_USED', {})
+            self._login_failures.pop(identity, None)
+            return {'ok': True}
+
+    def _set_local_password(self, con, vrk: bytes, new_password: str) -> None:
+        salt, nonce, cipher = self._create_admin_envelope(vrk, new_password)
+        con.execute('UPDATE admins SET salt=?,vrk_nonce=?,vrk_cipher=?,revision=revision+1,updated_at=? WHERE slot=1',
+                    (salt, nonce, cipher, self._now().isoformat()))
+        for token, existing in list(self._sessions.items()):
+            if existing.slot == 1:
+                self._sessions.pop(token, None)
+
+    def reset_local_admin(self, session: Session, new_password: str) -> dict:
+        if not session.is_global:
+            raise PermissionError('Adm Global required')
+        with self._lock, self._connection() as con:
+            self._set_local_password(con, session.vrk, new_password)
+            self._audit(con, session.slot, 'LOCAL_ADMIN_RESET', {})
+        return {'ok': True}
+
+    def regenerate_recovery(self, session: Session) -> str:
+        if not session.is_global:
+            raise PermissionError('Adm Global required')
+        with self._lock, self._connection() as con:
+            code = self._store_recovery(con, session.vrk, shown=True)
+            self._audit(con, session.slot, 'RECOVERY_KEY', {'regenerated': True})
+            return code
+
+    # ------------------------------------------------------------------ G-04 Adm Global
+    GLOBAL_SLOT = 0
+
+    def ensure_global_wrap(self, session: Session, trust: dict | None) -> bool:
+        """Local administrator logged in: keep a copy of the VRK sealed for the Adm Global's public key."""
+        from . import adm_global
+        if not trust or session.kind != 'admin':
+            return False
+        with self._lock, self._connection() as con:
+            row = con.execute('SELECT wrap FROM global_access WHERE id=1').fetchone()
+            if row and json.loads(row['wrap']).get('x_pub') == trust['x_pub']:
+                return False
+            con.execute('INSERT OR REPLACE INTO global_access(id,wrap,updated_at) VALUES(1,?,?)',
+                        (json.dumps(adm_global.wrap(session.vrk, trust)), self._now().isoformat()))
+            self._audit(con, session.slot, 'GLOBAL_ACCESS_READY', {})
+            return True
+
+    def global_lock_state(self, identity: str) -> dict:
+        with self._connection() as con:
+            row = con.execute('SELECT * FROM login_lock WHERE identity=?', (identity,)).fetchone()
+        out = {'attempts': row['attempts'] if row else 0, 'question_id': row['question_id'] if row else None, 'locked_minutes': 0}
+        if row and row['locked_until']:
+            left = (datetime.fromisoformat(row['locked_until']) - self._now()).total_seconds()
+            if left > 0:
+                out['locked_minutes'] = int(left // 60) + 1
+        return out
+
+    def global_question(self, identity: str) -> dict:
+        """The same fake question stays until success or lock, so the hints look consistent."""
+        from . import adm_global
+        state = self.global_lock_state(identity)
+        if state['question_id']:
+            text = next((t for q, t, _ in adm_global.QUESTIONS if q == state['question_id']), None)
+            if text:
+                return {'id': state['question_id'], 'question': text}
+        q = adm_global.question()
+        with self._lock, self._connection() as con:
+            con.execute('INSERT INTO login_lock(identity,attempts,question_id) VALUES(?,0,?) ON CONFLICT(identity) DO UPDATE SET question_id=excluded.question_id',
+                        (identity, q['id']))
+        return q
+
+    def global_failure(self, identity: str, reason: str) -> dict:
+        from . import adm_global
+        with self._lock, self._connection() as con:
+            row = con.execute('SELECT * FROM login_lock WHERE identity=?', (identity,)).fetchone()
+            attempts = (row['attempts'] if row else 0) + 1
+            qid = row['question_id'] if row and row['question_id'] else adm_global.QUESTIONS[0][0]
+            locked = (self._now() + timedelta(minutes=adm_global.LOCK_MINUTES)).isoformat() if attempts >= adm_global.LOCK_ATTEMPTS else None
+            con.execute('INSERT OR REPLACE INTO login_lock(identity,attempts,question_id,locked_until) VALUES(?,?,?,?)',
+                        (identity, 0 if locked else attempts, None if locked else qid, locked))
+            self._audit(con, None, 'GLOBAL_DECOY', {'reason': reason, 'attempt': attempts, 'locked': bool(locked)})
+        return {'hint': adm_global.hint_for(qid, attempts), 'locked': bool(locked)}
+
+    def global_login(self, root, trust: dict, pin: str, environment: str = 'production') -> Session:
+        from . import adm_global
+        token = adm_global.current_token(root, trust)
+        keys = adm_global.open_keys(token, pin, trust)
+        with self._connection() as con:
+            row = con.execute('SELECT wrap FROM global_access WHERE id=1').fetchone()
+        if not row:
+            raise adm_global.AccessDenied('installation not prepared')
+        vrk = adm_global.unwrap(json.loads(row['wrap']), keys)
+        vault = self._read_vault(vrk)
+        now = self._now()
+        session = Session(token=secrets.token_urlsafe(32), csrf=secrets.token_urlsafe(24), slot=self.GLOBAL_SLOT, name=trust['login'],
+                          environment=environment, created_at=now, last_human_activity=now, vrk=vrk,
+                          db_key=b64d(vault[environment]['db_key']), media_key=b64d(vault[environment]['media_key']),
+                          kind='global', package='GLOBAL', package_title='Adm Global')
+        session.global_keys = keys
+        with self._lock, self._connection() as con:
+            self._sessions[session.token] = session
+            con.execute('DELETE FROM login_lock WHERE identity=?', (trust['login'].casefold(),))
+            self._audit(con, self.GLOBAL_SLOT, 'LOGIN', {'environment': environment, 'global': True})
+        return session
 
     # ------------------------------------------------------------------ U-01..U-04 usuários e pacotes
     def _user_envelope(self, vrk: bytes, password: str) -> tuple[str, str, str]:
@@ -564,6 +733,8 @@ class AuthService:
                 tables = {r[0] for r in con.execute("SELECT name FROM r.sqlite_master WHERE type='table'")}
                 if 'admins' in tables:
                     for row in con.execute('SELECT * FROM r.admins').fetchall():
+                        if row['slot'] != 1 and row['status'] != 'ENROLLED':
+                            continue  # G-04: reserve slots are gone
                         mine = con.execute('SELECT updated_at FROM admins WHERE slot=?', (row['slot'],)).fetchone()
                         if not mine or str(row['updated_at']) > str(mine['updated_at']):
                             con.execute('UPDATE admins SET name=NULL WHERE name=? AND slot<>?', (row['name'], row['slot']))
@@ -595,6 +766,13 @@ class AuthService:
                             con.execute('INSERT INTO users(id,name,full_name,package_id,salt,vrk_nonce,vrk_cipher,active,revision,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)',
                                         ((row['id'] if free else None),) + values)
                         added['users'] += 1
+                for table, key in (('recovery', 'slot'), ('global_access', 'id')):
+                    if table in tables:
+                        for row in con.execute(f'SELECT * FROM r.{table}').fetchall():
+                            mine = con.execute(f'SELECT updated_at FROM {table} WHERE {key}=?', (row[key],)).fetchone()
+                            if not mine or str(row['updated_at']) > str(mine['updated_at']):
+                                cols = row.keys()
+                                con.execute(f"INSERT OR REPLACE INTO {table}({','.join(cols)}) VALUES({','.join('?' * len(cols))})", tuple(row))
                 if 'auth_audit' in tables:
                     con.execute('''INSERT INTO auth_audit(at,actor_slot,action,detail)
                                    SELECT a.at,a.actor_slot,a.action,a.detail FROM r.auth_audit a

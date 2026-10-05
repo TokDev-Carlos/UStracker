@@ -1,4 +1,4 @@
-# Manual do Usuário — UStracker 2.0.1
+# Manual do Usuário — UStracker 2.0.2
 
 ## Instalar
 1. Execute **UStracker_install_x64.exe** e siga as telas (pasta sugerida: `C:\UStracker`). Ele já leva tudo: programa, WebView2 e o endereço da nuvem da empresa.
@@ -7,6 +7,11 @@
    **Outros computadores:** a tela já pede **usuário e senha** — os dados da empresa chegam sozinhos e o computador vira o próximo **Servidor**.
 
 Atualizar é igual: execute o instalador novo por cima. Seus dados (`UserData`) não são tocados.
+
+## Administrador e Chave de Recuperação
+- Cada instalação tem **um Administrador** (Adm Local). Ao configurar o sistema aparece a **Chave de Recuperação**: guarde fora do computador.
+- Esqueceu a senha? Na tela de entrada: **Esqueci a senha** → Chave de Recuperação + senha nova.
+- Algumas funções técnicas (conexão da nuvem, placa, restaurar backups, assumir gravação, auditoria) são reservadas ao suporte do sistema.
 
 ## Usuários e pacotes
 - Administrador cria pessoas em **Sistema › Usuários** (nome de acesso, senha inicial e pacote).

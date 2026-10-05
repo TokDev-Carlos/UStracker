@@ -81,7 +81,7 @@ _VIEW_MEDIA = ('files.view', 'clients.view', 'mobility.view', 'commercial.view')
 
 # (métodos, regex do caminho depois de /api/v1, permissão). A primeira que casar vale.
 _RULES: list[tuple[str, str, object]] = [
-    ('*', r'/(health|public|auth/(csrf|login|join|logout|me|setup-status|bootstrap|enroll|change-password)|cloud/bootstrap)$', ANY),
+    ('*', r'/(health|public|auth/(csrf|login|join|logout|me|setup-status|bootstrap|enroll|change-password|recover)|cloud/bootstrap)$', ANY),
     ('*', r'/(system/shutdown|shell/detach)$', ANY),
     ('GET', r'/(search|entities/clients)$', ANY),
     ('GET', r'/(cloud/status|sync/state)$', ANY),
@@ -118,6 +118,25 @@ _RULES: list[tuple[str, str, object]] = [
     ('GET', r'/settings$', ANY),
 ]
 _COMPILED = [(set(m.split('|')) if m != '*' else None, re.compile(rx), perm) for m, rx, perm in _RULES]
+
+# G-04 — only the Adm Global (the owner) may touch these, even a local administrator gets 403.
+_GLOBAL_ONLY = [(set(m.split('|')) if m != '*' else None, re.compile(rx)) for m, rx in [
+    ('*', r'/cloud/(connect|disconnect|restore|placa(/.*)?|points(/.*)?)$'),
+    ('POST', r'/backups/restore$'),
+    ('*', r'/recovery(/.*)?$'),
+    ('POST', r'/stations/(claim|emergency-takeover)$'),
+    ('*', r'/auth/reset-admin(/.*)?$'),
+    ('GET', r'/audit(/verify)?$'),
+    ('*', r'/integrations(/.*)?$'),
+    ('*', r'/admin-local(/.*)?$'),
+    ('*', r'/global/(pass|pin)$'),
+]]
+
+
+def global_only(method: str, path: str) -> bool:
+    sub = path[len('/api/v1'):] if path.startswith('/api/v1') else path
+    method = method.upper()
+    return any((m is None or method in m) and rx.match(sub) for m, rx in _GLOBAL_ONLY)
 SYSTEM_ONLY = 'system'
 
 

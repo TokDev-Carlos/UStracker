@@ -77,7 +77,7 @@ export function renderLoginScreen(setup = {}, publicData = {}) {
       <section class="r2-login-access"><h2>Acesso</h2><p>${setup.complete ? 'Entre com seu usuário e senha.' : 'Configuração ainda incompleta.'}</p>
         <form id="login"><div class="field"><label>Usuário</label><input name="name" autocomplete="username" required></div>
           <div class="field"><label>Senha ou PIN (mínimo 4 caracteres)</label><input name="password" type="password" autocomplete="current-password" required></div>
-          <div class="actions"><button type="submit" class="ui-btn ui-btn-primary">Entrar</button></div></form><div id="loginOut"></div>
+          <div class="actions"><button type="submit" class="ui-btn ui-btn-primary">Entrar</button><button type="button" class="ui-btn ui-btn-subtle" data-recover-open>Esqueci a senha</button></div></form><div id="loginOut"></div>
       </section>
       <section class="r2-login-marketing"><h2>Planos e Serviços</h2><p class="muted">${escapeHtml(brand.company_display_name || 'UStracker')}</p>
         ${catalog.length ? `<div class="r2-login-catalog">${catalog.map(item => `<article class="card"><strong>${escapeHtml(item.name)}</strong><p>${escapeHtml(item.category)}</p><span>${escapeHtml(formatBRL(item.price_cents))}</span></article>`).join('')}</div>` : '<p class="muted">Nenhum item público.</p>'}

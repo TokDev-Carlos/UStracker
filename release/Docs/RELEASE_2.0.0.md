@@ -1,3 +1,9 @@
+# UStracker 2.0.2
+
+- **Um Administrador por instalação** (Adm Local) com **Chave de Recuperação** (Esqueci a senha).
+- **Adm Global** (suporte/dono): login + PIN, pergunta de segurança, validado pelo Token Mestre no Git (ou passe de 1 dia sem internet). Bloqueio de 30 minutos após 5 erros.
+- Funções técnicas reservadas ao Adm Global: conexão da nuvem, placa, restaurar nuvem/backup, recuperação, assumir gravação, auditoria e integrações.
+
 # UStracker 2.0.1
 
 - Login sem escolha de ambiente: todos entram no Real.

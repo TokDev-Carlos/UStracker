@@ -44,7 +44,7 @@ from .extensions import (
     update_catalog,
     verify_audit_chain,
 )
-from .access import describe as describe_access, required_permission, restrict_dashboard, strip_costs
+from .access import describe as describe_access, global_only, required_permission, restrict_dashboard, strip_costs
 from .mobility_delete import PlateExists, check_plate, delete_fleet, delete_vehicle
 from .mobility import (
     cancel_transfer_case,
@@ -144,6 +144,8 @@ def create_app(root: Path | str) -> FastAPI:
         # U-05: package permissions are enforced here for every API route (the UI only hides).
         if request.url.path.startswith('/api/v1/'):
             session = auth.get_session(request.cookies.get('us_session'))
+            if session is not None and session.is_admin and not session.is_global and global_only(request.method, request.url.path):
+                return JSONResponse({'error': 'FORBIDDEN', 'detail': 'Adm Global required', 'correlation_id': correlation}, status_code=403)
             if session is not None and not session.is_admin:
                 need = required_permission(request.method, request.url.path)
                 if not session.can(need):
@@ -244,7 +246,8 @@ def create_app(root: Path | str) -> FastAPI:
 
     @app.get('/api/v1/auth/setup-status')
     def setup_status():
-        return auth.setup_status()
+        from .adm_global import load_trust
+        return {**auth.setup_status(), 'global_configured': bool(load_trust(root))}
 
     @app.get('/api/v1/auth/csrf')
     def csrf(response: Response):
@@ -265,7 +268,32 @@ def create_app(root: Path | str) -> FastAPI:
     @app.post('/api/v1/auth/login')
     def login(request: Request, response: Response, p: dict = Body(...)):
         csrf_required(request)
-        session = auth.login(p.get('name', ''), p.get('password', ''), p.get('environment', 'production'))
+        from . import adm_global
+        trust = adm_global.load_trust(root)
+        recovery_key = None
+        if trust and str(p.get('name', '')).strip().casefold() == trust['login'].casefold():
+            # G-04 — Adm Global: login + PIN, then the fake question whose answer is the same PIN
+            ident = trust['login'].casefold()
+            state = auth.global_lock_state(ident)
+            if state['locked_minutes']:
+                return JSONResponse({'error': 'LOCKED', 'detail': f"login temporarily locked; try again in {state['locked_minutes']} minutes",
+                                     'retry_minutes': state['locked_minutes']}, status_code=429)
+            if 'answer' not in p:
+                return {'challenge': auth.global_question(ident)}
+            denied = {'error': 'INVALID', 'detail': 'invalid credentials'}
+            if str(p.get('answer', '')) != str(p.get('password', '')):
+                return JSONResponse({**denied, 'hint': auth.global_failure(ident, 'answer')['hint']}, status_code=422)
+            try:
+                session = auth.global_login(root, trust, p.get('password', ''), 'production')
+            except adm_global.AccessDenied as exc:
+                if str(exc) == 'invalid credentials':
+                    return JSONResponse({**denied, 'hint': auth.global_failure(ident, 'pin')['hint']}, status_code=422)
+                return JSONResponse({**denied, 'hint': adm_global.hint_for(state['question_id'] or 1, max(1, state['attempts']))}, status_code=422)
+        else:
+            session = auth.login(p.get('name', ''), p.get('password', ''), p.get('environment', 'production'))
+            if session.kind == 'admin':
+                auth.ensure_global_wrap(session, trust)
+                recovery_key = auth.ensure_recovery(session)
         from .factory_reset import run_if_requested
         factory_reset = run_if_requested(root, auth, session, cloud)  # G-02: internal one-time "zerar tudo"
         response.set_cookie('us_session', session.token, httponly=True, samesite='strict', secure=False, max_age=43200)
@@ -311,6 +339,7 @@ def create_app(root: Path | str) -> FastAPI:
             'station': station,
             'cloud_restore': cloud_restore,
             'factory_reset': factory_reset,
+            'recovery_key': recovery_key,
             'media_recovery': media_recovery,
             'automatic_backup': backup_info,
             'backup_warning': backup_warning,
@@ -338,6 +367,63 @@ def create_app(root: Path | str) -> FastAPI:
         station = ensure_station(root, db) if target == 'production' else None
         return {'slot': new.slot, 'name': new.name, 'environment': new.environment, **access_profile(new), 'csrf': new.csrf, 'station': station}
 
+    # ------------------------------------------------------------------ G-04 Adm Local / Adm Global
+    @app.post('/api/v1/auth/recover')
+    def auth_recover(request: Request, p: dict = Body(...)):
+        csrf_required(request)
+        return auth.recover(p.get('code', ''), p.get('new_password', ''))
+
+    def global_session(request: Request):
+        session = session_required(request, True); csrf_required(request, session)
+        if not session.is_global:
+            raise HTTPException(403, 'Adm Global required')
+        return session
+
+    @app.post('/api/v1/admin-local/password')
+    def admin_local_password(request: Request, p: dict = Body(...)):
+        return auth.reset_local_admin(global_session(request), p.get('new_password', ''))
+
+    @app.post('/api/v1/admin-local/recovery-key')
+    def admin_local_recovery(request: Request):
+        return {'recovery_key': auth.regenerate_recovery(global_session(request))}
+
+    @app.post('/api/v1/global/pass')
+    def global_pass(request: Request):
+        from . import adm_global
+        session = global_session(request)
+        trust = adm_global.load_trust(root)
+        token = adm_global.current_token(root, trust)
+        return {'pass': adm_global.make_pass(token, session.global_keys, hours=24), 'file': 'passe-adm-global.json'}
+
+    @app.post('/api/v1/global/pin')
+    def global_pin(request: Request, p: dict = Body(...)):
+        """New PIN: a new Token Mestre goes to UserData/State for publishing in acesso-UStracker."""
+        from . import adm_global
+        session = global_session(request)
+        token = adm_global.change_pin({'login': session.name}, session.global_keys, p.get('new_pin', ''))
+        out = root / 'UserData' / 'State' / 'token-mestre-novo.json'
+        out.write_text(json.dumps(token, indent=2), encoding='utf-8')
+        return {'ok': True, 'file': str(out.name)}
+
+    @app.post('/api/v1/global/setup')
+    def global_setup(request: Request, p: dict = Body(...)):
+        """First time only (no Trust/adm-global.json yet): the owner chooses login + PIN on his own machine."""
+        from . import adm_global
+        session = session_required(request, True); csrf_required(request, session)
+        if session.kind != 'admin' or adm_global.load_trust(root):
+            raise HTTPException(403, 'setup not available')
+        login_name = str(p.get('login', '')).strip()
+        if not login_name or login_name.casefold() in {str(a.get('name') or '').casefold() for a in auth.setup_status()['admins']} \
+                or login_name.casefold() in {u['name'].casefold() for u in auth.list_users()}:
+            raise ValueError('choose a login name that nobody uses')
+        if str(p.get('pin', '')) != str(p.get('pin_confirm', '')):
+            raise ValueError('PIN confirmation does not match')
+        trust, token, _ = adm_global.create(login_name, p.get('pin', ''), url=adm_global.DEFAULT_URL, read_token='')
+        adm_global.save_trust(root, trust)
+        auth.ensure_global_wrap(session, trust)
+        (root / 'UserData' / 'State' / 'token-mestre-novo.json').write_text(json.dumps(token, indent=2), encoding='utf-8')
+        return {'ok': True, 'login': login_name}
+
     @app.post('/api/v1/auth/logout')
     def logout(request: Request, response: Response):
         session = session_required(request)
@@ -361,7 +447,8 @@ def create_app(root: Path | str) -> FastAPI:
     def access_profile(session) -> dict:
         from .access import ALL
         perms = sorted(ALL) if session.is_admin else sorted(session.permissions)
-        return {'kind': session.kind, 'role': session.package_title, 'package': session.package, 'permissions': perms}
+        return {'kind': session.kind, 'role': session.package_title, 'package': session.package, 'permissions': perms,
+                'is_global': session.is_global}
 
     def admin_required(request: Request):
         session = session_required(request, True)
@@ -1047,6 +1134,8 @@ def create_app(root: Path | str) -> FastAPI:
     @app.post('/api/v1/cloud/sync')
     def cloud_sync_now(request: Request, p: dict = Body(default={})):
         session = cloud_session(request, write=True)
+        if p.get('force') and not session.is_global:
+            raise HTTPException(403, 'Adm Global required')
         return cloud_call(lambda: cloud.sync_now(session, force=bool(p.get('force')) and p.get('confirm') == 'SUBSTITUIR NUVEM'))
 
     @app.post('/api/v1/cloud/disconnect')
