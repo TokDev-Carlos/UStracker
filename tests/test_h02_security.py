@@ -3,6 +3,7 @@ import asyncio, json, os, sys, tempfile, unittest, uuid
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+INSTALLER = ROOT / 'installer' if (ROOT / 'installer').exists() else ROOT / 'release' / 'installer'
 sys.path.insert(0, str(ROOT / 'src'))
 os.environ['USTRACKER_DEV_PLAINTEXT'] = '1'
 
@@ -84,9 +85,9 @@ if __name__ == '__main__':
 
 class WindowsLayout(unittest.TestCase):
     """2.2.0 — programa em Program Files (protegido), dados em ProgramData, migração sem apagar nada."""
-    nsi = (ROOT / 'release' / 'installer' / 'UStracker.nsi').read_text(encoding='utf-8')
-    ps = (ROOT / 'release' / 'installer' / 'setup-data.ps1').read_text(encoding='utf-8')
-    rm = (ROOT / 'release' / 'installer' / 'remove-data.ps1').read_text(encoding='utf-8')
+    nsi = (INSTALLER / 'UStracker.nsi').read_text(encoding='utf-8')
+    ps = (INSTALLER / 'setup-data.ps1').read_text(encoding='utf-8')
+    rm = (INSTALLER / 'remove-data.ps1').read_text(encoding='utf-8')
 
     def test_program_files_and_programdata(self):
         self.assertIn('InstallDir "$PROGRAMFILES64\\${APP}"', self.nsi)
