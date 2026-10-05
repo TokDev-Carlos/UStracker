@@ -123,6 +123,9 @@ def create_app(root: Path | str) -> FastAPI:
 
     cloud = CloudSync(root, auth)
     app.state.cloud = cloud
+    from .update_channel import UpdateService, can_apply as update_can_apply
+    updates = UpdateService(root)
+    app.state.updates = updates
 
     @app.middleware('http')
     async def security_headers(request: Request, call_next):
@@ -423,6 +426,34 @@ def create_app(root: Path | str) -> FastAPI:
         auth.ensure_global_wrap(session, trust)
         (root / 'UserData' / 'State' / 'token-mestre-novo.json').write_text(json.dumps(token, indent=2), encoding='utf-8')
         return {'ok': True, 'login': login_name}
+
+    # ------------------------------------------------------------------ G-05 atualização pela nuvem
+    @app.get('/api/v1/update/status')
+    def update_status(request: Request):
+        session = session_required(request)
+        st = dict(updates.state)
+        st['current'] = product_version
+        st['can_apply'] = update_can_apply(st, is_admin=session.is_admin, permissions=session.permissions)
+        return st
+
+    @app.post('/api/v1/update/apply-now')
+    def update_apply_now(request: Request):
+        session = session_required(request, True); csrf_required(request, session)
+        st = dict(updates.state)
+        if not update_can_apply(st, is_admin=session.is_admin, permissions=session.permissions):
+            raise HTTPException(403, 'permission denied')
+        if not st.get('downloaded'):
+            updates.download()
+        try:
+            cloud.flush(timeout=60)
+        except Exception:
+            pass
+        cloud.stop(); updates.stop()
+        updates.restart()
+        if app.state.server is not None:
+            def stop(): time.sleep(.3); app.state.server.should_exit = True
+            threading.Thread(target=stop, daemon=True).start()
+        return {'ok': True, 'restarting': True, 'version': st.get('version')}
 
     @app.post('/api/v1/auth/logout')
     def logout(request: Request, response: Response):
@@ -1348,15 +1379,41 @@ def create_app(root: Path | str) -> FastAPI:
     return app
 
 
-def run(root: Path | str):
+def run(root: Path | str, port: int = 0):
     paths = ProductPaths.from_root(root); paths.ensure_runtime_directories(); root = paths.app_root; state_dir = paths.state_root; port_file = state_dir/'backend.json'
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM); sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1); sock.bind(('127.0.0.1', 0)); sock.listen(2048); port = sock.getsockname()[1]
-    app = create_app(root); config = uvicorn.Config(app, host='127.0.0.1', port=port, log_level='info', access_log=False, log_config=None); server = uvicorn.Server(config); app.state.server = server
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM); sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    for attempt in range(50):  # G-05: "Atualizar agora" reuses the port the window is already using
+        try:
+            sock.bind(('127.0.0.1', port)); break
+        except OSError:
+            if not port or attempt == 49: raise
+            time.sleep(0.2)
+    sock.listen(2048); port = sock.getsockname()[1]
+    app = create_app(root); app.state.updates.start(); config = uvicorn.Config(app, host='127.0.0.1', port=port, log_level='info', access_log=False, log_config=None); server = uvicorn.Server(config); app.state.server = server
     tmp = port_file.with_suffix('.tmp'); tmp.write_text(json.dumps({'port':port,'pid':os.getpid(),'version':app.version}), encoding='utf-8'); tmp.replace(port_file)
     try: server.run(sockets=[sock])
     finally: port_file.unlink(missing_ok=True)
 
 
+def main(argv=None):
+    import argparse, subprocess, sys
+    parser = argparse.ArgumentParser(); parser.add_argument('--root', default=os.getcwd()); parser.add_argument('--port', type=int, default=0)
+    parser.add_argument('--wait-pid', type=int, default=0); args = parser.parse_args(argv)
+    root = ProductPaths.from_root(args.root).app_root
+    if args.wait_pid:  # G-05: the previous backend is closing; wait until it let go of backend.json
+        until = time.time() + 30
+        while (root/'UserData'/'State'/'backend.json').exists() and time.time() < until: time.sleep(0.2)
+    from .update_channel import UpdateError, apply_pending
+    try:
+        applied = apply_pending(root)
+    except UpdateError:
+        applied = None  # already rolled back and logged in UserData/State/update_history.json
+    if applied:  # start the NEW program in a fresh interpreter
+        flags = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
+        subprocess.Popen([sys.executable, '-m', 'ustracker.server', '--root', str(root), '--port', str(args.port)], cwd=str(root), creationflags=flags, close_fds=True)
+        return
+    run(root, args.port)
+
+
 if __name__ == '__main__':
-    import argparse
-    parser = argparse.ArgumentParser(); parser.add_argument('--root', default=os.getcwd()); args = parser.parse_args(); run(args.root)
+    main()

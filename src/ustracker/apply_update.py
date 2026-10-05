@@ -63,14 +63,17 @@ def _verify_switched_files(root: Path, manifest: dict) -> None:
         if hashlib.sha256(path.read_bytes()).hexdigest()!=item['sha256']: raise RuntimeError(f"updated file hash mismatch: {item['path']}")
 
 
-def apply(root: Path, package: Path) -> dict:
+def apply(root: Path, package: Path, *, keep_rollback: Path | None = None) -> dict:
     root=root.resolve(); package=package.resolve()
     journal={'from':_version(root),'to':None,'from_schema':_schema_version(root),'to_schema':None,'state':'RECEIVED','package':package.name,'files':[],'started_at':datetime.now(UTC).isoformat()}
     _write_journal(root,journal,'RECEIVED')
     trust=root/'Trust'/'update_public_key.pem'
     if not trust.exists(): raise RuntimeError('trusted update public key is missing')
     public=load_pem_public_key(trust.read_bytes()); manifest=inspect_package(package,public); journal['to']=manifest['to_version']
-    if journal['from']!=manifest['from_version']: raise RuntimeError('update does not match installed version')
+    # G-05: cloud packages carry the whole program (from_version '*'); never install an older version
+    if manifest['from_version'] not in ('*', journal['from']): raise RuntimeError('update does not match installed version')
+    from .update_channel import version_key
+    if version_key(manifest['to_version']) < version_key(journal['from']): raise RuntimeError('downgrade is not allowed')
     for item in manifest['files']:
         first=Path(item['path']).parts[0].casefold()
         if first in {'userdata','trust'}: raise RuntimeError('update package cannot replace UserData or Trust')
@@ -98,7 +101,11 @@ def apply(root: Path, package: Path) -> dict:
         _write_journal(root,journal,'SWITCHED')
         _verify_switched_files(root,manifest)
         if _version(root)!=manifest['to_version']: raise RuntimeError('post-switch version verification failed')
-        _write_journal(root,journal,'VERIFIED'); _write_journal(root,journal,'ACCEPTED'); return journal
+        _write_journal(root,journal,'VERIFIED')
+        if keep_rollback is not None:
+            shutil.rmtree(keep_rollback,ignore_errors=True); shutil.copytree(rollback,keep_rollback)
+            (keep_rollback/'files.json').write_text(json.dumps(journal['files']),encoding='utf-8')
+        _write_journal(root,journal,'ACCEPTED'); return journal
     except Exception:
         for entry in reversed(journal['files']):
             rel=Path(entry['path']); dst=root/rel; old=rollback/rel

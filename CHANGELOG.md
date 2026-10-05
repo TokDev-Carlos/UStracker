@@ -2,6 +2,10 @@
 
 Formato: versão semântica a partir da 2.0.0 (2.0.1 = correção, 2.1.0 = novidade compatível).
 
+## 2.1.0 — 2026-10-05
+- Atualização pela nuvem: canal assinado em `updates/`; checagem ao abrir e a cada 3 h; normal instala ao fechar; crítica é obrigatória; "Atualizar agora" (Administrador, Gerente ou permissão *Atualizar o sistema*); volta sozinho se a versão nova não abrir.
+- Nova chave de atualização (`Trust/update_public_key.pem`) e ferramenta `tools/publish_update.py`.
+
 ## 2.0.2 — 2026-10-05
 - Um Administrador por instalação (Adm Local) com Chave de Recuperação ("Esqueci a senha").
 - Adm Global: login + PIN + pergunta de segurança com pistas; validado pelo Token Mestre no repositório privado `acesso-UStracker` ou passe de 1 dia sem internet; bloqueio de 30 minutos.
