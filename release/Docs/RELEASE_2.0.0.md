@@ -1,3 +1,7 @@
+# UStracker 2.1.1
+
+- Primeira atualização entregue pela nuvem (validação do canal de atualização). Sem mudança no banco de dados.
+
 # UStracker 2.1.0
 
 - **Atualizações pela nuvem**: o sistema confere ao abrir e a cada 3 horas (canal `updates/` do repositório, assinado). Normal = instala ao fechar; obrigatória = bloqueia até atualizar. "Atualizar agora" para Administrador, Gerente ou quem tiver a permissão **Atualizar o sistema**. Volta sozinho para a versão anterior se a nova não abrir.

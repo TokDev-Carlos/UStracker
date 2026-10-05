@@ -1,4 +1,4 @@
-# Manual do Usuário — UStracker 2.1.0
+# Manual do Usuário — UStracker 2.1.1
 
 ## Instalar
 1. Execute **UStracker_install_x64.exe** e siga as telas (pasta sugerida: `C:\UStracker`). Ele já leva tudo: programa, WebView2 e o endereço da nuvem da empresa.
