@@ -74,7 +74,7 @@ export function renderLoginScreen(setup = {}, publicData = {}) {
   return `<section class="auth r2-auth">
     <header class="r2-login-header">${logo ? `<img class="r2-login-logo" src="${escapeHtml(logo)}" alt="UStracker">` : '<h1>UStracker</h1>'}</header>
     <div class="r2-login-grid">
-      <section class="r2-login-access"><h2>Acesso</h2><p>${setup.complete ? 'Entre com seu usuário e senha.' : 'Configuração ainda incompleta.'}</p>
+      <section class="r2-login-access"><h2>Acesso</h2><p>${setup.complete ? 'Entre com seu usuário e senha.' : (setup.activated ? 'Ainda sem Administrador local: entre com o Adm Global e crie-o em Sistema.' : 'Configuração ainda incompleta.')}</p>
         <form id="login"><div class="field"><label>Usuário</label><input name="name" autocomplete="username" required></div>
           <div class="field"><label>Senha ou PIN (mínimo 4 caracteres)</label><input name="password" type="password" autocomplete="current-password" required></div>
           <div class="actions"><button type="submit" class="ui-btn ui-btn-primary">Entrar</button><button type="button" class="ui-btn ui-btn-subtle" data-recover-open>Esqueci a senha</button></div></form><div id="loginOut"></div>

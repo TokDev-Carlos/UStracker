@@ -1368,13 +1368,23 @@ def create_app(root: Path | str) -> FastAPI:
             try:
                 session = auth.global_session(trust, keys, 'production')
             except adm_global.AccessDenied:
-                return {'activated': True, 'restored': True, 'needs_admin_login': True}
-            out = enter(response, session, None, {'activated': True, 'restored': True})
-            try:
-                cloud.keep_company_key(session, company_key)
-            except Exception:
-                pass
-            return out
+                session = None
+            if session is not None:
+                out = enter(response, session, None, {'activated': True, 'restored': True})
+                try:
+                    cloud.keep_company_key(session, company_key)
+                except Exception:
+                    pass
+                return out
+            # 2.3.0: the cloud holds data the Adm Global never validated (older version): it is copied to
+            # Documentos\UStracker_backup_old\nuvem_<data> and the company starts clean (same rule as the installer)
+            from .activation import retire_unvalidated_data
+            old_cloud_saved = retire_unvalidated_data(root)
+            auth.clear_sessions()
+            auth._init_store()
+            cloud.state = type(cloud.state)(root)
+            cloud.pending_secret = bank['key']
+            cloud.state.set(placa_seq=0)
         # 3b) new company (empty cloud or no cloud): the Adm Global enters at once; the local admin is created inside (Sistema)
         session = auth.bootstrap_global(trust, keys, 'production')
         cloud_info = {'connected': False}
@@ -1382,8 +1392,12 @@ def create_app(root: Path | str) -> FastAPI:
             if company_key:
                 cloud.keep_company_key(session, company_key)
             cloud.apply_banks(session, banks, seq)
+            if has_data:
+                cloud.state.set(wipe_cloud=True)  # old photos/attachments leave the cloud (the backup keeps them)
             cloud.mark_dirty()
         out = enter(response, session, None, {'activated': True, 'new_company': True})
+        if has_data:
+            out['old_cloud_saved'] = old_cloud_saved
         if banks:
             try:  # accesses and the empty base go up right now
                 cloud_info = {'connected': True, **cloud.sync_now(session, force=True)}
