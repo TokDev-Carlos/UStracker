@@ -1,6 +1,6 @@
 ; UStracker — instalador para Windows 10/11 x64 (NSIS 3, script UTF-8: makensis -INPUTCHARSET UTF8)
 ; Compilar: makensis -INPUTCHARSET UTF8 -DSRC=<pasta do programa> -DVERSION=2.2.0
-;           -DWV2=<MicrosoftEdgeWebView2RuntimeInstallerX64.exe> -DPLACA=<placa-bootstrap.json> [-DOUT=...] [-DICON=...] UStracker.nsi
+;           -DWV2=<MicrosoftEdgeWebView2RuntimeInstallerX64.exe> -DPLACA=<placa-bootstrap.json> -DICON=<host/Bootstrap/Assets/UStracker.ico> [-DOUT=...] UStracker.nsi
 ;
 ; 2.2.0 — estrutura Windows:
 ;   Programa  C:\Program Files\UStracker          (protegido: só administradores do Windows alteram)
@@ -30,6 +30,27 @@ ManifestDPIAware true
 !endif
 !ifndef OUT
   !define OUT "UStracker_install_x64.exe"
+!endif
+; 2.3.0 — guard: never build an installer without the program pieces (build 1 of 2.3.0 shipped without Runtime)
+!macro REQUIRE path
+  !if /FileExists "${SRC}/${path}"
+  !else
+    !error "Programa incompleto: falta ${SRC}/${path}"
+  !endif
+!macroend
+!insertmacro REQUIRE "Runtime/python.exe"
+!insertmacro REQUIRE "Runtime/Lib/site-packages/fastapi/__init__.py"
+!insertmacro REQUIRE "Runtime/Lib/site-packages/uvicorn/__init__.py"
+!insertmacro REQUIRE "Runtime/Lib/site-packages/ustracker/server.py"
+!insertmacro REQUIRE "frontend/index.html"
+!insertmacro REQUIRE "UStracker.exe"
+!insertmacro REQUIRE "UStracker.Shell.exe"
+!insertmacro REQUIRE "UStracker.Updater.exe"
+!insertmacro REQUIRE "WebView2Loader.dll"
+!insertmacro REQUIRE "Trust/adm-global.json"
+!insertmacro REQUIRE "Trust/update_public_key.pem"
+!ifndef ICON
+  !error "Defina -DICON=<UStracker.ico> (ícone do instalador: host/Bootstrap/Assets/UStracker.ico)"
 !endif
 
 !define APP "UStracker"

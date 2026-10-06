@@ -142,6 +142,41 @@ class Activation(unittest.TestCase):
         # B is activated now: activation is refused
         self.assertEqual(self.activate(app_b)[0], 422)
 
+    def test_old_cloud_not_validated_goes_to_backup_and_global_enters(self):
+        """2.3.0: the company cloud holds data the Adm Global never validated (old version) -> backup + new company."""
+        bank = self.bank()
+        old_root = self.base / 'Old'
+        old = create_app(old_root); self.apps.append(old)
+        old.state.auth.bootstrap('Velho', LOCAL)            # old version: local admin, no Adm Global wrap
+        s = old.state.auth.login('Velho', LOCAL)
+        db = Database(old_root, 'production', s.db_key)
+        create_client(db, 1, {'legal_name': 'Cliente Antigo', 'email': 'a@x.test', 'documents': [{'type': 'RG', 'number': 'RG-OLD-1', 'is_primary': True}]})
+        old.state.cloud.keep_company_key(s, self.master['company_key'])
+        old.state.cloud.apply_banks(s, [bank], 1)
+        old.state.cloud.sync_now(s, force=True)
+        old_head = CloudClient(bank['url'], bank['key']).call('ping', {})['head']['id']
+        backup_dir = self.base / 'backup_old'
+        os.environ['USTRACKER_BACKUP_OLD'] = str(backup_dir)
+        try:
+            root, app = self.machine('New')
+            st, body = self.activate(app)
+        finally:
+            os.environ.pop('USTRACKER_BACKUP_OLD', None)
+        self.assertEqual(st, 200, body)
+        self.assertTrue(body['is_global']); self.assertTrue(body['new_company']); self.assertTrue(body['old_cloud_saved'])
+        self.assertNotIn('needs_admin_login', body)
+        saved = list(backup_dir.glob('nuvem_*/Auth/auth.db'))
+        self.assertTrue(saved, 'the old cloud copy is kept in UStracker_backup_old')
+        self.assertTrue((root / 'UserData' / 'State' / 'adm-global.ok').exists())
+        g = next(x for x in app.state.auth._sessions.values() if x.kind == 'global')
+        names = [r[0] for r in Database(root, 'production', g.db_key).query('SELECT legal_name FROM clients')]
+        self.assertNotIn('Cliente Antigo', names)
+        self.assertNotEqual(CloudClient(bank['url'], bank['key']).call('ping', {})['head']['id'], old_head, 'cloud restarted')
+        # the next computer gets the NEW company and the Global enters directly
+        root_b, app_b = self.machine('B')
+        st, out = self.activate(app_b)
+        self.assertEqual(st, 200, out); self.assertTrue(out['restored']); self.assertTrue(out['is_global'])
+
     def test_offline_or_missing_company_key_is_a_clear_error(self):
         self.repo.files.pop('company-key.json')
         root, app = self.machine('A')
