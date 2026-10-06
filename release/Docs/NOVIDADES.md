@@ -1,3 +1,10 @@
+# UStracker 2.3.0
+
+- **Ativação entra direto**: num computador novo, o Adm Global ativa (acesso, PIN e pergunta de segurança) e já entra no sistema, sem nova tela de login.
+- **Adm Local criado pelo Adm Global**: em **Sistema › Adm Global**, o Adm Global cria o Administrador local daquela instalação (com Chave de Recuperação).
+- **Instalador com varredura**: dados validados pelo Adm Global são mantidos; um sistema antigo não validado é descartado e os dados dele vão antes para `Documentos\UStracker_backup_old\<data>`. A pasta antiga `C:\UStracker` é removida depois da cópia.
+- Mensagem clara quando a instalação não foi ativada pelo Adm Global (antes aparecia "senha inválida" mesmo com o PIN certo).
+
 # UStracker 2.2.0
 
 - **Ativação pelo Adm Global**: a primeira entrada em qualquer computador é do Adm Global. Com a nuvem já usada, os dados chegam sozinhos; na primeira instalação, o Adm Global cria o Administrador da empresa (guardado na nuvem na hora).

@@ -18,7 +18,9 @@ test('Computador novo: só o Adm Global ativa; nada de "login de sempre"', () =>
   assert.match(app, /if\(info\.activation\)return activationScreen\(\)/);
   assert.match(app, /api\('\/auth\/activate'/);
   assert.match(app, /if\(r\.challenge\)return activationChallenge/);
-  assert.match(app, /api\('\/auth\/activate\/admin'/);
+  // 2.3.0: activation enters at once; the Adm Global creates the local admin in Sistema
+  assert.doesNotMatch(app, /api\('\/auth\/activate\/admin'/);
+  assert.match(app, /api\('\/admin-local\/create'/);
   assert.doesNotMatch(app, /auth\/join|de sempre/);
 });
 

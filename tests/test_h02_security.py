@@ -94,7 +94,12 @@ class WindowsLayout(unittest.TestCase):
         self.assertNotIn('icacls "$INSTDIR"', self.nsi, 'a pasta do programa não fica gravável por usuários')
         self.assertIn("/grant '*S-1-5-32-545:(OI)(CI)M'", self.ps)
         self.assertIn('-ItemType Junction', self.ps)
-        self.assertNotRegex(self.ps, r'Remove-Item|rmdir|del ', 'a instalação nunca apaga dados')
+        # 2.3.0: data not validated by the Adm Global goes to Documentos\UStracker_backup_old BEFORE removal
+        self.assertIn('UStracker_backup_old', self.nsi)
+        self.assertIn("State\\adm-global.ok", self.ps)
+        retire = self.ps[self.ps.index('function Retire'):]
+        self.assertLess(retire.index('Copy-Tree $ud $dest'), retire.index('Remove-Tree $ud'), 'cópia antes de apagar')
+        self.assertIn('exit 10', retire)
 
     def test_app_opens_as_user_and_closes_running_copy(self):
         self.assertIn('explorer.exe" "$INSTDIR\\UStracker.exe"', self.nsi)
