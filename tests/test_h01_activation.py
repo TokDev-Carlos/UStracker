@@ -107,12 +107,19 @@ class Activation(unittest.TestCase):
         st, body = self.activate(app_a, pin='9999')
         self.assertEqual(st, 422, body)
         st, body = self.activate(app_a)
-        self.assertEqual(st, 200, body); self.assertTrue(body['create_admin']); self.assertTrue(body['cloud'])
-        st, out = call(app_a, 'POST', '/api/v1/auth/activate/admin', {'ticket': 'falso', 'name': 'Admin', 'password': LOCAL}, precsrf=True)
-        self.assertEqual(st, 422, out)
-        st, out = call(app_a, 'POST', '/api/v1/auth/activate/admin', {'ticket': body['ticket'], 'name': 'Admin', 'password': LOCAL}, precsrf=True)
-        self.assertEqual(st, 200, out)
-        self.assertTrue(out['recovery_key']); self.assertTrue(out['cloud']['connected']); self.assertNotIn('error', out['cloud'])
+        # 2.3.0: the Adm Global enters at once (no login, no ticket); the local admin is created inside
+        self.assertEqual(st, 200, body); self.assertTrue(body['new_company']); self.assertTrue(body['is_global'])
+        self.assertTrue(body['cloud']['connected']); self.assertNotIn('error', body['cloud'])
+        self.assertTrue((root_a / 'UserData' / 'State' / 'adm-global.ok').exists(), 'marker for the installer scan')
+        st_ = call(app_a, 'GET', '/api/v1/auth/setup-status')[1]
+        self.assertTrue(st_['activated']); self.assertFalse(st_['local_admin'])
+        self.assertEqual(call(app_a, 'POST', '/api/v1/auth/activate/admin', {'ticket': 'x'}, precsrf=True)[0], 410)
+        g = next(s for s in app_a.state.auth._sessions.values() if s.kind == 'global')
+        st, out = call(app_a, 'POST', '/api/v1/admin-local/create', {'name': 'Admin', 'password': LOCAL}, token=g.token, csrf=g.csrf)
+        self.assertEqual(st, 200, out); self.assertTrue(out['recovery_key'])
+        self.assertEqual(call(app_a, 'POST', '/api/v1/admin-local/create', {'name': 'Outro', 'password': LOCAL}, token=g.token, csrf=g.csrf)[0], 422)
+        self.assertTrue(call(app_a, 'GET', '/api/v1/auth/setup-status')[1]['local_admin'])
+        app_a.state.cloud.sync_now(g, force=True)
         ping = CloudClient(bank['url'], bank['key']).call('ping', {})
         self.assertTrue(ping.get('auth_head') and ping.get('head'), 'acessos e banco já estão na nuvem')
         session = app_a.state.auth.login('Admin', LOCAL)
@@ -139,7 +146,17 @@ class Activation(unittest.TestCase):
         self.repo.files.pop('company-key.json')
         root, app = self.machine('A')
         st, body = self.activate(app)
-        self.assertEqual(st, 200, body); self.assertTrue(body['create_admin']); self.assertFalse(body['cloud'])
+        self.assertEqual(st, 200, body); self.assertTrue(body['new_company']); self.assertFalse(body['cloud']['connected'])
+
+
+    def test_global_login_on_old_data_says_not_prepared(self):
+        root, app = self.machine('Old')
+        app.state.auth._init_store()
+        import ustracker.auth as A
+        A.AuthService.bootstrap(app.state.auth, 'Admin', LOCAL)  # old version: local admin, no Adm Global wrap
+        st, body = call(app, 'POST', '/api/v1/auth/login', {'name': 'crj', 'password': PIN}, precsrf=True)
+        st, body = call(app, 'POST', '/api/v1/auth/login', {'name': 'crj', 'password': PIN, 'answer': PIN}, precsrf=True)
+        self.assertEqual(st, 409, body); self.assertEqual(body['error'], 'NOT_PREPARED')
 
 
 class LegacyBootstrapKey(unittest.TestCase):

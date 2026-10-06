@@ -6,8 +6,8 @@
 ;   Programa  C:\Program Files\UStracker          (protegido: só administradores do Windows alteram)
 ;   Dados     C:\ProgramData\UStracker\UserData   (usuários do Windows podem gravar)
 ;   O programa enxerga os dados em "UserData" por uma junção (Program Files\UStracker\UserData → ProgramData).
-; Instalação antiga em C:\UStracker: os dados são COPIADOS para ProgramData e a pasta antiga vira C:\UStracker_antigo.
-; Nada de dados é apagado na instalação. Desinstalar: "Manter dados" (padrão) ou "Remover tudo" (com cópia antes).
+; 2.3.0 — varredura: dados validados pelo Adm Global ficam; um sistema antigo NÃO validado é descartado (os dados vão
+; antes para Documentos\UStracker_backup_old\<data>). Desinstalar: "Manter dados" (padrão) ou "Remover tudo" (com cópia antes).
 ; Silencioso: /S (instala/atualiza).  Desinstalação silenciosa: Desinstalar_UStracker.exe /S [/REMOVERTUDO]
 
 Unicode true
@@ -17,7 +17,7 @@ RequestExecutionLevel admin
 ManifestDPIAware true
 
 !ifndef VERSION
-  !define VERSION "2.2.0"
+  !define VERSION "2.3.0"
 !endif
 !ifndef SRC
   !error "Defina -DSRC=<pasta do programa>"
@@ -58,6 +58,7 @@ VIAddVersionKey /LANG=1046 "LegalCopyright" "© ${PUBLISHER}"
 
 Var DataDir
 Var OldDir
+Var BackupDir
 Var OldVersion
 Var LogFile
 Var UnMode
@@ -72,10 +73,10 @@ Var UnRadioAll
 !define MUI_ABORTWARNING
 !define MUI_ABORTWARNING_TEXT "Cancelar a instalação do ${APP}? Nada foi alterado ainda se você ainda não clicou em Instalar."
 !define MUI_WELCOMEPAGE_TITLE "Instalar o ${APP} ${VERSION}"
-!define MUI_WELCOMEPAGE_TEXT "Este assistente instala ou atualiza o ${APP} neste computador.$\r$\n$\r$\n• Programa: Arquivos de Programas\${APP} (protegido)$\r$\n• Dados: ProgramData\${APP} (clientes, finanças, fotos e backups)$\r$\n$\r$\nSe houver uma versão antiga aberta, ela será fechada. Seus dados nunca são apagados pela instalação: uma instalação antiga em C:\UStracker é copiada para o lugar novo."
+!define MUI_WELCOMEPAGE_TEXT "Este assistente instala ou atualiza o ${APP} neste computador.$\r$\n$\r$\n• Programa: Arquivos de Programas\${APP} (protegido)$\r$\n• Dados: ProgramData\${APP} (clientes, finanças, fotos e backups)$\r$\n$\r$\nSe houver uma versão antiga aberta, ela será fechada. Um sistema antigo que não foi validado pelo Adm Global é descartado: os dados dele vão antes para Documentos\UStracker_backup_old."
 !define MUI_LICENSEPAGE_TEXT_TOP "Leia os termos de uso do ${APP}."
 !define MUI_FINISHPAGE_TITLE "${APP} ${VERSION} instalado"
-!define MUI_FINISHPAGE_TEXT "Pronto.$\r$\n$\r$\nNa primeira abertura em um computador novo, o ${APP} pede a ATIVAÇÃO pelo Adm Global. Depois disso, cada pessoa entra com o próprio usuário e senha."
+!define MUI_FINISHPAGE_TEXT "Pronto.$\r$\n$\r$\nNa primeira abertura, o ${APP} pede a ATIVAÇÃO pelo Adm Global e já entra no sistema. Em Sistema, o Adm Global cria o Administrador local deste computador."
 !define MUI_FINISHPAGE_RUN
 !define MUI_FINISHPAGE_RUN_TEXT "Abrir o ${APP} agora"
 !define MUI_FINISHPAGE_RUN_FUNCTION OpenAppAsUser
@@ -185,8 +186,8 @@ FunctionEnd
 ; ----------------------------------------------------------------------------------------------- instalar
 Section "Programa" SecMain
   SectionIn RO
-  CreateDirectory "$DataDir\UserData\Logs"
-  StrCpy $LogFile "$DataDir\UserData\Logs\instalacao.log"
+  CreateDirectory "$DataDir"
+  StrCpy $LogFile "$DataDir\instalacao.log"
   !insertmacro LOG "=== ${APP} ${VERSION}: instalação iniciada (anterior: $OldVersion $OldDir)"
   Call CloseApp
 
@@ -207,14 +208,18 @@ Section "Programa" SecMain
   SetOutPath "$INSTDIR"
   !insertmacro LOG "Programa copiado para $INSTDIR"
 
-  ; 2) data folder in ProgramData + junction + migration of the old install (copy, never delete)
+  ; 2) data folder in ProgramData + junction + scan: data not validated by the Adm Global -> Documentos\UStracker_backup_old
+  SetShellVarContext current
+  ${GetTime} "" "L" $0 $1 $2 $3 $4 $5 $6
+  StrCpy $BackupDir "$DOCUMENTS\UStracker_backup_old\$2$1$0_$4$5$6"
+  SetShellVarContext all
   InitPluginsDir
   File /oname=$PLUGINSDIR\setup-data.ps1 "setup-data.ps1"
-  nsExec::ExecToLog 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$PLUGINSDIR\setup-data.ps1" -App "$INSTDIR" -Data "$DataDir" -Old "$OldDir" -Log "$LogFile"'
+  nsExec::ExecToLog 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$PLUGINSDIR\setup-data.ps1" -App "$INSTDIR" -Data "$DataDir" -Old "$OldDir" -Old2 "${OLD_DEFAULT}" -Log "$LogFile" -Backup "$BackupDir" -Trust "$INSTDIR\Trust\adm-global.json"'
   Pop $0
   ${If} $0 != "0"
     !insertmacro LOG "ERRO na pasta de dados (código $0)"
-    MessageBox MB_ICONSTOP "Não foi possível preparar a pasta de dados (código $0).$\r$\nNenhum dado foi apagado. Detalhes em:$\r$\n$LogFile" /SD IDOK
+    MessageBox MB_ICONSTOP "Não foi possível preparar a pasta de dados (código $0).$\r$\nDetalhes em:$\r$\n$LogFile$\r$\nCópia dos dados antigos (se houver):$\r$\n$BackupDir" /SD IDOK
     Abort
   ${EndIf}
   !insertmacro LOG "Dados em $DataDir\UserData"

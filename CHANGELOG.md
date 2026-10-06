@@ -2,6 +2,13 @@
 
 Formato: versão semântica a partir da 2.0.0 (2.0.1 = correção, 2.1.0 = novidade compatível).
 
+## 2.3.0 — 2026-10-05
+
+- Ativação de empresa nova: o Adm Global entra direto no sistema (sem ticket nem login).
+- Sistema › Adm Global: criar o Administrador local da instalação (com Chave de Recuperação).
+- Instalador com varredura: só dados validados pelo Adm Global (`State/adm-global.ok`) são mantidos; o resto vai para `Documentos\UStracker_backup_old` e o sistema antigo é removido.
+- Login do Adm Global em dados antigos: mensagem clara (409 NOT_PREPARED) em vez de "senha inválida".
+
 ## 2.2.0 — 2026-10-05
 - Ativação de computador novo só pelo Adm Global; na primeira instalação ele cria o Administrador da empresa (guardado na nuvem na hora).
 - Corrige o "Internal Server Error" na primeira entrada (acessos antigos vindos da nuvem); erros inesperados em JSON + `UserData/Logs/erros.log`.

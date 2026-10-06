@@ -18,7 +18,7 @@ export function createSession({ api = defaultApi, onUserChange } = {}) {
   const bootstrap = async () => {
     const publicData = await api.request('/public');
     const setupStatus = await api.request('/auth/setup-status');
-    if (setupStatus.enrolled === 0) {
+    if (!(setupStatus.activated ?? setupStatus.enrolled)) {  // 2.3.0: Adm Global activation counts
       clear();
       return { state: 'setup', publicData, setupStatus };
     }
