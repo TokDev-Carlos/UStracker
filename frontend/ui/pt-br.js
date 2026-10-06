@@ -99,6 +99,10 @@ const MESSAGES = Object.freeze({
   'access vault does not match this key': 'Os acessos deste computador não conferem com esta chave.',
   'admin name is required': 'Informe o usuário do Administrador.',
   'bootstrap already completed': 'O Administrador já foi criado.',
+  'this installation was not activated by the Adm Global': 'Esta instalação não foi ativada pelo Adm Global (dados de uma versão antiga). Entre com o Administrador local ou reinstale.',
+  'the local administrator already exists; reset its password instead': 'O Administrador local já existe. Use “Redefinir senha do Adm Local”.',
+  'name already in use': 'Este nome já está em uso.',
+  'secret must have at least 4 characters': 'A senha precisa ter pelo menos 4 caracteres.',
 });
 
 export const labelPtBR = key => COLUMN_LABELS[key] || String(key ?? '').replaceAll('_', ' ');

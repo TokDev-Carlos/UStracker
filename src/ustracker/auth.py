@@ -173,11 +173,18 @@ class AuthService:
     def setup_status(self) -> dict:
         with self._connection() as con:
             rows = con.execute('SELECT slot,name,status FROM admins ORDER BY slot').fetchall()
+            try:
+                has_global = con.execute('SELECT 1 FROM global_access WHERE id=1').fetchone() is not None
+            except sqlite3.OperationalError:  # auth.db of an older version
+                has_global = False
         enrolled = sum(1 for r in rows if r['status'] == 'ENROLLED')
         return {
             'slots': 1,
             'enrolled': enrolled,
             'complete': enrolled >= 1,
+            # 2.3.0 — activated = the Adm Global already prepared this installation (or an old local admin exists)
+            'activated': bool(enrolled or has_global),
+            'local_admin': enrolled >= 1,
             'admins': [{'slot': r['slot'], 'name': r['name'], 'status': r['status']} for r in rows],
         }
 
@@ -245,6 +252,8 @@ class AuthService:
         with self._lock, self._connection() as con:
             if con.execute("SELECT COUNT(*) FROM admins WHERE status='ENROLLED'").fetchone()[0] != 0:
                 raise ValueError('bootstrap already completed')
+            if con.execute('SELECT 1 FROM global_access WHERE id=1').fetchone():
+                raise ValueError('bootstrap already completed')  # 2.3.0: the Adm Global creates the local admin
             vrk = random_bytes(32)
             salt, nonce, cipher = self._create_admin_envelope(vrk, password)
             now = self._now().isoformat()
@@ -517,7 +526,51 @@ class AuthService:
             con.execute('INSERT OR REPLACE INTO global_access(id,wrap,updated_at) VALUES(1,?,?)',
                         (json.dumps(adm_global.wrap(session.vrk, trust)), self._now().isoformat()))
             self._audit(con, session.slot, 'GLOBAL_ACCESS_READY', {})
-            return True
+        self.mark_global_validated(trust)
+        return True
+
+    def mark_global_validated(self, trust: dict) -> None:
+        """2.3.0 — UserData/State/adm-global.ok: the installer keeps only data the Adm Global validated (public key, no secret)."""
+        try:
+            state = self.root / 'UserData' / 'State'
+            state.mkdir(parents=True, exist_ok=True)
+            (state / 'adm-global.ok').write_text(json.dumps({'x_pub': trust['x_pub'], 'at': self._now().isoformat()}), encoding='utf-8')
+        except OSError:
+            pass
+
+    def bootstrap_global(self, trust: dict, keys: dict, environment: str = 'production') -> Session:
+        """2.3.0 — new company: the Adm Global activates a clean installation and enters at once (no local admin yet)."""
+        from . import adm_global
+        with self._lock, self._connection() as con:
+            if con.execute("SELECT COUNT(*) FROM admins WHERE status='ENROLLED'").fetchone()[0] != 0 or \
+                    con.execute('SELECT 1 FROM global_access WHERE id=1').fetchone():
+                raise ValueError('this computer is already activated; use the normal sign in')
+            vrk = random_bytes(32)
+            self._write_vault(vrk)
+            con.execute('INSERT INTO global_access(id,wrap,updated_at) VALUES(1,?,?)',
+                        (json.dumps(adm_global.wrap(vrk, trust)), self._now().isoformat()))
+            self._audit(con, self.GLOBAL_SLOT, 'ACTIVATED_BY_GLOBAL', {})
+        return self.global_session(trust, keys, environment)
+
+    def create_local_admin(self, session: Session, name: str, password: str) -> dict:
+        """2.3.0 — inside the system the Adm Global creates the local administrator of this installation."""
+        if not session.is_global:
+            raise PermissionError('Adm Global required')
+        name = name.strip()
+        if not name:
+            raise ValueError('admin name is required')
+        with self._lock, self._connection() as con:
+            if con.execute("SELECT COUNT(*) FROM admins WHERE status='ENROLLED'").fetchone()[0] != 0:
+                raise ValueError('the local administrator already exists; reset its password instead')
+            if con.execute('SELECT 1 FROM users WHERE name=? COLLATE NOCASE', (name,)).fetchone():
+                raise ValueError('name already in use')
+            salt, nonce, cipher = self._create_admin_envelope(session.vrk, password)
+            now = self._now().isoformat()
+            con.execute('UPDATE admins SET name=?,salt=?,vrk_nonce=?,vrk_cipher=?,status=?,revision=revision+1,updated_at=? WHERE slot=1',
+                        (name, salt, nonce, cipher, 'ENROLLED', now))
+            code = self._store_recovery(con, session.vrk, shown=True)
+            self._audit(con, session.slot, 'LOCAL_ADMIN_CREATED', {'name': name})
+            return {'slot': 1, 'name': name, 'recovery_key': code}
 
     def global_lock_state(self, identity: str) -> dict:
         self._init_store()  # auth.db may have come from the cloud (older version)
@@ -589,6 +642,7 @@ class AuthService:
             self._sessions[session.token] = session
             con.execute('DELETE FROM login_lock WHERE identity=?', (trust['login'].casefold(),))
             self._audit(con, self.GLOBAL_SLOT, 'LOGIN', {'environment': environment, 'global': True})
+        self.mark_global_validated(trust)
         return session
 
     # ------------------------------------------------------------------ U-01..U-04 usuários e pacotes

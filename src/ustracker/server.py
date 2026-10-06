@@ -324,6 +324,8 @@ def create_app(root: Path | str) -> FastAPI:
             except adm_global.AccessDenied as exc:
                 if str(exc) == 'invalid credentials':
                     return JSONResponse({**denied, 'hint': auth.global_failure(ident, 'pin')['hint']}, status_code=422)
+                if str(exc) == 'installation not prepared':  # 2.3.0: PIN was right; say what is really missing
+                    return JSONResponse({'error': 'NOT_PREPARED', 'detail': 'this installation was not activated by the Adm Global'}, status_code=409)
                 return JSONResponse({**denied, 'hint': adm_global.hint_for(state['question_id'] or 1, max(1, state['attempts']))}, status_code=422)
         else:
             session = auth.login(p.get('name', ''), p.get('password', ''), p.get('environment', 'production'))
@@ -426,6 +428,12 @@ def create_app(root: Path | str) -> FastAPI:
     def admin_local_password(request: Request, p: dict = Body(...)):
         out = auth.reset_local_admin(global_session(request), p.get('new_password', ''))
         cloud.mark_dirty()  # accesses live in the cloud: the new password reaches every Servidor
+        return out
+
+    @app.post('/api/v1/admin-local/create')
+    def admin_local_create(request: Request, p: dict = Body(...)):
+        out = auth.create_local_admin(global_session(request), str(p.get('name', '')), str(p.get('password', '')))
+        cloud.mark_dirty()  # accesses live in the cloud
         return out
 
     @app.post('/api/v1/admin-local/recovery-key')
@@ -1303,7 +1311,7 @@ def create_app(root: Path | str) -> FastAPI:
         from .cloud import CloudClient
         from .placa import fetch_placa, load_bootstrap, read_placa
         csrf_required(request)
-        if auth.setup_status()['enrolled']:
+        if auth.setup_status()['activated']:
             raise ValueError('this computer is already activated; use the normal sign in')
         trust = adm_global.load_trust(root)
         if not trust:
@@ -1367,36 +1375,26 @@ def create_app(root: Path | str) -> FastAPI:
             except Exception:
                 pass
             return out
-        ticket = secrets.token_urlsafe(24)
-        activations[ticket] = {'expires': time.time() + 900, 'banks': banks, 'seq': seq, 'company_key': company_key,
-                               'keys': keys, 'trust': trust}
-        return {'activated': False, 'create_admin': True, 'ticket': ticket, 'cloud': bool(banks)}
-
-    @app.post('/api/v1/auth/activate/admin')
-    def auth_activate_admin(request: Request, response: Response, p: dict = Body(...)):
-        """2.2.0 — new company: the Adm Global (just verified) creates the company Administrator; accesses go to the cloud at once."""
-        csrf_required(request)
-        item = _activation_ticket(p)
-        if auth.setup_status()['enrolled']:
-            raise ValueError('this computer is already activated; use the normal sign in')
-        created = auth.bootstrap(str(p.get('name', '')), str(p.get('password', '')))
-        activations.pop(str(p.get('ticket')), None)
-        session = auth.login(str(p.get('name', '')), str(p.get('password', '')), 'production')
-        auth.ensure_global_wrap(session, item['trust'])
+        # 3b) new company (empty cloud or no cloud): the Adm Global enters at once; the local admin is created inside (Sistema)
+        session = auth.bootstrap_global(trust, keys, 'production')
         cloud_info = {'connected': False}
-        if item['banks']:
-            if item['company_key']:
-                cloud.keep_company_key(session, item['company_key'])
-            cloud.apply_banks(session, item['banks'], item['seq'])
+        if banks:
+            if company_key:
+                cloud.keep_company_key(session, company_key)
+            cloud.apply_banks(session, banks, seq)
             cloud.mark_dirty()
-        out = enter(response, session, created.get('recovery_key'), {'activated': True, 'created_admin': True})
-        if item['banks']:
-            try:  # accesses and the empty base go up right now (verified by the upload answer)
+        out = enter(response, session, None, {'activated': True, 'new_company': True})
+        if banks:
+            try:  # accesses and the empty base go up right now
                 cloud_info = {'connected': True, **cloud.sync_now(session, force=True)}
             except Exception as exc:
                 cloud_info = {'connected': True, 'error': str(exc)[:200]}
         out['cloud'] = cloud_info
         return out
+
+    @app.post('/api/v1/auth/activate/admin')
+    def auth_activate_admin():
+        raise HTTPException(410, 'replaced in 2.3.0: the Adm Global creates the local admin in Sistema')
 
     @app.post('/api/v1/auth/join')
     def auth_join(request: Request):

@@ -1,15 +1,15 @@
-UStracker 2.2.0
+UStracker 2.3.0
 
 Instalar ou atualizar:
   Execute UStracker_install_x64.exe (pede permissao de administrador).
   Programa: C:\Program Files\UStracker   Dados: C:\ProgramData\UStracker\UserData
-  Uma instalacao antiga em C:\UStracker e copiada para o lugar novo;
-  a pasta antiga vira C:\UStracker_antigo (apague depois de conferir).
+  Varredura: sistema antigo nao validado pelo Adm Global e descartado;
+  os dados dele vao antes para Documentos\UStracker_backup_old.
 
 Primeiro uso em cada computador:
   Ativar este computador com o Adm Global. Se a empresa ja usa o UStracker,
-  os dados chegam da nuvem. Se for o primeiro computador, o Adm Global cria
-  o Administrador da empresa. Depois, cada pessoa entra com o proprio usuario.
+  os dados chegam da nuvem. Se for o primeiro computador, o Adm Global entra
+  direto e cria o Administrador local em Sistema. Depois, cada um usa o seu usuario.
 
 Desinstalar: Manter dados (padrao) ou Remover tudo (copia antes em Documentos).
 
