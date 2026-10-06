@@ -1,0 +1,17 @@
+UStracker - Aplicador de Patch
+
+Abrir: clique duas vezes em Aplicar_Patch.cmd (o Windows pede permissao de administrador).
+
+1 - Atualizar Sistema da Maquina
+    Escolha o pacote .uspatch. A assinatura e conferida com a chave do UStracker instalado.
+    Antes de mexer, os bancos (Auth, Production, Test) sao copiados para
+    Documentos\UStracker_Backups\Patch_<de>_para_<para>_<data> e conferidos.
+    Se a versao nova nao abrir, o sistema volta sozinho para a anterior.
+
+2 - Atualizar Todos os Sistemas
+    Faz o 1 nesta maquina; depois de voce conferir, lanca a versao no canal de
+    atualizacao (GitHub). Os outros computadores recebem em ate 3 horas ou ao abrir.
+    O token do GitHub e pedido na hora (arquivo da pasta Tokens do Drive) e nao fica salvo.
+    Nunca lanca uma versao igual ou mais antiga que a que ja esta na nuvem.
+
+Registro: Documentos\UStracker_Backups\Aplicador_Patch.log
