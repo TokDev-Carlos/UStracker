@@ -335,9 +335,6 @@ def main(argv=None) -> int:
         return 1
 
 
-if __name__ == '__main__':
-    raise SystemExit(main())
-
 
 def _log(root: Path, entry: dict) -> None:
     path = Path(root) / 'UserData' / 'State' / 'update_history.json'
@@ -348,3 +345,7 @@ def _log(root: Path, entry: dict) -> None:
     items.append({**entry, 'at': datetime.now(UTC).isoformat()})
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(items[-50:], indent=2), encoding='utf-8')
+
+
+if __name__ == '__main__':  # last line: everything above (incl. _log) must be defined first
+    raise SystemExit(main())

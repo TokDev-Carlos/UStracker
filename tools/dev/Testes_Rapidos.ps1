@@ -1,5 +1,6 @@
 # UStracker - testes rapidos locais (Python + telas). Resultado em ..\Logs\testes_<data>.txt
 param([string]$Base = 'D:\PROGRAMAS\UStracker_Project')
+try { [Console]::OutputEncoding = [Text.Encoding]::UTF8; $OutputEncoding = [Text.Encoding]::UTF8 } catch {}  # git/python falam UTF-8
 $code = Join-Path $Base 'Codigo'
 $log = Join-Path $Base ("Logs\testes_" + (Get-Date -Format 'yyyyMMdd_HHmmss') + '.txt')
 Push-Location $code

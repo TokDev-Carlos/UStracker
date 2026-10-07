@@ -1,3 +1,8 @@
+# UStracker 2.4.1
+
+- **Atualização**: o atualizador terminava com erro mesmo tendo instalado a versão nova (o Aplicador mostrava "não aplicado"). Corrigido; o Aplicador agora confere a versão instalada.
+- Mensagens do Aplicador e dos scripts sem caracteres trocados (acentos).
+
 # UStracker 2.4.0
 
 - **Filtro em todas as tabelas** (estilo planilha): botão ▾ em cada coluna para ordenar (A→Z, menor→maior, datas e valores), buscar e marcar só os valores que quer ver. Vale em todas as páginas; a tabela de Clientes filtra em todas as páginas da lista.

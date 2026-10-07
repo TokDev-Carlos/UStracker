@@ -1,4 +1,4 @@
-UStracker 2.4.0
+UStracker 2.4.1
 
 Instalar ou atualizar:
   Execute UStracker_install_x64.exe (pede permissao de administrador).

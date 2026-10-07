@@ -2,6 +2,7 @@
 # Cria D:\PROGRAMAS\UStracker_Project, clona o repositorio (Dev), instala Node.js e NSIS (winget) se faltarem,
 # cria o ambiente Python (.venv) e roda um teste rapido. Nada e apagado. Relatorio em Logs\.
 param([string]$Base = 'D:\PROGRAMAS\UStracker_Project', [switch]$SemInstalar)
+try { [Console]::OutputEncoding = [Text.Encoding]::UTF8; $OutputEncoding = [Text.Encoding]::UTF8 } catch {}  # git/python falam UTF-8
 
 $ErrorActionPreference = 'Continue'
 $stamp = Get-Date -Format 'yyyyMMdd_HHmmss'

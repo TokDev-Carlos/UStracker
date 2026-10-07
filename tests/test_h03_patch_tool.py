@@ -78,6 +78,12 @@ class PatchTool(unittest.TestCase):
             pt.cmd_apply(self.root, self.patch, self.backups, runner=lambda: 1)
         self.assertIn('2.2.0', str(ctx.exception)); self.assertIn('Backup', str(ctx.exception))
 
+    def test_applied_but_old_updater_exit_code_1_counts_as_applied(self):
+        # H-11: the 2.4.0 runtime applies and then exits 1 (_log bug); the installed version decides
+        out = pt.cmd_apply(self.root, self.patch, self.backups, runner=lambda: (self.runner(), 1)[1])
+        self.assertEqual(out['to'], (ROOT / 'version.md').read_text(encoding='utf-8').strip())
+        self.assertTrue(out['ok'])
+
     def test_package_from_another_key_or_tampered_is_refused(self):
         other = make_patch.make_patch(ROOT, Path(self.tmp.name) / 'other', 'normal', 'x', Ed25519PrivateKey.generate())
         with self.assertRaises(pt.PatchError):
