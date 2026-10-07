@@ -3,8 +3,24 @@ from __future__ import annotations
 
 import os
 import shutil
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+# 2.3.1 — another Servidor saved the company cloud recently: restarting it is never allowed
+RESTART_BLOCK_HOURS = 24
+RESTART_WORD = 'RECOMEÇAR'
+
+
+def saved_recently(saved_at: str | None) -> bool:
+    if not saved_at:
+        return False
+    try:
+        when = datetime.fromisoformat(str(saved_at).replace('Z', '+00:00'))
+    except ValueError:
+        return True  # unknown date: be safe
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    return datetime.now(timezone.utc) - when < timedelta(hours=RESTART_BLOCK_HOURS)
 
 # what belongs to a company dataset inside UserData (Logs and the WebView2 cache stay)
 _DATASET = ('Auth', 'Production', 'Test', 'Media', 'Attachments', 'Public')

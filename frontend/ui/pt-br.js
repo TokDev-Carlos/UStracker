@@ -102,6 +102,7 @@ const MESSAGES = Object.freeze({
   'this installation was not activated by the Adm Global': 'Esta instalação não foi ativada pelo Adm Global (dados de uma versão antiga). Entre com o Administrador local ou reinstale.',
   'the local administrator already exists; reset its password instead': 'O Administrador local já existe. Use “Redefinir senha do Adm Local”.',
   'name already in use': 'Este nome já está em uso.',
+  'type RECOMEÇAR to restart the company': 'Digite RECOMEÇAR para recomeçar a empresa.',
   'secret must have at least 4 characters': 'A senha precisa ter pelo menos 4 caracteres.',
 });
 

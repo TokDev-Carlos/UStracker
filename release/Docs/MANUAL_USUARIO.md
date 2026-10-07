@@ -1,4 +1,4 @@
-# Manual do Usuário — UStracker 2.3.0
+# Manual do Usuário — UStracker 2.3.1
 
 ## Instalar
 1. Execute **UStracker_install_x64.exe** (o Windows pede permissão de administrador) e siga as telas. Ele já leva tudo: programa, WebView2 e o endereço da nuvem da empresa.
@@ -8,6 +8,8 @@
 2. Abra pelo atalho **UStracker** na Área de Trabalho ou no Menu Iniciar.
 3. **Primeira abertura em qualquer computador: Ativar este computador.** Quem ativa é sempre o **Adm Global** (acesso do dono + PIN + pergunta de segurança).
    - A empresa já usa o UStracker: os dados chegam da nuvem e o computador vira mais um **Servidor**.
+   - Dados de versão antiga na nuvem: a tela mostra o que existe; entre uma vez com o **Administrador da empresa** para validar (recomendado) ou digite **RECOMEÇAR** para começar do zero (com cópia antes; bloqueado se outro computador salvou nas últimas 24 h).
+   - Dados de versão antiga na nuvem: a tela mostra o que existe; entre uma vez com o **Administrador da empresa** para validar (recomendado) ou digite **RECOMEÇAR** para começar do zero (com cópia antes; bloqueado se outro computador salvou nas últimas 24 h).
    - Primeiro computador da empresa: o Adm Global entra direto no sistema e, em **Sistema › Adm Global**, cria o **Administrador local** (guardado na nuvem, vale em todos os computadores).
 4. Depois de criado o Administrador local, cada pessoa entra com o próprio usuário e senha.
 
