@@ -1,11 +1,17 @@
-# UStracker — Fonte de Execução
+# UStracker
 
-Baseline editável preparada para a próxima execução do Codex.
+Sistema Windows de controle de clientes, frotas, finanças e nuvem (CRJ).
 
-- Fonte atual já incorpora a correção recente de fechamento do Shell/backend.
-- Resíduos de build, testes e documentos de planejamento foram removidos desta baseline.
-- Nenhuma dependência válida aponta para `.Arquivado` ou workspace antigo.
-- O perfil do WebView2 foi trazido para `UserData/State/WebView2`.
-- Instruções funcionais e de arquitetura estão consolidadas em `CODEX_EXECUCAO.md`.
+| Pasta | Conteúdo |
+|---|---|
+| `src/ustracker/` | Backend Python (FastAPI) |
+| `frontend/` | Telas (JS/CSS) |
+| `host/` | Host .NET (WebView2) |
+| `cloud/` | Apps Script da nuvem (Google Drive) |
+| `release/` | Instalador NSIS, LEIA-ME e documentos do usuário |
+| `tools/` | Build do instalador, pacotes de patch (`make_patch.py`, `patch/`), scripts locais (`dev/`) |
+| `tests/` | Testes Python (`test_*.py`) e de tela (`*.test.mjs`) |
+| `Trust/` | Chaves públicas (atualização / Adm Global) |
 
-O Codex deve trabalhar somente nesta árvore.
+Branches: `main` = versão lançada · `Dev` = desenvolvimento. Canal de atualização: `updates/` (na `main`).
+Regras e caminhos de trabalho: `CLAUDE.md`. Novidades por versão: `release/Docs/NOVIDADES.md`.

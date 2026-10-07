@@ -1,7 +1,0 @@
-{
-  "user_approved_execution": true,
-  "approved_changeset_id": "R01-foundation-visual",
-  "approved_at": "2026-09-28T23:36:37Z",
-  "approval_source": "Explicit user message: Prossiga a Execução",
-  "note": "R01 execution explicitly authorized; R02-R10 remain locked until their own gates."
-}
