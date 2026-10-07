@@ -1,9 +1,14 @@
-# UStracker 2.3.1
+# UStracker 2.4.0
 
-- **Ativação segura**: se a nuvem da empresa tiver dados de uma versão antiga (não validados pelo Adm Global), a ativação **para e mostra** o que existe lá (clientes, veículos, assinaturas, recebimentos e data do último salvamento). Nada é apagado.
-- Caminho padrão: entrar **uma vez** com o Administrador da empresa — os dados ficam validados e o Adm Global passa a entrar direto.
-- Recomeçar a empresa do zero só digitando **RECOMEÇAR**, com cópia antes em `Documentos\UStracker_backup_old`, e **bloqueado** se outro computador salvou nas últimas 24 horas.
-- Primeira versão entregue pelo **Aplicador de Patch** (`.uspatch`).
+- **Filtro em todas as tabelas** (estilo planilha): botão ▾ em cada coluna para ordenar (A→Z, menor→maior, datas e valores), buscar e marcar só os valores que quer ver. Vale em todas as páginas; a tabela de Clientes filtra em todas as páginas da lista.
+- **Cliente empresa (CNPJ)**: novo tipo de documento CNPJ (com conferência dos dígitos). Cliente com CNPJ já vira a própria empresa principal.
+- **Motos**: nova categoria Motos (com ícone). Aeronaves passam para Outros.
+- **Assinatura por frota**: a Quantidade passa a ser automática = total de veículos marcados (frota de 10 + 2 avulsos = 12), com prévia da conta ("12 veículos × R$ 50,00 = R$ 600,00/mês") e aviso quando um veículo já está em outra assinatura ativa (evita cobrar 2×). A quantidade continua editável.
+- **Pagamento mostra o que está sendo pago**: frota(s), placas, número de veículos e valor por veículo de cada assinatura.
+- **Histórico na ficha do veículo/frota**: no número de assinaturas, a lista de cobranças por mês com situação, data do pagamento e valor por veículo.
+- **Despesas**: Gerente edita e exclui despesas, inclusive pagas (os pagamentos vão juntos para a Lixeira e voltam juntos ao restaurar). Visão Geral mostra **Despesas Gerais** (pagas e a pagar) no período.
+- **Recebimentos**: cartões **Total Recebido** e **Total Não Pago** (meses vencidos das assinaturas + compras diretas em aberto).
+- Campos de valor começam vazios (o "R$ 0,00" some ao clicar) e fontes da Visão Geral maiores.
 
 # UStracker 2.3.1
 

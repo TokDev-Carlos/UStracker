@@ -76,7 +76,7 @@ export function renderClientProfile(profile = {}, options = {}) {
   // Dados básicos: leitura + edição sob demanda
   const statusValue = client.status === 'BLOCKED' ? 'INACTIVE' : (client.status || 'ACTIVE');
   const statusOptions = [['ACTIVE', 'ATIVO'], ['INACTIVE', 'INATIVO'], ['CANCELLED', 'CANCELADO']].map(([v, l]) => `<option value="${v}" ${statusValue === v ? 'selected' : ''}>${l}</option>`).join('');
-  const documentTypeOptions = ['CPF', 'RG', 'CNH'].map(type => `<option value="${type}" ${document.type === type ? 'selected' : ''}>${type}</option>`).join('');
+  const documentTypeOptions = ['CPF', 'CNPJ', 'RG', 'CNH'].map(type => `<option value="${type}" ${document.type === type ? 'selected' : ''}>${type}</option>`).join('');
   const readView = `<dl class="cp-dl cp-dl-wide" data-cp-read="dados"><dt>Nome</dt><dd>${esc(client.legal_name || '—')}</dd><dt>E-mail</dt><dd>${esc(client.email || '—')}</dd><dt>Telefone</dt><dd>${esc(client.phone || '—')}</dd><dt>Situação</dt><dd>${esc(STATUS[client.status] || 'Ativo')}</dd><dt>Documento</dt><dd>${esc(document.type || '')} ${esc(document.number || '—')}</dd></dl>`;
   const editForm = `<form id="clientBasicsForm" class="cp-form" hidden><div class="cp-form-grid">
       <div class="field"><label>Nome*</label><input name="legal_name" value="${esc(client.legal_name || '')}" required></div>
@@ -99,7 +99,7 @@ export function renderClientProfile(profile = {}, options = {}) {
   const empresas = panel('empresas', 'Empresas', addButton('clientCompanyForm', 'Empresa'), companyForm + table(['Nome', 'Razão social', 'CNPJ', '', 'Frotas'], companyRows, 'Nenhuma empresa cadastrada.'));
 
   // Veículos e frotas
-  const typeOptions = ['Carro', 'Caminhão', 'Embarcação', 'Aeronave'].map(type => `<option value="${type}">${type}</option>`).join('') + '<option value="__custom__">Outro tipo…</option>';
+  const typeOptions = ['Carro', 'Moto', 'Caminhão', 'Embarcação'].map(type => `<option value="${type}">${type}</option>`).join('') + '<option value="__custom__">Outro tipo…</option>';
   const fleetOptions = '<option value="">Particular (sem frota)</option>' + fleets.map(fleet => `<option value="${esc(fleet.id)}">${esc([fleet.name, fleet.vehicle_group_label || 'Misto'].join(' · '))}</option>`).join('');
   const companyOptions = companies.map(company => `<option value="${esc(company.id)}" ${company.is_primary ? 'selected' : ''}>${esc(company.trade_name || company.legal_name)}</option>`).join('');
   const vehicleForm = `<form id="clientVehicleForm" class="cp-form" hidden><h4>Novo veículo</h4><div class="cp-form-grid">

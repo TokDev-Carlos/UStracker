@@ -72,6 +72,8 @@ def restore(db: Database, actor: int, trash_id: str) -> dict:
         extra: dict = {}
         if kind == 'expense':
             _insert(con, 'expenses', payload['row'])
+            for row in payload.get('disbursements', []):
+                _insert(con, 'disbursements', row)
         elif kind == 'catalog':
             row = dict(payload['row'])
             if con.execute('SELECT 1 FROM catalog WHERE code=?', (row['code'],)).fetchone():

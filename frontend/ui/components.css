@@ -190,3 +190,36 @@ button:not(.ui-icon-btn):not(.subs-count):not(.cp-photo-remove):not(.tree-fleet)
 .tabs button.active{background:var(--us-blue-600);color:var(--us-white);border-color:var(--us-blue-600)}
 button:disabled,.ui-btn:disabled{opacity:.5;cursor:not-allowed}
 .drilldown h4{margin:var(--us-space-4) 0 var(--us-space-2)}.drilldown-cards{grid-template-columns:repeat(3,1fr)}td.negative{color:var(--us-red-700)}
+
+/* H-08 (2.4.0): filtro por coluna estilo planilha */
+th.tf-th{white-space:nowrap}
+.tf-btn{margin-left:6px;border:1px solid var(--us-gray-300);background:var(--us-white);color:var(--us-gray-600);border-radius:6px;font-size:11px;line-height:1;padding:2px 5px;cursor:pointer;vertical-align:middle}
+.tf-btn:hover{border-color:var(--us-blue-600);color:var(--us-blue-700)}
+th.tf-active .tf-btn{background:var(--us-blue-50);border-color:var(--us-blue-600);color:var(--us-blue-700);font-weight:700}
+tr.tf-hidden{display:none}
+.tf-note{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--us-blue-700);background:var(--us-blue-50);border-radius:var(--us-radius-sm);padding:6px 10px;margin:0 0 8px}
+.tf-clear-all{border:0;background:none;color:var(--us-blue-700);text-decoration:underline;cursor:pointer;font-size:13px;padding:0}
+.tf-pop{position:absolute;z-index:4000;width:270px;background:var(--us-white);border:1px solid var(--us-gray-200);border-radius:var(--us-radius-md);box-shadow:var(--us-shadow-md);padding:10px;display:flex;flex-direction:column;gap:8px;font-size:13px;color:var(--us-gray-900)}
+.tf-title{font-weight:700}
+.tf-sort{display:flex;flex-direction:column;gap:2px;border-bottom:1px solid var(--us-gray-200);padding-bottom:6px}
+.tf-sort button{text-align:left;border:0;background:none;padding:5px 6px;border-radius:6px;cursor:pointer;color:var(--us-gray-700)}
+.tf-sort button:hover{background:var(--us-gray-100)}
+.tf-search{width:100%;box-sizing:border-box;border:1px solid var(--us-gray-300);border-radius:6px;padding:6px 8px}
+.tf-all{font-weight:600}
+.tf-list{max-height:220px;overflow:auto;display:flex;flex-direction:column;gap:2px;border:1px solid var(--us-gray-100);border-radius:6px;padding:4px}
+.tf-list label,.tf-all{display:flex;gap:6px;align-items:center;cursor:pointer;padding:2px 4px;border-radius:4px}
+.tf-list label:hover{background:var(--us-gray-50)}
+.tf-list label span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tf-list small{color:var(--us-gray-500)}
+.tf-actions{display:flex;justify-content:flex-end;gap:6px}
+
+/* H-09 (2.4.0): prévia da assinatura por frota */
+.sw-preview{margin:10px 0;padding:10px 12px;border-radius:var(--us-radius-sm);background:var(--us-blue-50);color:var(--us-blue-700);display:flex;flex-direction:column;gap:6px}
+.sw-warning{color:var(--us-amber-700);background:var(--us-amber-50);border-radius:6px;padding:6px 8px;font-size:13px}
+
+/* H-10 (2.4.0): o que o pagamento cobre / histórico na ficha */
+.pay-cover{display:block;margin-top:4px;font-size:12px;color:var(--us-gray-700);line-height:1.4}
+.subs-history{margin-top:10px}
+.subs-history summary{cursor:pointer;font-weight:600}
+.pay-cover .pay-cover-name{display:inline;font-weight:700}
+.pay-sub span.pay-cover{display:block}.pay-sub .pay-cover span.pay-cover-name{display:inline}

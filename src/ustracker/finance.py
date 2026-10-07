@@ -59,7 +59,9 @@ def finance_snapshot(db:Database)->dict:
     realized_expenses=int(db.one(
         'SELECT COALESCE(SUM(amount_cents),0) FROM disbursements WHERE reversed_at IS NULL'
     )[0])
+    from .billing import receivables_summary
     return {
+        'receivables':receivables_summary(db),  # 2.4.0: Total Recebido / Total Não Pago
         'payments':payments,
         'active_payments':active_payments,
         'realized_received_cents':realized_received,

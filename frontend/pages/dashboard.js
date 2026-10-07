@@ -13,7 +13,7 @@ export function renderOverviewPage(data={},query='',selectedYear=''){
   kpi('kpi-revenue',formatBRL(period.revenue_cents||0),'Receita',`<span class="forecast-detail">Realizada até hoje · ${esc(period.label||'Geral')}</span>`),
   kpi('kpi-forecast',formatBRL(forecast.forecast_cents||0),`Previsão do Mês ${esc(monthLabel(forecast.competence))}`,`<span class="forecast-tag">Não realizada · fora do Resultado</span><span class="forecast-detail">Recebido no mês: ${formatBRL(forecast.received_in_month_cents||0)}</span>`),
   kpi('kpi-clients',esc(data.active_clients??0),'Clientes Ativos'),
-  restricted?'':kpi('kpi-expenses',formatBRL(period.expenses_cents||0),'Despesas Gerais',`<span class="forecast-detail">Pagas · ${esc(period.label||'Geral')}</span>`),
+  restricted?'':kpi('kpi-expenses',formatBRL(period.expenses_cents||0),'Despesas Gerais',`<span class="forecast-detail">Pagas ${formatBRL(period.expenses_paid_cents||0)} · A pagar ${formatBRL(period.expenses_open_cents||0)} · ${esc(period.label||'Geral')}</span>`),
   restricted?'':kpi(`kpi-result ${Number(period.result_cents||0)>=0?'result-positive':'result-negative'}`,formatBRL(period.result_cents||0),'Resultado','<span class="forecast-detail">Receita − Despesas Gerais</span>'),
   kpi('kpi-subscriptions',esc(data.active_subscriptions??0),'Assinaturas Ativas'),
  ].join('');
@@ -29,9 +29,9 @@ const periodName=key=>/^\d{4}-\d{2}$/.test(key)?`${MONTHS[Number(key.slice(5))-1
 export function renderOverviewDrilldown(d={}){
  const t=d.totals||{};
  const rows=(d.periods||[]).map(r=>`<tr><td>${esc(periodName(r.period))}</td><td class="money">${formatBRL(r.subscriptions_cents)}</td><td class="money">${formatBRL(r.direct_sales_cents)}</td><td class="money"><strong>${formatBRL(r.revenue_cents)}</strong></td><td class="money">${formatBRL(r.expenses_cents)}</td><td class="money ${r.result_cents>=0?'':'negative'}"><strong>${formatBRL(r.result_cents)}</strong></td></tr>`).join('')||'<tr><td colspan="6" class="muted">Nenhum valor realizado neste período.</td></tr>';
- const cats=(d.expense_categories||[]).map(c=>`<tr><td>${esc(c.category)}</td><td class="money">${formatBRL(c.amount_cents)}</td></tr>`).join('')||'<tr><td colspan="2" class="muted">Nenhuma despesa paga.</td></tr>';
+ const cats=(d.expense_categories||[]).map(c=>`<tr><td>${esc(c.category)}</td><td class="money">${formatBRL(c.amount_cents)}</td></tr>`).join('')||'<tr><td colspan="2" class="muted">Nenhuma despesa.</td></tr>';
  return `<div class="drilldown"><div class="cards drilldown-cards"><div class="card"><div class="value">${formatBRL(t.revenue_cents||0)}</div><div class="label">Receita Geral</div><span class="forecast-detail">Assinaturas/recebimentos ${formatBRL(t.subscriptions_cents||0)} · Compras pagas ${formatBRL(t.direct_sales_cents||0)}</span></div><div class="card"><div class="value">${formatBRL(t.expenses_cents||0)}</div><div class="label">Despesas Gerais</div></div><div class="card"><div class="value">${formatBRL(t.result_cents||0)}</div><div class="label">Resultado</div></div></div>
  <h4>Por ${d.granularity==='month'?'mês':'ano'}</h4><div class="table-wrap"><table class="compact-table"><thead><tr><th>Período</th><th class="money">Recebimentos</th><th class="money">Compras pagas</th><th class="money">Receita</th><th class="money">Despesas</th><th class="money">Resultado</th></tr></thead><tbody>${rows}</tbody></table></div>
- <h4>Despesas por categoria</h4><div class="table-wrap"><table class="compact-table"><thead><tr><th>Categoria</th><th class="money">Valor pago</th></tr></thead><tbody>${cats}</tbody></table></div>
+ <h4>Despesas por categoria</h4><div class="table-wrap"><table class="compact-table"><thead><tr><th>Categoria</th><th class="money">Valor (pagas e a pagar)</th></tr></thead><tbody>${cats}</tbody></table></div>
  <p class="muted">Recebimentos estornados no período (fora da receita): ${formatBRL(d.reversed_payments_cents||0)}. Valores com data futura não entram.</p></div>`;
 }

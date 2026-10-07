@@ -15,13 +15,15 @@ import { closeSubscriptionPopover, openSubscriptionPopover } from './ui/subscrip
 import { bindClientProfileUi } from './ui/client-profile.js';
 import { bindActionButton, bindActionForm, runDomAction } from './ui/action-state.js';
 import { installInteractions, navigationFinished, navigationStarted } from './ui/interactions.js';
+import { installTableFilters } from './ui/table-filters.js';
 installInteractions();
+installTableFilters(document.body);
 import { buildClientCreatePayload, clientTableDefinition, renderClientEditor } from './pages/clients.js';
 import { buildMobilityQuery, buildVehiclePayload, renderFleetProfile, renderMobilityPage, renderMoveVehicleForm } from './pages/mobility.js';
 import { bindCatalogForm, catalogPayload, renderCatalogEditForm, renderCatalogPage } from './pages/catalog.js';
 import { renderCommercialPage, renderSubscriptionAmendForm, subscriptionMenuItems } from './pages/commercial.js';
 import { openActionMenu } from './ui/action-menu.js';
-import { renderFinancePage, renderSellExpenseForm } from './pages/finance.js';
+import { renderFinancePage, renderSellExpenseForm, renderExpenseEditForm, EXPENSE_CATEGORIES } from './pages/finance.js';
 import { localToday, openPaymentDialog } from './ui/payment-dialog.js';
 import { renderOverviewDrilldown, renderOverviewPage } from './pages/dashboard.js';
 import { entityChoices, renderFilesPage } from './pages/files.js';
@@ -233,9 +235,9 @@ function openMoveVehicle(vehicle,{onDone=()=>{}}={}){
   const today=localToday();
   const drawer=openDrawer({title:'Mover veículo',subtitle:[vehicle.code,vehicle.plate].filter(Boolean).join(' · ')||'Veículo',content:renderMoveVehicleForm(vehicle,{today})});
   const form=drawer.querySelector('#moveVehicleForm');const fleetSelect=form.querySelector('[name=fleet_id]');const warning=form.querySelector('[data-move-warning]');
-  const groupName={CAR:'Carros',TRUCK:'Caminhões',BOAT:'Embarcações',AIRCRAFT:'Aeronaves',OTHER:'Outros',MIXED:'Misto'};
+  const groupName={CAR:'Carros',MOTO:'Motos',TRUCK:'Caminhões',BOAT:'Embarcações',AIRCRAFT:'Outros',OTHER:'Outros',MIXED:'Misto'};
   let clientId=vehicle.client_id||'';
-  const category=vehicle.category||({Carro:'CAR','Caminhão':'TRUCK','Embarcação':'BOAT',Aeronave:'AIRCRAFT'}[vehicle.type]||'');
+  const category=vehicle.category||({Carro:'CAR',Moto:'MOTO','Caminhão':'TRUCK','Embarcação':'BOAT'}[vehicle.type]||'');
   const load=async id=>{
     clientId=id||'';warning.hidden=!clientId||clientId===vehicle.client_id;
     if(!clientId){fleetSelect.innerHTML='<option value="">Selecione o cliente</option>';fleetSelect.disabled=true;return}
@@ -326,7 +328,7 @@ async function mobilityPage(filters={},lease=null){
     if(!clientId){selectEl.innerHTML='<option value="">Selecione o cliente primeiro</option>';selectEl.disabled=true;return []}
     const result=await api('/fleets?client_id='+encodeURIComponent(clientId)+'&limit=100');
     const rows=result.items||[];
-    const groupName={CAR:'Carros',TRUCK:'Caminhões',BOAT:'Embarcações',AIRCRAFT:'Aeronaves',OTHER:'Outros',MIXED:'Misto'};
+    const groupName={CAR:'Carros',MOTO:'Motos',TRUCK:'Caminhões',BOAT:'Embarcações',AIRCRAFT:'Outros',OTHER:'Outros',MIXED:'Misto'};
     selectEl.innerHTML='<option value="">— Particular (sem frota) —</option>'+rows.map(row=>`<option value="${esc(row.id)}" data-group="${esc(row.vehicle_group||'MIXED')}" ${row.id===selected?'selected':''}>${esc(row.name)} · ${esc(groupName[row.vehicle_group||'MIXED'])}</option>`).join('');
     selectEl.disabled=false;
     return rows;
@@ -478,7 +480,13 @@ async function financePage(lease=null){
     const byId=id=>(data.expenses||[]).find(row=>row.id===id);
     document.querySelectorAll('[data-expense-pay]').forEach(button=>bindActionButton(button,{key:'expense-pay:'+button.dataset.expensePay,action:()=>api('/expenses/'+encodeURIComponent(button.dataset.expensePay)+'/pay',{method:'POST',body:'{}'}),refresh:reload,successMessage:'Despesa paga hoje.',notify:toast}));
     document.querySelectorAll('[data-expense-stop]').forEach(button=>bindActionButton(button,{key:'expense-stop:'+button.dataset.expenseStop,confirm:'Parar a repetição desta despesa? As já lançadas continuam.',action:()=>api('/expenses/'+encodeURIComponent(button.dataset.expenseStop)+'/stop-repeat',{method:'POST',body:'{}'}),refresh:reload,successMessage:'Repetição encerrada.',notify:toast}));
-    document.querySelectorAll('[data-expense-delete]').forEach(button=>bindActionButton(button,{key:'expense-delete:'+button.dataset.expenseDelete,confirm:'Excluir esta despesa? Ela fica 14 dias na Lixeira (Sistema › Lixeira) e pode ser restaurada.',action:()=>api('/expenses/'+encodeURIComponent(button.dataset.expenseDelete),{method:'DELETE'}),refresh:reload,successMessage:'Despesa excluída.',notify:toast}));
+    document.querySelectorAll('[data-expense-edit]').forEach(button=>button.onclick=()=>{
+      const row=byId(button.dataset.expenseEdit);if(!row)return;
+      const drawer=openDrawer({title:'Editar despesa',subtitle:row.description||'',content:renderExpenseEditForm(row,data.expense_categories||EXPENSE_CATEGORIES)});
+      const form=drawer.querySelector('#expenseEditForm');bindMoneyInputs(form);
+      bindActionForm(form,{key:'expense-edit:'+row.id,action:async()=>{const p=formData(form);await api('/expenses/'+encodeURIComponent(row.id),{method:'PATCH',body:JSON.stringify(p)});closeOverlay()},refresh:()=>{active='expenses';return reload()},successMessage:'Despesa atualizada.',notify:toast});
+    });
+    document.querySelectorAll('[data-expense-delete]').forEach(button=>bindActionButton(button,{key:'expense-delete:'+button.dataset.expenseDelete,confirm:button.dataset.expensePaid?'Excluir esta despesa JÁ PAGA? O pagamento sai junto do custo. Ela fica 14 dias na Lixeira (Sistema › Lixeira) e pode ser restaurada com o pagamento.':'Excluir esta despesa? Ela fica 14 dias na Lixeira (Sistema › Lixeira) e pode ser restaurada.',action:()=>api('/expenses/'+encodeURIComponent(button.dataset.expenseDelete),{method:'DELETE'}),refresh:reload,successMessage:'Despesa excluída.',notify:toast}));
     document.querySelectorAll('[data-expense-sell]').forEach(button=>button.onclick=()=>{
       const row=byId(button.dataset.expenseSell);if(!row)return;
       const drawer=openDrawer({title:'Vender ao cliente',subtitle:'Transforma este custo em uma Compra Direta.',content:renderSellExpenseForm(row)});
