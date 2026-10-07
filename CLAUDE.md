@@ -45,6 +45,7 @@ Segurança: nunca mostrar, logar ou commitar tokens, PIN, senha ou chave da empr
 - `Validacoes\<versão>_<data>.md`: o que foi testado, resultado, prints/logs.
 
 ## Estado atual (2026-10-07)
-- Instalado nesta máquina: 2.3.0 (build 3). Próximo: 2.3.1 = ativação nunca reinicia a nuvem sozinha (pede Adm antigo ou RECOMEÇAR; bloqueado se outro servidor salvou em 24 h), entregue como primeiro `.uspatch`.
-- Pendências seguintes: assinatura por frota (quantidade automática), pagamento mostrando veículos/frota, itens do .docx "Ajustes e Implementações no Sistema UStracker".
+- Instalado nesta máquina: 2.3.0 (build 3). Entregue: `Entregas\2.3.1\UStracker-2.3.1.uspatch` (ativação nunca reinicia a nuvem sozinha) — validar com `Entregas\2.3.1\VALIDAR.md` pelo Aplicador (opção 1).
+- Organização: `Ferramentas\Organizar_Pastas.ps1` move instaladores para `Entregas\`, tokens para Drive › Dev_Sistemas › Tokens (com SHA-256 conferido).
+- Pendências seguintes (ver `Conhecimento\Ideias\`): feedback dos testadores (.docx), assinatura por frota, pagamento mostrando veículos/frota.
 - Estruturais (depois): placa por empresa no `acesso-<Empresa>`, segurança padrão Apps Script+Drive+GitHub, conta Google da empresa, WSL2, Docker de build.
