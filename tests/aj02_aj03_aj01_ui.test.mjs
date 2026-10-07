@@ -7,7 +7,7 @@ import { renderClientProfile } from '../frontend/ui/r2-ui.js';
 
 setIconSet({ name: 'teste', icons: {
   'vehicle.car': '/assets/icons/default/vehicles/car.svg', 'vehicle.truck': '/assets/icons/default/vehicles/truck.svg',
-  'vehicle.boat': '/assets/icons/default/vehicles/boat.svg', 'vehicle.aircraft': '/assets/icons/default/vehicles/aircraft.svg',
+  'vehicle.boat': '/assets/icons/default/vehicles/boat.svg', 'vehicle.moto': '/assets/icons/default/vehicles/moto.svg',
   'vehicle.other': '/assets/icons/default/vehicles/other.svg',
 } });
 
@@ -15,7 +15,7 @@ test('AJ-02: total geral e cinco categorias com ícone, nome e quantidade', () =
   const html = renderVehicleBreakdown({ categories: [{ key: 'CAR', count: 2 }, { key: 'TRUCK', count: 1 }, { key: 'OTHER', count: 1, custom_types: ['Trator'] }] });
   assert.match(html, /<strong>4<\/strong><span class="muted">Total Geral/);
   const labels = [...html.matchAll(/vehicle-breakdown-label">([^<]+)/g)].map(m => m[1]);
-  assert.deepEqual(labels, ['Carros', 'Caminhões', 'Embarcações', 'Aeronaves', 'Outros']);
+  assert.deepEqual(labels, ['Carros', 'Motos', 'Caminhões', 'Embarcações', 'Outros']);
   assert.equal((html.match(/vehicles\/[a-z]+\.svg/g) || []).length, 5);
   assert.match(html, /title="Tipos: Trator"/);
 });

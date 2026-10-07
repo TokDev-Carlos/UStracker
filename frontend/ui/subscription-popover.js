@@ -27,6 +27,15 @@ function itemHtml(item) {
   </article>`;
 }
 
+const competenceBR = comp => { const m = String(comp || '').match(/^(\d{4})-(\d{2})/); return m ? `${m[2]}/${m[1]}` : '—'; };
+
+/** H-10 — charges and payments of the subscriptions that cover this vehicle/fleet. */
+export function historyHtml(history = [], perVehicle = false) {
+  if (!history.length) return '';
+  const rows = history.map(h => `<tr><td>${esc(competenceBR(h.competence))}</td><td><span class="ui-code">${esc(h.subscription_code || '')}</span></td><td class="money">${formatBRL(h.amount_cents || 0)}</td>${perVehicle ? `<td class="money">${h.share_cents != null ? formatBRL(h.share_cents) : '—'}</td>` : ''}<td>${esc(CHARGE[h.status] || h.status)}</td><td>${h.paid_on ? esc(formatDateBR(h.paid_on, false)) : '—'}</td></tr>`).join('');
+  return `<details class="subs-history" open><summary>Histórico de cobranças (${history.length})</summary><table class="subs-plans"><thead><tr><th>Mês</th><th>Assinatura</th><th>Cobrança</th>${perVehicle ? '<th>Por veículo</th>' : ''}<th>Situação</th><th>Pago em</th></tr></thead><tbody>${rows}</tbody></table></details>`;
+}
+
 export function renderSubscriptionDetail(detail = {}) {
   const target = detail.target || {};
   const title = target.kind === 'FLEET'
@@ -38,7 +47,8 @@ export function renderSubscriptionDetail(detail = {}) {
   return `<div class="subs-popover-head"><div><strong>${esc(title)}</strong> <span class="ui-code">${esc(target.code || '')}</span><span class="muted subs-client">${esc(target.client_name || '')} <span class="ui-code">${esc(target.client_code || '')}</span></span></div><button type="button" class="ui-icon-btn" data-subs-close aria-label="Fechar">×</button></div>
     <p class="subs-total">${active.length} ativa(s) · ${formatBRL(detail.active_monthly_cents || 0)}/mês</p>
     ${active.map(itemHtml).join('') || '<p class="muted">Nenhuma assinatura ativa.</p>'}
-    ${others.length ? `<details class="subs-others"><summary>${others.length} pausada(s)/encerrada(s)</summary>${others.map(itemHtml).join('')}</details>` : ''}`;
+    ${others.length ? `<details class="subs-others"><summary>${others.length} pausada(s)/encerrada(s)</summary>${others.map(itemHtml).join('')}</details>` : ''}
+    ${historyHtml(detail.history || [], target.kind === 'VEHICLE')}`;
 }
 
 export function closeSubscriptionPopover(documentRef = globalThis.document) {

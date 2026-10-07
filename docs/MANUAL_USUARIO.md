@@ -1,4 +1,4 @@
-# Manual do Usuário — UStracker 2.3.0
+# Manual do Usuário — UStracker 2.4.1
 
 ## Instalar
 1. Execute **UStracker_install_x64.exe** (o Windows pede permissão de administrador) e siga as telas. Ele já leva tudo: programa, WebView2 e o endereço da nuvem da empresa.
@@ -8,6 +8,8 @@
 2. Abra pelo atalho **UStracker** na Área de Trabalho ou no Menu Iniciar.
 3. **Primeira abertura em qualquer computador: Ativar este computador.** Quem ativa é sempre o **Adm Global** (acesso do dono + PIN + pergunta de segurança).
    - A empresa já usa o UStracker: os dados chegam da nuvem e o computador vira mais um **Servidor**.
+   - Dados de versão antiga na nuvem: a tela mostra o que existe; entre uma vez com o **Administrador da empresa** para validar (recomendado) ou digite **RECOMEÇAR** para começar do zero (com cópia antes; bloqueado se outro computador salvou nas últimas 24 h).
+   - Dados de versão antiga na nuvem: a tela mostra o que existe; entre uma vez com o **Administrador da empresa** para validar (recomendado) ou digite **RECOMEÇAR** para começar do zero (com cópia antes; bloqueado se outro computador salvou nas últimas 24 h).
    - Primeiro computador da empresa: o Adm Global entra direto no sistema e, em **Sistema › Adm Global**, cria o **Administrador local** (guardado na nuvem, vale em todos os computadores).
 4. Depois de criado o Administrador local, cada pessoa entra com o próprio usuário e senha.
 
@@ -40,11 +42,11 @@ Painel de Controle › Programas (ou Menu Iniciar › UStracker › Desinstalar)
 - **Sair** encerra a sessão. **Encerrar** fecha o sistema todo (use antes de desligar ou atualizar).
 
 ## O dia a dia, na ordem
-1. **Clientes → Novo cliente.** Nome, documento e um contato.
+1. **Clientes → Novo cliente.** Nome, documento (CPF, CNPJ, RG ou CNH) e um contato. Com CNPJ, o cliente já é a própria empresa.
 2. **Na ficha do cliente → Veículos e Frotas → + Veículo** (ou + Frota, se o cliente tem empresa).
    Se a placa já existir, o sistema mostra de quem é antes de salvar.
-3. **Assinar plano:** escolha o plano mensal e marque os veículos que ele cobre.
-4. **Registrar pagamento:** na ficha ou em Financeiro. Escolha quantos meses; atrasados são pagos primeiro.
+3. **Assinar plano:** escolha o plano mensal e marque os veículos e/ou frotas. A quantidade vira o total de veículos sozinha e aparece a prévia ("12 veículos × R$ 50,00 = R$ 600,00/mês"); se um veículo já estiver em outra assinatura, aparece um aviso.
+4. **Registrar pagamento:** na ficha ou em Financeiro. Cada assinatura mostra frotas, placas e valor por veículo. Escolha quantos meses; atrasados são pagos primeiro.
 5. **Despesas:** Financeiro → Despesas. Mensal, anual ou única; "Pagar" em um clique.
 
 ## Onde fica cada coisa
@@ -59,6 +61,9 @@ Painel de Controle › Programas (ou Menu Iniciar › UStracker › Desinstalar)
 | Fotos/Arquivos | Fotos e documentos anexados |
 | Relatórios | Planilhas para baixar |
 | Sistema | Administradores, backup, **Nuvem** e **Lixeira** |
+
+## Filtrar tabelas
+Em qualquer tabela, o botão **▾** ao lado do título da coluna ordena (A→Z, menor→maior) e filtra por valores, como numa planilha. **Limpar filtros** volta a mostrar tudo.
 
 ## O que é uma assinatura
 É o **plano mensal** do cliente. Todo mês gera uma cobrança no dia do vencimento para os veículos ou frotas marcados. Paga, vira receita. O contrato assinado pode ser anexado na aba **Arquivos** da ficha.

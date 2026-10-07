@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator
 
-SCHEMA_VERSION = 14
+SCHEMA_VERSION = 15
 
 
 def fold_text(value) -> str:
@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS clients(
 );
 CREATE UNIQUE INDEX IF NOT EXISTS ux_clients_document ON clients(document) WHERE document IS NOT NULL AND document<>'';
 CREATE TABLE IF NOT EXISTS client_documents(
- id TEXT PRIMARY KEY, client_id TEXT NOT NULL REFERENCES clients(id), type TEXT NOT NULL CHECK(type IN ('CPF','RG','CNH')),
+ id TEXT PRIMARY KEY, client_id TEXT NOT NULL REFERENCES clients(id), type TEXT NOT NULL CHECK(type IN ('CPF','RG','CNH','CNPJ')),
  number TEXT NOT NULL, normalized_number TEXT NOT NULL, is_primary INTEGER NOT NULL DEFAULT 0,
  archived INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
 );
@@ -225,6 +225,11 @@ CREATE INDEX IF NOT EXISTS ix_ownerships_vehicle ON ownerships(vehicle_id,effect
 '''
 
 
+# H-07: client_documents DDL (also used by the v15 rebuild that adds CNPJ to the CHECK)
+CLIENT_DOCUMENTS_DDL = [stmt.strip() for stmt in SCHEMA_SQL.split(';')
+                        if 'client_documents' in stmt and stmt.strip().startswith('CREATE')]
+
+
 class Database:
     def __init__(self, root: Path, environment: str, key: bytes):
         self.root = Path(root)
@@ -393,6 +398,28 @@ class Database:
                 con.execute("UPDATE vehicles SET archived=1,revision=revision+1,updated_at=? WHERE archived=0 AND client_id IN (SELECT id FROM clients WHERE archived=1)", (ts,))
                 con.execute("UPDATE fleets SET archived=1,revision=revision+1,updated_at=? WHERE archived=0 AND client_id IN (SELECT id FROM clients WHERE archived=1)", (ts,))
                 con.execute("UPDATE ownerships SET effective_to=? WHERE effective_to IS NULL AND vehicle_id IN (SELECT id FROM vehicles WHERE archived=1)", (ts[:10],))
+            if current_version < 15:
+                # H-07 CNPJ: SQLite cannot alter a CHECK, so rebuild client_documents (same columns, same rows).
+                sql = con.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='client_documents'").fetchone()[0]
+                if "'CNPJ'" not in sql:
+                    con.commit()
+                    con.execute('PRAGMA foreign_keys=OFF')
+                    try:
+                        con.execute('BEGIN IMMEDIATE')
+                        con.execute('ALTER TABLE client_documents RENAME TO client_documents_v14')
+                        con.execute('DROP INDEX IF EXISTS ux_client_documents_type_number_active')
+                        con.execute('DROP INDEX IF EXISTS ix_client_documents_client')
+                        for stmt in CLIENT_DOCUMENTS_DDL:
+                            con.execute(stmt)
+                        con.execute('INSERT INTO client_documents(id,client_id,type,number,normalized_number,is_primary,archived,created_at,updated_at) '
+                                    'SELECT id,client_id,type,number,normalized_number,is_primary,archived,created_at,updated_at FROM client_documents_v14')
+                        con.execute('DROP TABLE client_documents_v14')
+                        con.commit()
+                    except Exception:
+                        con.rollback()
+                        raise
+                    finally:
+                        con.execute('PRAGMA foreign_keys=ON')
             # R23: indexes on tables created by migrations (idempotent, every open)
             con.execute("CREATE INDEX IF NOT EXISTS ix_logical_codes_client ON logical_codes(client_id,code)")
             con.execute("INSERT OR REPLACE INTO meta(key,value) VALUES('schema_version',?)", (str(SCHEMA_VERSION),))

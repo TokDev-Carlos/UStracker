@@ -185,6 +185,7 @@ class AuthService:
             # 2.3.0 — activated = the Adm Global already prepared this installation (or an old local admin exists)
             'activated': bool(enrolled or has_global),
             'local_admin': enrolled >= 1,
+            'global_ready': has_global,
             'admins': [{'slot': r['slot'], 'name': r['name'], 'status': r['status']} for r in rows],
         }
 

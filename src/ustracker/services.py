@@ -11,7 +11,7 @@ from typing import Any
 from .db import Database, fold_text
 from .money import due_date, parse_money_api
 from .vehicle_types import annotate_vehicle, vehicle_breakdown
-from .projections import client_projection, month_forecast, realized_expenses, realized_revenue
+from .projections import client_projection, general_expenses, month_forecast, realized_expenses, realized_revenue
 from .clients import companies_from_payload, documents_from_payload, has_contact, infer_document_type, normalize_document_number, validate_document
 
 UTC=timezone.utc
@@ -153,6 +153,10 @@ def create_client(db:Database, actor:int, p:dict)->dict:
     if len(documents) != 1: raise ValueError('exactly one active document is allowed')
     if not has_contact(p): raise ValueError('at least one contact required')
     companies=companies_from_payload(p)
+    if documents[0]['type']=='CNPJ' and not companies:
+        # H-07: client with CNPJ is a company — it becomes its own primary company.
+        companies=[{'legal_name':legal_name,'trade_name':str(p.get('trade_name') or '').strip() or None,
+                    'document':documents[0]['number'],'is_primary':1}]
     status=p.get('status','ACTIVE')
     if status not in {'ACTIVE','INACTIVE','CANCELLED'}: raise ValueError('invalid status')
     cid=uid(); ts=now()
@@ -534,9 +538,11 @@ def client_profile(db:Database, client_id:str)->dict:
     projection=client_projection(db,[client_id])[client_id]
     from .mobility import list_mobility
     mobility=list_mobility(db,client_id=client_id)
-    from .mobility import _active_subscription_summaries
+    from .mobility import active_subscription_codes
+    covered=active_subscription_codes(db)
     for vehicle in vehicles:
-        vehicle['subscriptions_count']=len(_active_subscription_summaries(db,vehicle_id=vehicle['id']))
+        vehicle['subscription_codes']=covered.get(vehicle['id'],[])
+        vehicle['subscriptions_count']=len(vehicle['subscription_codes'])
     fleet_meta={f['id']:f for f in mobility['fleets']}
     for fleet in fleets:
         meta=fleet_meta.get(fleet['id'],{})
@@ -732,7 +738,8 @@ def dashboard(db:Database, as_of:date|None=None, year:int|None=None)->dict:
     period_end = date(int(year) + 1, 1, 1) if year is not None else None
     # AJ-01: Receita Geral = realized only (paid, not reversed, paid_on <= today). Forecast is separate.
     period_revenue = realized_revenue(db, period_start, period_end, today)
-    period_expenses = realized_expenses(db, period_start, period_end, today)
+    general = general_expenses(db, period_start, period_end)  # 2.4.0: pagas e a pagar
+    period_expenses = general['total_cents']
     available_years = sorted({
         int(row['year']) for row in db.query("""SELECT substr(paid_on,1,4) AS year FROM payments WHERE reversed_at IS NULL
         UNION SELECT substr(paid_on,1,4) FROM direct_sales WHERE status='PAID' AND paid_on IS NOT NULL
@@ -748,7 +755,8 @@ def dashboard(db:Database, as_of:date|None=None, year:int|None=None)->dict:
             'revenue_expected_cents':charge_total,'revenue_received_cents':payment_total,'expenses_expected_cents':expense_total,
             'expenses_paid_cents':disb_total,'cash_result_cents':payment_total-disb_total,'overdue_charges':overdue,
             'period':{'year':year,'label':str(year) if year is not None else 'Geral','revenue_cents':period_revenue,
-                      'expenses_cents':period_expenses,'result_cents':period_revenue-period_expenses},
+                      'expenses_cents':period_expenses,'expenses_paid_cents':general['paid_cents'],
+                      'expenses_open_cents':general['open_cents'],'result_cents':period_revenue-period_expenses},
             'month_forecast':month_forecast(db,today),
             'vehicle_breakdown':vehicle_breakdown(db),
             'available_years':available_years,

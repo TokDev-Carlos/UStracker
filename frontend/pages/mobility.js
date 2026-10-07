@@ -9,7 +9,7 @@ export const FLEET_GROUPS = [...VEHICLE_CATEGORIES.map(item => ({ key: item.key,
 export const fleetGroupOptions = (selected = 'MIXED') => FLEET_GROUPS.map(item => `<option value="${item.key}" ${item.key === (selected || 'MIXED') ? 'selected' : ''}>${item.label}</option>`).join('');
 const groupBadge = (key, label) => key && key !== 'MIXED' ? `<span class="fleet-group">${categoryIcon(key, '')}${esc(label || '')}</span>` : '<span class="fleet-group fleet-group-mixed">Misto</span>';
 
-export const MOBILITY_TYPES = ['Carro', 'Caminhão', 'Embarcação', 'Aeronave'];
+export const MOBILITY_TYPES = ['Carro', 'Moto', 'Caminhão', 'Embarcação'];
 
 const esc = value => String(value ?? '')
   .replaceAll('&', '&amp;')

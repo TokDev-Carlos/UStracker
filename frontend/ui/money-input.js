@@ -27,6 +27,18 @@ export function bindMoneyInput(input) {
   return input;
 }
 
+// 2.4.0 — "R$ 0,00" is only a hint: a zero value is cleared when the field gets focus (nothing to erase by hand).
+export function isZeroMoney(value) {
+  return /^\s*(R\$\s*)?0+([.,]0*)?\s*$/.test(String(value ?? ''));
+}
+export function clearZeroOnFocus(event) {
+  const el = event?.target;
+  if (!el || el.tagName !== 'INPUT' || el.readOnly || el.disabled) return;
+  if (!(el.hasAttribute?.('data-money-input') || el.getAttribute?.('inputmode') === 'decimal')) return;
+  if (isZeroMoney(el.value)) { el.value = ''; if (!el.placeholder) el.placeholder = 'R$ 0,00'; }
+}
+globalThis.document?.addEventListener?.('focusin', clearZeroOnFocus);
+
 export function bindMoneyInputs(root = globalThis.document) {
   root?.querySelectorAll?.('[data-money-input]').forEach(bindMoneyInput);
 }

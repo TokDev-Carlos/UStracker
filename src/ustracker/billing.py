@@ -84,6 +84,52 @@ def subscription_payment_status(db: Database, subscription_id: str, as_of: date 
         return _status(con, sub, as_of or date.today())
 
 
+def subscription_coverage(con, subscription_id: str) -> dict:
+    """H-10 — what one subscription covers: target fleets (with plates), direct vehicles, value per vehicle."""
+    fleets = []
+    in_fleets: set[str] = set()
+    for f in con.execute('''SELECT f.id,f.name,f.code FROM subscription_targets st JOIN fleets f ON f.id=st.fleet_id
+                            WHERE st.subscription_id=? ORDER BY f.name''', (subscription_id,)).fetchall():
+        vs = con.execute('SELECT id,plate FROM vehicles WHERE fleet_id=? AND archived=0 ORDER BY plate', (f['id'],)).fetchall()
+        in_fleets.update(v['id'] for v in vs)
+        fleets.append({'id': f['id'], 'name': f['name'], 'code': f['code'], 'plates': [v['plate'] for v in vs]})
+    direct = con.execute('''SELECT DISTINCT v.id,v.plate FROM vehicles v WHERE v.archived=0 AND v.id IN (
+                             SELECT vehicle_id FROM subscription_targets WHERE subscription_id=? AND vehicle_id IS NOT NULL
+                             UNION SELECT vehicle_id FROM subscription_items WHERE subscription_id=? AND vehicle_id IS NOT NULL)
+                           ORDER BY v.plate''', (subscription_id, subscription_id)).fetchall()
+    extra = [v for v in direct if v['id'] not in in_fleets]
+    count = len(in_fleets) + len(extra)
+    monthly = _monthly_amount(con, subscription_id)
+    return {'fleets': fleets, 'vehicles': [v['plate'] for v in extra], 'vehicle_count': count,
+            'monthly_cents': monthly, 'per_vehicle_cents': monthly // count if count else None}
+
+
+def coverage_history(db: Database, subscription_ids: list[str], *, per_vehicle: bool = False, limit: int = 36) -> list[dict]:
+    """H-10 — charges (and their payment) of the subscriptions that cover a vehicle or fleet, newest first."""
+    if not subscription_ids:
+        return []
+    marks = ','.join('?' for _ in subscription_ids)
+    with db.transaction() as con:
+        counts = {sid: subscription_coverage(con, sid)['vehicle_count'] for sid in subscription_ids} if per_vehicle else {}
+        rows = con.execute(f'''SELECT ch.id,ch.subscription_id,s.code AS subscription_code,substr(ch.competence,1,7) AS competence,ch.due_on,
+                ch.amount_cents+ch.adjustment_cents AS amount_cents,ch.status,
+                (SELECT COALESCE(SUM(pa.amount_cents),0) FROM payment_allocations pa JOIN payments p ON p.id=pa.payment_id
+                  WHERE pa.charge_id=ch.id AND pa.active=1 AND p.reversed_at IS NULL) AS paid_cents,
+                (SELECT MAX(p.paid_on) FROM payment_allocations pa JOIN payments p ON p.id=pa.payment_id
+                  WHERE pa.charge_id=ch.id AND pa.active=1 AND p.reversed_at IS NULL) AS paid_on
+              FROM charges ch JOIN subscriptions s ON s.id=ch.subscription_id
+              WHERE ch.subscription_id IN ({marks}) AND ch.status<>'VOID'
+              ORDER BY ch.competence DESC,s.code LIMIT ?''', (*subscription_ids, limit)).fetchall()
+    out = []
+    for r in rows:
+        rec = dict(r)
+        if per_vehicle:
+            n = counts.get(rec['subscription_id']) or 0
+            rec['share_cents'] = int(rec['amount_cents']) // n if n else None
+        out.append(rec)
+    return out
+
+
 def client_payment_options(db: Database, client_id: str, as_of: date | None = None) -> dict:
     """Subscriptions of a client with payment status, for the one-click payment dialog."""
     today = as_of or date.today()
@@ -95,6 +141,7 @@ def client_payment_options(db: Database, client_id: str, as_of: date | None = No
         for sub in con.execute("SELECT * FROM subscriptions WHERE client_id=? AND lifecycle_status IN ('ACTIVE','PAUSED') ORDER BY code", (client_id,)).fetchall():
             rec = _status(con, sub, today)
             rec['plans'] = [r[0] for r in con.execute('SELECT description FROM subscription_items WHERE subscription_id=? ORDER BY description', (sub['id'],)).fetchall()]
+            rec['coverage'] = subscription_coverage(con, sub['id'])
             items.append(rec)
     return {'client': dict(client), 'subscriptions': items, 'methods': list(PAYMENT_METHODS), 'today': today.isoformat()}
 
@@ -202,3 +249,25 @@ def register_subscription_payment(db: Database, actor: int, p: dict, as_of: date
                'credit_cents': left if credit_id else 0, 'paid_through': after['paid_through'], 'next_due': after['next_due']}
         audit(con, actor, 'SUBSCRIPTION_PAYMENT', 'payment', pid, None, rec)
         return rec
+
+
+def receivables_summary(db: Database, as_of: date | None = None) -> dict:
+    """2.4.0 — Financeiro › Recebimentos: Total Recebido (não estornado) e Total Não Pago
+    (mensalidades vencidas e não pagas das assinaturas ativas/pausadas + compras diretas em aberto)."""
+    today = as_of or date.today()
+    with db.transaction() as con:
+        received = int(con.execute('SELECT COALESCE(SUM(amount_cents),0) FROM payments WHERE reversed_at IS NULL').fetchone()[0] or 0)
+        unpaid = 0
+        for sub in con.execute("SELECT * FROM subscriptions WHERE lifecycle_status IN ('ACTIVE','PAUSED')").fetchall():
+            st = _status(con, sub, today)
+            charges = _charges_by_competence(con, sub['id'])
+            comp, current = st['next_due'], _comp(today)
+            while comp < current:
+                charge = charges.get(comp)
+                if not charge:
+                    unpaid += int(st['monthly_cents'])
+                elif charge['status'] != 'PAID':
+                    unpaid += int(charge['open_cents'])
+                comp = _shift(comp, 1)
+        unpaid += int(con.execute("SELECT COALESCE(SUM(total_cents),0) FROM direct_sales WHERE status='OPEN'").fetchone()[0] or 0)
+    return {'received_cents': received, 'unpaid_cents': unpaid}

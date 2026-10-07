@@ -756,7 +756,7 @@ def create_app(root: Path | str) -> FastAPI:
         if not session.can('fiscal.view'):
             out.pop('fiscal', None)
         if not session.can('finance.view'):
-            for key in ('payments', 'active_payments', 'realized_received_cents', 'charges'):
+            for key in ('payments', 'active_payments', 'realized_received_cents', 'charges', 'receivables'):
                 out.pop(key, None)
         return out
 
@@ -944,6 +944,12 @@ def create_app(root: Path | str) -> FastAPI:
     def expenses_convert(eid: str, request: Request, p: dict = Body(...)):
         session = session_required(request, True)
         return mutation(request, session, f'POST /expenses/{eid}/convert-sale', p, lambda db: convert_expense_to_sale(db, session.slot, eid, p))
+
+    @app.patch('/api/v1/expenses/{eid}')
+    def expenses_update(eid: str, request: Request, p: dict = Body(...)):
+        from .expenses import update_expense
+        session = session_required(request, True)
+        return mutation(request, session, f'PATCH /expenses/{eid}', p, lambda db: update_expense(db, session.slot, eid, p))
 
     @app.delete('/api/v1/expenses/{eid}')
     def expenses_delete(eid: str, request: Request):
@@ -1310,8 +1316,14 @@ def create_app(root: Path | str) -> FastAPI:
         from . import adm_global
         from .cloud import CloudClient
         from .placa import fetch_placa, load_bootstrap, read_placa
+        from . import activation
         csrf_required(request)
-        if auth.setup_status()['activated']:
+        restart = p.get('restart')
+        if restart is not None and str(restart) != activation.RESTART_WORD:
+            raise ValueError('type RECOMEÇAR to restart the company')
+        st = auth.setup_status()
+        # 2.3.1: a computer that brought down an unvalidated cloud may come back here only to RECOMEÇAR
+        if st['activated'] and not (restart and not st['global_ready']):
             raise ValueError('this computer is already activated; use the normal sign in')
         trust = adm_global.load_trust(root)
         if not trust:
@@ -1359,7 +1371,7 @@ def create_app(root: Path | str) -> FastAPI:
             has_data = bool(ping.get('head') and ping.get('auth_head'))
         if has_data:
             bank = banks[0]
-            cloud_call(lambda: restore_from_cloud(root, bank['url'], bank['key']))
+            restored = cloud_call(lambda: restore_from_cloud(root, bank['url'], bank['key']))
             auth._init_store()  # the cloud copy may come from an older version
             auth.clear_sessions()
             cloud.state = type(cloud.state)(root)
@@ -1368,13 +1380,29 @@ def create_app(root: Path | str) -> FastAPI:
             try:
                 session = auth.global_session(trust, keys, 'production')
             except adm_global.AccessDenied:
-                return {'activated': True, 'restored': True, 'needs_admin_login': True}
-            out = enter(response, session, None, {'activated': True, 'restored': True})
-            try:
-                cloud.keep_company_key(session, company_key)
-            except Exception:
-                pass
-            return out
+                session = None
+            if session is not None:
+                out = enter(response, session, None, {'activated': True, 'restored': True})
+                try:
+                    cloud.keep_company_key(session, company_key)
+                except Exception:
+                    pass
+                return out
+            # 2.3.1: the cloud holds data the Adm Global never validated (older version). NEVER restart it on its own:
+            # the default is the company Administrator signing in once (validates and keeps everything); restarting needs
+            # the word RECOMEÇAR and is blocked while another Servidor saved in the last 24 h.
+            cloud_data = {'counts': restored.get('counts') or {}, 'saved_at': restored.get('created_at')}
+            if not restart:
+                return {'activated': True, 'restored': True, 'needs_decision': True, 'cloud_data': cloud_data}
+            if activation.saved_recently(cloud_data['saved_at']):
+                return JSONResponse({'error': 'RECENT', 'detail': 'another Servidor saved the company cloud in the last 24 hours',
+                                     'cloud_data': cloud_data}, status_code=409)
+            old_cloud_saved = activation.retire_unvalidated_data(root)
+            auth.clear_sessions()
+            auth._init_store()
+            cloud.state = type(cloud.state)(root)
+            cloud.pending_secret = bank['key']
+            cloud.state.set(placa_seq=0)
         # 3b) new company (empty cloud or no cloud): the Adm Global enters at once; the local admin is created inside (Sistema)
         session = auth.bootstrap_global(trust, keys, 'production')
         cloud_info = {'connected': False}
@@ -1382,8 +1410,12 @@ def create_app(root: Path | str) -> FastAPI:
             if company_key:
                 cloud.keep_company_key(session, company_key)
             cloud.apply_banks(session, banks, seq)
+            if has_data:
+                cloud.state.set(wipe_cloud=True)  # old photos/attachments leave the cloud (the backup keeps them)
             cloud.mark_dirty()
         out = enter(response, session, None, {'activated': True, 'new_company': True})
+        if has_data:
+            out['old_cloud_saved'] = old_cloud_saved
         if banks:
             try:  # accesses and the empty base go up right now
                 cloud_info = {'connected': True, **cloud.sync_now(session, force=True)}

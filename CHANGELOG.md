@@ -2,6 +2,23 @@
 
 Formato: versão semântica a partir da 2.0.0 (2.0.1 = correção, 2.1.0 = novidade compatível).
 
+## 2.4.1 — 2026-10-07
+
+- Atualizador não termina mais com erro falso depois de instalar; Aplicador de Patch confere a versão instalada.
+- Acentos corretos nas mensagens do Aplicador e nos scripts locais; botões de filtro mais baixos.
+
+## 2.4.0 — 2026-10-06
+
+- Filtro estilo planilha em todas as tabelas (ordenar, buscar, marcar valores).
+- Cliente empresa com CNPJ (empresa principal automática); categoria Motos.
+- Assinatura por frota: quantidade automática, prévia da conta e aviso de duplicidade.
+- Pagamento mostra frota, placas e valor por veículo; histórico de cobranças na ficha do veículo/frota.
+- Despesas editáveis e excluíveis (inclusive pagas); cartões Total Recebido / Total Não Pago; Despesas Gerais na Visão Geral.
+
+## 2.3.1 — 2026-10-06
+
+- Ativação nunca reinicia a nuvem sozinha: mostra o que existe, Administrador antigo valida; RECOMEÇAR só digitando e com bloqueio de 24 h.
+
 ## 2.3.0 — 2026-10-05
 
 - Ativação de empresa nova: o Adm Global entra direto no sistema (sem ticket nem login).

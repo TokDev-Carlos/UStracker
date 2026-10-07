@@ -10,9 +10,9 @@ import unicodedata
 # key, plural label, singular label, icon registry key
 CATEGORIES = (
     ('CAR', 'Carros', 'Carro', 'vehicle.car'),
+    ('MOTO', 'Motos', 'Moto', 'vehicle.moto'),
     ('TRUCK', 'Caminhões', 'Caminhão', 'vehicle.truck'),
     ('BOAT', 'Embarcações', 'Embarcação', 'vehicle.boat'),
-    ('AIRCRAFT', 'Aeronaves', 'Aeronave', 'vehicle.aircraft'),
     ('OTHER', 'Outros', 'Outro', 'vehicle.other'),
 )
 CATEGORY_KEYS = tuple(c[0] for c in CATEGORIES)
@@ -25,8 +25,8 @@ _ALIASES = {
               'caminhonete pesada', 'onibus', 'micro-onibus', 'microonibus'},
     'BOAT': {'embarcacao', 'embarcacoes', 'barco', 'lancha', 'navio', 'jet ski', 'jetski', 'jet-ski', 'veleiro',
              'iate', 'balsa', 'boat'},
-    'AIRCRAFT': {'aeronave', 'aeronaves', 'aviao', 'avioes', 'helicoptero', 'helicopteros', 'drone', 'planador',
-                 'aircraft'},
+    'MOTO': {'moto', 'motos', 'motocicleta', 'motocicletas', 'motoneta', 'motonetas', 'scooter', 'ciclomotor',
+             'triciclo', 'quadriciclo', 'motorcycle'},
 }
 
 
@@ -101,14 +101,18 @@ def fleet_group_label(group: str | None, plural: bool = True) -> str:
     return category_label(group, plural)
 
 
+LEGACY_GROUPS = {'AIRCRAFT': 'OTHER'}  # 2.4.0: Aeronaves saiu da lista; frotas antigas viram Outros
+
+
 def validate_fleet_group(value) -> str:
     group = str(value or 'MIXED').strip().upper() or 'MIXED'
+    group = LEGACY_GROUPS.get(group, group)
     if group not in FLEET_GROUPS:
         raise ValueError('invalid fleet group')
     return group
 
 
 def ensure_vehicle_fits_fleet(fleet_group: str | None, vehicle_type) -> None:
-    group = fleet_group or 'MIXED'
+    group = LEGACY_GROUPS.get(fleet_group or 'MIXED', fleet_group or 'MIXED')
     if group != 'MIXED' and normalize_vehicle_category(vehicle_type) != group:
         raise ValueError('vehicle category does not match fleet group')
