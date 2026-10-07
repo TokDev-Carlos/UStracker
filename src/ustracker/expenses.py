@@ -167,8 +167,6 @@ def delete_expense(db: Database, actor: int, expense_id: str) -> dict:
         exp = con.execute('SELECT * FROM expenses WHERE id=?', (expense_id,)).fetchone()
         if not exp:
             raise KeyError('expense not found')
-        if con.execute('SELECT 1 FROM disbursements WHERE expense_id=?', (expense_id,)).fetchone():
-            raise ValueError('expense with payments cannot be deleted')
         if con.execute('SELECT 1 FROM fiscal_obligations WHERE expense_id=?', (expense_id,)).fetchone():
             raise ValueError('expense linked to fiscal obligation cannot be deleted')
         if exp['converted_sale_id']:
@@ -176,10 +174,53 @@ def delete_expense(db: Database, actor: int, expense_id: str) -> dict:
         if exp['recurrence_id'] == exp['id'] and con.execute('SELECT 1 FROM expenses WHERE recurrence_id=? AND id<>?', (expense_id, expense_id)).fetchone():
             raise ValueError('recurring expense has occurrences; stop the repetition instead')
         from .trash import put as trash_put
-        trash_put(con, actor, 'expense', expense_id, f"{exp['category']} · {exp['description']}", {'row': dict(exp)})
+        # 2.4.0: a paid expense can be deleted too; its payments go to the Lixeira with it (and come back on restore)
+        payments = [dict(r) for r in con.execute('SELECT * FROM disbursements WHERE expense_id=?', (expense_id,)).fetchall()]
+        trash_put(con, actor, 'expense', expense_id, f"{exp['category']} · {exp['description']}", {'row': dict(exp), 'disbursements': payments})
+        con.execute('DELETE FROM disbursements WHERE expense_id=?', (expense_id,))
         con.execute('DELETE FROM expenses WHERE id=?', (expense_id,))
         audit(con, actor, 'EXPENSE_DELETE', 'expense', expense_id, dict(exp), None)
         return {'id': expense_id, 'deleted': True}
+
+
+def update_expense(db: Database, actor: int, expense_id: str, p: dict) -> dict:
+    """2.4.0 — fix a typed expense (paid or not): description, category, value, date, supplier. Status follows the value."""
+    with db.transaction() as con:
+        exp = con.execute('SELECT * FROM expenses WHERE id=?', (expense_id,)).fetchone()
+        if not exp:
+            raise KeyError('expense not found')
+        before = dict(exp)
+        rec = {'description': exp['description'], 'category': exp['category'], 'expected_amount_cents': int(exp['expected_amount_cents']),
+               'due_on': exp['due_on'], 'competence': exp['competence'], 'supplier': exp['supplier']}
+        if 'description' in p:
+            rec['description'] = str(p.get('description') or '').strip()
+            if not rec['description']:
+                raise ValueError('description required')
+        if 'category' in p:
+            category = str(p.get('category') or '').strip()
+            if category not in EXPENSE_CATEGORIES:
+                raise ValueError('invalid expense category')
+            rec['category'] = category
+        if p.get('amount') not in (None, ''):
+            rec['expected_amount_cents'] = parse_money_api(p['amount'])
+            if rec['expected_amount_cents'] <= 0:
+                raise ValueError('expense amount must be positive')
+        if p.get('date'):
+            day = str(p['date'])[:10]
+            date.fromisoformat(day)
+            rec['due_on'], rec['competence'] = day, day[:7]
+        if 'supplier' in p:
+            rec['supplier'] = str(p.get('supplier') or '').strip() or None
+        paid = _paid(con, expense_id)
+        if paid > rec['expected_amount_cents']:
+            raise ValueError('expense value is lower than what was already paid')
+        rec['status'] = 'PAID' if paid == rec['expected_amount_cents'] else 'PARTIAL' if paid else 'OPEN'
+        con.execute('''UPDATE expenses SET description=?,category=?,expected_amount_cents=?,due_on=?,competence=?,supplier=?,status=?,
+                       revision=revision+1,updated_at=? WHERE id=?''',
+                    (rec['description'], rec['category'], rec['expected_amount_cents'], rec['due_on'], rec['competence'], rec['supplier'],
+                     rec['status'], now(), expense_id))
+        audit(con, actor, 'EXPENSE_UPDATE', 'expense', expense_id, before, rec)
+        return {'id': expense_id, **rec, 'paid_cents': paid}
 
 
 def convert_expense_to_sale(db: Database, actor: int, expense_id: str, p: dict, as_of: date | None = None) -> dict:

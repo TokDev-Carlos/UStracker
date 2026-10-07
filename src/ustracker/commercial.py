@@ -69,6 +69,10 @@ def commercial_snapshot(db:Database)->dict:
             rec['paid_through']=st['paid_through']; rec['next_due']=st['next_due']; rec['overdue_months']=st['overdue_months']
     coverages=[dict(r) for r in db.query('''SELECT sc.*,c.legal_name AS client_name,s.code AS subscription_code FROM service_coverage_periods sc LEFT JOIN subscriptions s ON s.id=sc.subscription_id
                                             JOIN clients c ON c.id=sc.client_id ORDER BY sc.end_on DESC,sc.created_at DESC''')]
+    from .mobility import active_subscription_codes
+    covered=active_subscription_codes(db)
+    vehicles=[annotate_vehicle(dict(r)) for r in db.query('SELECT id,code,client_id,plate,type,brand,model,fleet_id FROM vehicles WHERE archived=0 ORDER BY plate')]
+    for vehicle in vehicles: vehicle['subscription_codes']=covered.get(vehicle['id'],[])
     return {
         'subscriptions':subscriptions,
         'direct_sales':list_direct_sales(db),
@@ -78,6 +82,6 @@ def commercial_snapshot(db:Database)->dict:
         'catalog_mensal':[dict(r) for r in db.query("SELECT * FROM catalog WHERE active=1 AND category='MENSAL' ORDER BY name")],
         'catalog_mensal_all':[dict(r) for r in db.query("SELECT id,code,name,price_cents,active FROM catalog WHERE category='MENSAL' ORDER BY active DESC,name")],
         'payments':[dict(r) for r in db.query('SELECT * FROM payments WHERE reversed_at IS NULL ORDER BY paid_on DESC,created_at DESC')],
-        'vehicles':[annotate_vehicle(dict(r)) for r in db.query('SELECT id,code,client_id,plate,type,brand,model,fleet_id FROM vehicles WHERE archived=0 ORDER BY plate')],
+        'vehicles':vehicles,
         'fleets':[dict(r) for r in db.query('SELECT id,code,client_id,client_company_id,name,vehicle_group FROM fleets WHERE archived=0 ORDER BY name')],
     }

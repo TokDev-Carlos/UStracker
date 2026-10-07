@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-DOCUMENT_TYPES = {'CPF', 'RG', 'CNH'}
+DOCUMENT_TYPES = {'CPF', 'RG', 'CNH', 'CNPJ'}
 
 
 def normalize_document_number(value: Any) -> str:
@@ -25,10 +25,25 @@ def _cpf_valid(number: str) -> bool:
     return True
 
 
+def _cnpj_valid(number: str) -> bool:
+    if len(number) != 14 or not number.isdigit() or len(set(number)) == 1:
+        return False
+    digits = [int(c) for c in number]
+    for size in (12, 13):
+        weights = list(range(size - 7, 1, -1)) + list(range(9, 1, -1))
+        total = sum(d * w for d, w in zip(digits[:size], weights))
+        check = 0 if total % 11 < 2 else 11 - total % 11
+        if digits[size] != check:
+            return False
+    return True
+
+
 def infer_document_type(number: Any) -> str:
     normalized = normalize_document_number(number)
     if normalized.isdigit() and len(normalized) == 11 and _cpf_valid(normalized):
         return 'CPF'
+    if normalized.isdigit() and len(normalized) == 14 and _cnpj_valid(normalized):
+        return 'CNPJ'
     return 'RG'
 
 
@@ -36,12 +51,14 @@ def validate_document(payload: dict) -> dict:
     dtype = str(payload.get('type') or '').strip().upper()
     number = str(payload.get('number') or '').strip()
     if dtype not in DOCUMENT_TYPES:
-        raise ValueError('document type must be CPF, RG or CNH')
+        raise ValueError('document type must be CPF, CNPJ, RG or CNH')
     normalized = normalize_document_number(number)
     if not normalized:
         raise ValueError('document number required')
     if dtype == 'CPF' and not _cpf_valid(normalized):
         raise ValueError('invalid CPF')
+    if dtype == 'CNPJ' and not _cnpj_valid(normalized):
+        raise ValueError('invalid CNPJ')
     if dtype == 'CNH' and (not normalized.isdigit() or len(normalized) != 11):
         raise ValueError('invalid CNH')
     if dtype == 'RG' and not (5 <= len(normalized) <= 20):

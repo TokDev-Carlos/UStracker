@@ -5,9 +5,9 @@ const esc = value => String(value ?? '').replace(/[&<>'"]/g, c => ({ '&': '&amp;
 
 export const VEHICLE_CATEGORIES = [
   { key: 'CAR', label: 'Carros', singular: 'Carro', icon: 'vehicle.car' },
+  { key: 'MOTO', label: 'Motos', singular: 'Moto', icon: 'vehicle.moto' },
   { key: 'TRUCK', label: 'Caminhões', singular: 'Caminhão', icon: 'vehicle.truck' },
   { key: 'BOAT', label: 'Embarcações', singular: 'Embarcação', icon: 'vehicle.boat' },
-  { key: 'AIRCRAFT', label: 'Aeronaves', singular: 'Aeronave', icon: 'vehicle.aircraft' },
   { key: 'OTHER', label: 'Outros', singular: 'Outro', icon: 'vehicle.other' },
 ];
 

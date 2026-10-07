@@ -6,10 +6,10 @@ const esc = value => String(value ?? '').replace(/[&<>'"]/g, character => ({
 
 export function renderClientEditor(row = {}) {
   const type = row.document_type || 'CPF';
-  const options = ['CPF', 'RG', 'CNH'].map(value => `<option value="${value}" ${type === value ? 'selected' : ''}>${value}</option>`).join('');
+  const options = ['CPF', 'CNPJ', 'RG', 'CNH'].map(value => `<option value="${value}" ${type === value ? 'selected' : ''}>${value}</option>`).join('');
   return `<form id="clientDrawerForm">
     <div class="row">
-      <div class="field"><label>Nome*</label><input name="legal_name" value="${esc(row.legal_name || '')}" required></div>
+      <div class="field"><label>Nome ou Razão Social*</label><input name="legal_name" value="${esc(row.legal_name || '')}" required></div>
       <div class="field"><label>Tipo de documento*</label><select name="document_type">${options}</select></div>
       <div class="field"><label>Documento*</label><input name="document" value="${esc(row.document || '')}" required></div>
       <div class="field"><label>E-mail</label><input name="email" type="email" value="${esc(row.email || '')}"></div>

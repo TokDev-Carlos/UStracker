@@ -756,7 +756,7 @@ def create_app(root: Path | str) -> FastAPI:
         if not session.can('fiscal.view'):
             out.pop('fiscal', None)
         if not session.can('finance.view'):
-            for key in ('payments', 'active_payments', 'realized_received_cents', 'charges'):
+            for key in ('payments', 'active_payments', 'realized_received_cents', 'charges', 'receivables'):
                 out.pop(key, None)
         return out
 
@@ -944,6 +944,12 @@ def create_app(root: Path | str) -> FastAPI:
     def expenses_convert(eid: str, request: Request, p: dict = Body(...)):
         session = session_required(request, True)
         return mutation(request, session, f'POST /expenses/{eid}/convert-sale', p, lambda db: convert_expense_to_sale(db, session.slot, eid, p))
+
+    @app.patch('/api/v1/expenses/{eid}')
+    def expenses_update(eid: str, request: Request, p: dict = Body(...)):
+        from .expenses import update_expense
+        session = session_required(request, True)
+        return mutation(request, session, f'PATCH /expenses/{eid}', p, lambda db: update_expense(db, session.slot, eid, p))
 
     @app.delete('/api/v1/expenses/{eid}')
     def expenses_delete(eid: str, request: Request):

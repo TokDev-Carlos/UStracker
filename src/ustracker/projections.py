@@ -93,6 +93,23 @@ def realized_expenses(db, start: date | None, end: date | None, as_of: date | No
     return int(db.one(f"SELECT COALESCE(SUM(amount_cents),0) FROM disbursements WHERE {' AND '.join(clauses)}", tuple(args))[0] or 0)
 
 
+# 2.4.0 — Despesas Gerais = TODAS as despesas (pagas ou não), pela data da despesa
+EXPENSE_DAY_SQL = "COALESCE(NULLIF(due_on,''), competence || '-01')"
+
+
+def general_expenses(db, start: date | None, end: date | None) -> dict:
+    clauses, args = ['1=1'], []
+    if start:
+        clauses.append(f'{EXPENSE_DAY_SQL}>=?'); args.append(start.isoformat())
+    if end:
+        clauses.append(f'{EXPENSE_DAY_SQL}<?'); args.append(end.isoformat())
+    row = db.one(f'''SELECT COALESCE(SUM(expected_amount_cents),0) AS total,
+                     COALESCE(SUM((SELECT COALESCE(SUM(d.amount_cents),0) FROM disbursements d WHERE d.expense_id=e.id AND d.reversed_at IS NULL)),0) AS paid
+                     FROM expenses e WHERE {' AND '.join(clauses)}''', tuple(args))
+    total, paid = int(row['total'] or 0), int(row['paid'] or 0)
+    return {'total_cents': total, 'paid_cents': paid, 'open_cents': max(0, total - paid)}
+
+
 def month_forecast(db, as_of: date | None = None) -> dict:
     today = as_of or date.today()
     month_start = today.replace(day=1)
@@ -144,7 +161,12 @@ def overview_drilldown(db, year: int | None = None, as_of: date | None = None) -
         add(r['k'], 'subscriptions_cents', r['v'])
     for r in db.query(f"SELECT {bucket} AS k,SUM(total_cents) AS v FROM direct_sales WHERE status='PAID' AND {where} GROUP BY k", tuple(args)):
         add(r['k'], 'direct_sales_cents', r['v'])
-    for r in db.query(f"SELECT {bucket} AS k,SUM(amount_cents) AS v FROM disbursements WHERE reversed_at IS NULL AND {where} GROUP BY k", tuple(args)):
+    eclauses, eargs = ['1=1'], []
+    if start:
+        eclauses += [f'{EXPENSE_DAY_SQL}>=?', f'{EXPENSE_DAY_SQL}<?']; eargs += [start.isoformat(), end.isoformat()]
+    ebucket = f"substr({EXPENSE_DAY_SQL},1,7)" if year is not None else f"substr({EXPENSE_DAY_SQL},1,4)"
+    ewhere = ' AND '.join(eclauses)
+    for r in db.query(f"SELECT {ebucket} AS k,SUM(expected_amount_cents) AS v FROM expenses WHERE {ewhere} GROUP BY k", tuple(eargs)):
         add(r['k'], 'expenses_cents', r['v'])
     rows = []
     for key in sorted(periods):
@@ -152,9 +174,8 @@ def overview_drilldown(db, year: int | None = None, as_of: date | None = None) -
         row['revenue_cents'] = row['subscriptions_cents'] + row['direct_sales_cents']
         row['result_cents'] = row['revenue_cents'] - row['expenses_cents']
         rows.append(row)
-    categories = [dict(r) for r in db.query(f'''SELECT e.category AS category,SUM(d.amount_cents) AS amount_cents FROM disbursements d
-                    JOIN expenses e ON e.id=d.expense_id WHERE d.reversed_at IS NULL AND {where.replace('paid_on', 'd.paid_on')}
-                    GROUP BY e.category ORDER BY amount_cents DESC''', tuple(args))]
+    categories = [dict(r) for r in db.query(f'''SELECT category,SUM(expected_amount_cents) AS amount_cents FROM expenses
+                    WHERE {ewhere} GROUP BY category ORDER BY amount_cents DESC''', tuple(eargs))]
     reversed_cents = int(db.one(f'SELECT COALESCE(SUM(amount_cents),0) FROM payments WHERE reversed_at IS NOT NULL AND {where}', tuple(args))[0] or 0)
     totals = {k: sum(r[k] for r in rows) for k in ('subscriptions_cents', 'direct_sales_cents', 'revenue_cents', 'expenses_cents', 'result_cents')}
     return {'year': year, 'label': str(year) if year is not None else 'Geral', 'granularity': 'month' if year is not None else 'year',

@@ -9,7 +9,7 @@ from .db import Database
 from .services import audit, now, uid
 from .vehicle_types import CATEGORY_KEYS, annotate_vehicle, breakdown_from_rows, category_label, ensure_vehicle_fits_fleet, fleet_group_label, normalize_vehicle_category, validate_fleet_group
 
-STANDARD_VEHICLE_TYPES = ('Carro', 'Caminhão', 'Embarcação', 'Aeronave')
+STANDARD_VEHICLE_TYPES = ('Carro', 'Moto', 'Caminhão', 'Embarcação')
 DEFAULT_FLEET_MAX_ACTIVE = 100
 
 
@@ -341,11 +341,17 @@ def _subscription_summaries_bulk(db: Database) -> tuple[dict[str, list[dict]], d
     return by_vehicle, by_fleet
 
 
+def active_subscription_codes(db: Database) -> dict[str, list[str]]:
+    """H-09 — vehicle id -> codes of the ACTIVE subscriptions that already cover it (directly or by its fleet)."""
+    by_vehicle, _ = _subscription_summaries_bulk(db)
+    return {vid: [s.get('code') or s['id'] for s in subs] for vid, subs in by_vehicle.items()}
+
+
 def list_mobility(db: Database, *, client_id: str | None = None, fleet_id: str | None = None, plate: str | None = None,
                   company_id: str | None = None, group: str | None = None) -> dict:
     """Vehicles and fleets organized as Cliente → Empresa → Frota → Grupo (AJ-05).
 
-    ``group`` filters by vehicle category (CAR, TRUCK, BOAT, AIRCRAFT, OTHER); fleets are kept
+    ``group`` filters by vehicle category (CAR, MOTO, TRUCK, BOAT, OTHER); fleets are kept
     when their declared group matches or when they contain matching vehicles (MIXED).
     """
     group = str(group or '').strip().upper() or None
@@ -499,8 +505,10 @@ def mobility_subscription_detail(db: Database, *, vehicle_id: str | None = None,
                           'received_cents': int((received[0] if received else 0) or 0)})
     items_out.sort(key=lambda x: (x['lifecycle_status'] != 'ACTIVE', x.get('start_on') or ''))
     active = [x for x in items_out if x['lifecycle_status'] == 'ACTIVE']
+    from .billing import coverage_history
+    history = coverage_history(db, [x['id'] for x in items_out], per_vehicle=bool(vehicle_id))
     return {'target': target, 'items': items_out, 'active_count': len(active),
-            'active_monthly_cents': sum(x['monthly_cents'] for x in active)}
+            'active_monthly_cents': sum(x['monthly_cents'] for x in active), 'history': history}
 
 
 def fleet_profile(db: Database, fleet_id: str) -> dict:

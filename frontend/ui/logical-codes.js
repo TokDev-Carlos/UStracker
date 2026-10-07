@@ -9,12 +9,12 @@ const fold = value => String(value ?? '').normalize('NFKD').replace(/[\u0300-\u0
 // Fallback only. The backend (vehicle_types.py) is the source of truth and sends category/category_label.
 const CATEGORY_ALIASES = [
   ['Carro', ['carro', 'carros', 'automovel', 'auto', 'utilitario', 'pickup', 'picape', 'van', 'suv']],
+  ['Moto', ['moto', 'motos', 'motocicleta', 'motocicletas', 'motoneta', 'scooter', 'ciclomotor', 'triciclo', 'quadriciclo']],
   ['Caminhão', ['caminhao', 'caminhoes', 'carreta', 'cavalo', 'truck', 'onibus']],
   ['Embarcação', ['embarcacao', 'embarcacoes', 'barco', 'lancha', 'navio', 'jet ski', 'jetski', 'veleiro']],
-  ['Aeronave', ['aeronave', 'aeronaves', 'aviao', 'helicoptero', 'drone']],
 ];
 
-const LABEL_TO_KEY = { 'Carro': 'CAR', 'Caminhão': 'TRUCK', 'Embarcação': 'BOAT', 'Aeronave': 'AIRCRAFT', 'Outro': 'OTHER' };
+const LABEL_TO_KEY = { 'Carro': 'CAR', 'Moto': 'MOTO', 'Caminhão': 'TRUCK', 'Embarcação': 'BOAT', 'Outro': 'OTHER' };
 
 export function vehicleCategory(type, backendLabel = '') {
   if (backendLabel) return backendLabel;

@@ -1,5 +1,6 @@
 import { bindEntityAutocomplete, renderEntityAutocomplete } from './entity-autocomplete.js';
 import { vehicleCategory } from './logical-codes.js';
+import { formatBRL } from './formatters.js';
 
 const escapeHtml = value => String(value ?? '').replace(/[&<>'"]/g, character => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;',
@@ -21,6 +22,25 @@ export function subscriptionOptionsForClient(model = {}, clientId = '') {
     vehicles: clientId ? (model.vehicles || []).filter(belongs) : [],
     fleets: clientId ? (model.fleets || []).filter(belongs) : [],
   };
+}
+
+// H-09 — veículos cobertos (marcados + os das frotas marcadas, sem repetir), prévia da conta e duplicidade.
+export function subscriptionPreview(model = {}, { catalogId = '', vehicleIds = [], fleetIds = [], quantity = null } = {}) {
+  const fleets = new Set(fleetIds.map(String));
+  const picked = new Set(vehicleIds.map(String));
+  const covered = (model.vehicles || []).filter(v => Number(v.archived || 0) === 0 && (picked.has(String(v.id)) || (v.fleet_id && fleets.has(String(v.fleet_id)))));
+  const plan = (model.catalog || []).find(item => String(item.id) === String(catalogId));
+  const unitCents = Number(plan?.price_cents || 0);
+  const vehicles = covered.length;
+  const qty = quantity == null || quantity === '' ? Math.max(1, vehicles) : Math.max(1, Number(quantity) || 1);
+  const totalCents = unitCents * qty;
+  const duplicates = covered.filter(v => (v.subscription_codes || []).length).map(v => ({ plate: v.plate || 'Sem placa', codes: v.subscription_codes }))
+    .sort((a, b) => a.plate.localeCompare(b.plate, 'pt-BR'));
+  const text = plan ? `${qty} veículo${qty === 1 ? '' : 's'} × ${formatBRL(unitCents)} = ${formatBRL(totalCents)}/mês` : 'Escolha o plano para ver o valor.';
+  const warning = duplicates.length
+    ? `Atenção: já cobertos por outra assinatura ativa (cobraria 2×): ${duplicates.map(d => `${d.plate} (${d.codes.join(', ')})`).join('; ')}.`
+    : '';
+  return { vehicles, quantity: qty, unitCents, totalCents, duplicates, text, warning };
 }
 
 // V-07 — vehicles as aligned cards with the photo thumbnail (when there is one).
@@ -62,8 +82,9 @@ export function renderSubscriptionWorkflow(model = {}) {
   return `<form id="subscriptionWorkflowForm" data-subscription-context="${escapeHtml(context)}">
     <p class="muted sw-help">Assinatura é o plano mensal do cliente: todo mês gera uma cobrança no dia do vencimento, para os veículos ou frotas marcados. Quando a cobrança é paga, vira receita.</p>
     <div class="row">${clientField}<div class="field"><label>Plano mensal*</label><select name="catalog_id" required><option value="">Selecione o plano</option>${plans.map(item => `<option value="${escapeHtml(item.id)}" data-price="${Number(item.price_cents || 0)}">${escapeHtml(item.name || item.description || item.id)}</option>`).join('')}</select></div></div>
-    <div class="row"><div class="field"><label>Início*</label><input type="date" name="start_on" value="${startOn}" required></div><div class="field"><label>Dia do vencimento*</label><input type="number" name="due_day" min="1" max="31" value="10" required></div><div class="field"><label>Quantidade*</label><input type="number" name="quantity" min="1" value="1" required></div></div>
+    <div class="row"><div class="field"><label>Início*</label><input type="date" name="start_on" value="${startOn}" required></div><div class="field"><label>Dia do vencimento*</label><input type="number" name="due_day" min="1" max="31" value="10" required></div><div class="field"><label>Quantidade*</label><input type="number" name="quantity" min="1" value="1" required><small class="muted">Automática: total de veículos marcados (frotas incluídas). Pode alterar.</small></div></div>
     <div data-subscription-targets>${targetChoices(model, selectedClientId)}</div>
+    <div class="sw-preview" data-subscription-preview aria-live="polite"><strong data-preview-text>Escolha o plano para ver o valor.</strong><div class="sw-warning" data-preview-warning hidden></div></div>
     <div data-subscription-error class="error" hidden></div>
     <div class="actions"><button type="button" class="ui-btn ui-btn-secondary" data-close-overlay>Cancelar</button><button type="submit" class="ui-btn ui-btn-primary">Criar assinatura</button></div>
   </form>`;
@@ -99,12 +120,27 @@ export function bindSubscriptionWorkflow(root, { model = {}, searchClients, onSu
   const form = root?.querySelector?.('#subscriptionWorkflowForm');
   if (!form) return null;
   const targetHost = form.querySelector('[data-subscription-targets]');
+  const quantityInput = form.querySelector('[name="quantity"]');
+  let manualQuantity = false; // H-09: a quantidade segue os veículos até o usuário digitar outra
+  const refresh = () => {
+    const picked = type => [...form.querySelectorAll(`[data-subscription-target="${type}"]:checked`)].map(input => input.value);
+    const preview = subscriptionPreview(model, { catalogId: form.querySelector('[name="catalog_id"]')?.value, vehicleIds: picked('vehicle'), fleetIds: picked('fleet'),
+      quantity: manualQuantity ? quantityInput?.value : null });
+    if (quantityInput && !manualQuantity) quantityInput.value = String(preview.quantity);
+    const text = form.querySelector('[data-preview-text]'); if (text) text.textContent = preview.text;
+    const warn = form.querySelector('[data-preview-warning]'); if (warn) { warn.hidden = !preview.warning; warn.textContent = preview.warning; }
+    return preview;
+  };
+  form.addEventListener('change', event => { if (event.target?.matches?.('[data-subscription-target],[name="catalog_id"]')) refresh(); });
+  if (quantityInput) quantityInput.addEventListener('input', () => { manualQuantity = quantityInput.value !== ''; refresh(); });
   if (typeof searchClients === 'function') bindEntityAutocomplete(form, {
     search: searchClients,
     onSelection: client => {
       if (targetHost) targetHost.innerHTML = targetChoices(model, client?.id || '');
+      refresh();
     },
   });
+  refresh();
   form.onsubmit = async event => {
     event.preventDefault();
     const errorBox = form.querySelector('[data-subscription-error]');

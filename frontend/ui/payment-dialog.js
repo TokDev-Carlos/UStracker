@@ -30,6 +30,16 @@ export function paymentSummary(sub, months = 1, discountCents = 0, today = local
   return { months: n, from, to, totalCents: total, suggestedCents: Math.max(0, total - Number(discountCents || 0)),
     advance: from ? Array.from({ length: n }, (_, i) => shiftCompetence(from, i)).filter(c => c > String(today).slice(0, 7)).length : 0 };
 }
+/** H-10 — what the subscription covers: fleets (plates), loose vehicles and value per vehicle. */
+export function coverageLine(cov) {
+  if (!cov || !Number(cov.vehicle_count || 0)) return '';
+  const parts = (cov.fleets || []).map(f => `<span class="pay-cover-name">${esc(f.name)} (${(f.plates || []).length})</span>: ${esc((f.plates || []).join(', ') || 'sem veículos')}`);
+  if ((cov.vehicles || []).length) parts.push(`<span class="pay-cover-name">Veículos</span>: ${esc(cov.vehicles.join(', '))}`);
+  const n = Number(cov.vehicle_count);
+  const per = cov.per_vehicle_cents != null ? ` · ${formatBRL(Number(cov.per_vehicle_cents))} por veículo` : '';
+  return `<span class="pay-cover">Cobre: ${parts.join(' · ')}<br><small>${n} ${n === 1 ? 'veículo' : 'veículos'}${per}</small></span>`;
+}
+
 function subscriptionLine(sub) {
   const paid = sub.paid_through ? `Pago até ${competenceLabel(sub.paid_through)}` : 'Nenhum mês pago';
   const late = sub.overdue_months ? ` · <strong class="pay-late">${sub.overdue_months} ${sub.overdue_months === 1 ? 'mês' : 'meses'} em atraso</strong>` : ' · Em dia';
@@ -45,7 +55,7 @@ export function renderPaymentDialog({ client = null, options = null, subscriptio
     : `<div class="row">${renderEntityAutocomplete({ name: 'client_id', label: 'Cliente', required: true })}</div>`;
   const subsField = !options ? '<p class="muted" data-pay-hint>Escolha o cliente para ver as assinaturas.</p>'
     : !subs.length ? '<p class="notice" data-pay-hint>Este cliente não tem assinatura ativa.</p>'
-      : `<div class="pay-subs" role="radiogroup" aria-label="Assinatura">${subs.map(s => `<label class="pay-sub${s === chosen ? ' is-selected' : ''}"><input type="radio" name="subscription_id" value="${esc(s.subscription_id)}"${s === chosen ? ' checked' : ''}><span><b>${esc(s.code || 'Assinatura')}</b> ${esc((s.plans || []).join(', '))}<small>${subscriptionLine(s)}</small></span></label>`).join('')}</div>`;
+      : `<div class="pay-subs" role="radiogroup" aria-label="Assinatura">${subs.map(s => `<label class="pay-sub${s === chosen ? ' is-selected' : ''}"><input type="radio" name="subscription_id" value="${esc(s.subscription_id)}"${s === chosen ? ' checked' : ''}><span><b>${esc(s.code || 'Assinatura')}</b> ${esc((s.plans || []).join(', '))}<small>${subscriptionLine(s)}</small>${coverageLine(s.coverage)}</span></label>`).join('')}</div>`;
   const enabled = Boolean(chosen);
   return `<form id="paymentDialogForm" class="pay-form">${clientField}${subsField}
   <fieldset class="pay-main"${enabled ? '' : ' disabled'}>

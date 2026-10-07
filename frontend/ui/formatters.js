@@ -52,6 +52,7 @@ export function normalizeDocument(type, text) {
   const kind = String(type ?? '').trim().toUpperCase();
   const raw = String(text ?? '').toUpperCase();
   if (kind === 'CPF' || kind === 'CNH') return raw.replace(/\D/g, '').slice(0, 11);
+  if (kind === 'CNPJ') return raw.replace(/\D/g, '').slice(0, 14);
   if (kind === 'RG') return raw.replace(/[^A-Z0-9]/g, '');
   return raw.trim();
 }

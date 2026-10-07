@@ -31,19 +31,20 @@ class AJ02VehicleCategoryTests(unittest.TestCase):
     def test_normalization_maps_equivalents_and_keeps_custom_as_other(self):
         self.assertEqual(normalize_vehicle_category('CAMINHÃO'), 'TRUCK')
         self.assertEqual(normalize_vehicle_category(' lancha '), 'BOAT')
-        self.assertEqual(normalize_vehicle_category('Avião'), 'AIRCRAFT')
+        self.assertEqual(normalize_vehicle_category('Motocicleta'), 'MOTO')
+        self.assertEqual(normalize_vehicle_category('Avião'), 'OTHER')  # 2.4.0: Aeronaves saiu; Motos entrou
         self.assertEqual(normalize_vehicle_category('Carro'), 'CAR')
         self.assertEqual(normalize_vehicle_category('Trator'), 'OTHER')
 
     def test_total_is_exact_sum_of_five_categories_and_type_text_is_kept(self):
-        for index, vtype in enumerate(['Carro', 'Carro', 'Caminhão', 'Lancha', 'Aeronave', 'Trator']):
+        for index, vtype in enumerate(['Carro', 'Carro', 'Caminhão', 'Lancha', 'Moto', 'Trator']):
             create_vehicle(self.db, 1, {'client_id': self.client['id'], 'plate': f'AJ0{index}A11', 'type': vtype,
                                         'brand': 'M', 'model': 'X', 'year': 2026})
         breakdown = dashboard(self.db)['vehicle_breakdown']
         counts = {c['key']: c['count'] for c in breakdown['categories']}
-        self.assertEqual(counts, {'CAR': 2, 'TRUCK': 1, 'BOAT': 1, 'AIRCRAFT': 1, 'OTHER': 1})
+        self.assertEqual(counts, {'CAR': 2, 'MOTO': 1, 'TRUCK': 1, 'BOAT': 1, 'OTHER': 1})
         self.assertEqual(breakdown['total'], sum(counts.values()))
-        self.assertEqual([c['key'] for c in breakdown['categories']], ['CAR', 'TRUCK', 'BOAT', 'AIRCRAFT', 'OTHER'])
+        self.assertEqual([c['key'] for c in breakdown['categories']], ['CAR', 'MOTO', 'TRUCK', 'BOAT', 'OTHER'])
         self.assertIn('Trator', breakdown['categories'][4]['custom_types'])
         trator = [v for v in list_mobility(self.db)['particulars'] if v['type'] == 'Trator'][0]
         self.assertEqual((trator['category'], trator['category_label']), ('OTHER', 'Outro'))
