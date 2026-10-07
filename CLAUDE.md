@@ -45,8 +45,9 @@ Segurança: nunca mostrar, logar ou commitar tokens, PIN, senha ou chave da empr
 - `Validacoes\<versão>_<data>.md`: o que foi testado, resultado, prints/logs.
 
 ## Estado atual (2026-10-07)
-- Instalado nesta máquina: 2.3.0 (build 3). Entregue: `Entregas\2.4.0\UStracker-2.4.0.uspatch` (inclui a 2.3.1) — aplicar direto pelo Aplicador (opção 1) seguindo `Entregas\2.4.0\VALIDAR.md`.
-- Organização: `Ferramentas\Fechar_Organizacao.cmd` (roda Organizar_Pastas + Preparar_Ambiente).
-- Pendente do usuário: frota — veículo que entra/sai depois do contrato muda a cobrança sozinho ou fica fixo? (hoje: quantidade automática só na criação, editável).
-- Depois da validação: push main + tag, Release no GitHub, canal `updates/`, testes pesados.
-- Estruturais (depois): placa por empresa no `acesso-<Empresa>`, segurança padrão Apps Script+Drive+GitHub, conta Google da empresa, WSL2, Docker de build.
+- Lançada: **2.4.1** (main + tag v2.4.1 + GitHub Release com instalador). Canal `updates/` continua na 2.1.1 (não publicado de propósito).
+- Esta máquina: 2.4.1 + ajuste local dos botões do filtro (já incluído no instalador 2.4.1).
+- Entregas: `Entregas\2.4.1\` (instalador + .uspatch), `Entregas\2.3.0\` (instalador anterior). Cópias no Drive: `Dev_Sistemas\UStracker\`.
+- Drive: `Dev_Sistemas\Tokens\GitHub` (tokens), `Dev_Sistemas\Tokens\UStracker` (chave de assinatura, chave de redefinição), `Dev_Sistemas\UStracker` (Conhecimento, Ferramentas, Entregas). NÃO mover: `UStracker Cloud` (pasta e Apps Script da nuvem).
+- Pendente do usuário: frota — veículo que entra/sai depois do contrato muda a cobrança sozinho ou fica fixo? (hoje: quantidade automática na criação, editável).
+- Depois: testes pesados (matriz completa, backup/restore, volume, conflito); publicar canal quando o usuário pedir; placa por empresa no `acesso-<Empresa>`; segurança padrão; conta Google da empresa; WSL2; Docker de build.
