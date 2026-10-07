@@ -1310,8 +1310,14 @@ def create_app(root: Path | str) -> FastAPI:
         from . import adm_global
         from .cloud import CloudClient
         from .placa import fetch_placa, load_bootstrap, read_placa
+        from . import activation
         csrf_required(request)
-        if auth.setup_status()['activated']:
+        restart = p.get('restart')
+        if restart is not None and str(restart) != activation.RESTART_WORD:
+            raise ValueError('type RECOMEÇAR to restart the company')
+        st = auth.setup_status()
+        # 2.3.1: a computer that brought down an unvalidated cloud may come back here only to RECOMEÇAR
+        if st['activated'] and not (restart and not st['global_ready']):
             raise ValueError('this computer is already activated; use the normal sign in')
         trust = adm_global.load_trust(root)
         if not trust:
@@ -1359,7 +1365,7 @@ def create_app(root: Path | str) -> FastAPI:
             has_data = bool(ping.get('head') and ping.get('auth_head'))
         if has_data:
             bank = banks[0]
-            cloud_call(lambda: restore_from_cloud(root, bank['url'], bank['key']))
+            restored = cloud_call(lambda: restore_from_cloud(root, bank['url'], bank['key']))
             auth._init_store()  # the cloud copy may come from an older version
             auth.clear_sessions()
             cloud.state = type(cloud.state)(root)
@@ -1376,10 +1382,16 @@ def create_app(root: Path | str) -> FastAPI:
                 except Exception:
                     pass
                 return out
-            # 2.3.0: the cloud holds data the Adm Global never validated (older version): it is copied to
-            # Documentos\UStracker_backup_old\nuvem_<data> and the company starts clean (same rule as the installer)
-            from .activation import retire_unvalidated_data
-            old_cloud_saved = retire_unvalidated_data(root)
+            # 2.3.1: the cloud holds data the Adm Global never validated (older version). NEVER restart it on its own:
+            # the default is the company Administrator signing in once (validates and keeps everything); restarting needs
+            # the word RECOMEÇAR and is blocked while another Servidor saved in the last 24 h.
+            cloud_data = {'counts': restored.get('counts') or {}, 'saved_at': restored.get('created_at')}
+            if not restart:
+                return {'activated': True, 'restored': True, 'needs_decision': True, 'cloud_data': cloud_data}
+            if activation.saved_recently(cloud_data['saved_at']):
+                return JSONResponse({'error': 'RECENT', 'detail': 'another Servidor saved the company cloud in the last 24 hours',
+                                     'cloud_data': cloud_data}, status_code=409)
+            old_cloud_saved = activation.retire_unvalidated_data(root)
             auth.clear_sessions()
             auth._init_store()
             cloud.state = type(cloud.state)(root)

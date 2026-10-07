@@ -1,3 +1,17 @@
+# UStracker 2.3.1
+
+- **Ativação segura**: se a nuvem da empresa tiver dados de uma versão antiga (não validados pelo Adm Global), a ativação **para e mostra** o que existe lá (clientes, veículos, assinaturas, recebimentos e data do último salvamento). Nada é apagado.
+- Caminho padrão: entrar **uma vez** com o Administrador da empresa — os dados ficam validados e o Adm Global passa a entrar direto.
+- Recomeçar a empresa do zero só digitando **RECOMEÇAR**, com cópia antes em `Documentos\UStracker_backup_old`, e **bloqueado** se outro computador salvou nas últimas 24 horas.
+- Primeira versão entregue pelo **Aplicador de Patch** (`.uspatch`).
+
+# UStracker 2.3.1
+
+- **Ativação segura**: se a nuvem da empresa tiver dados de uma versão antiga (não validados pelo Adm Global), a ativação **para e mostra** o que existe lá (clientes, veículos, assinaturas, recebimentos e data do último salvamento). Nada é apagado.
+- Caminho padrão: entrar **uma vez** com o Administrador da empresa — os dados ficam validados e o Adm Global passa a entrar direto.
+- Recomeçar a empresa do zero só digitando **RECOMEÇAR**, com cópia antes em `Documentos\UStracker_backup_old`, e **bloqueado** se outro computador salvou nas últimas 24 horas.
+- Primeira versão entregue pelo **Aplicador de Patch** (`.uspatch`).
+
 # UStracker 2.3.0
 
 - **Ativação entra direto**: num computador novo, o Adm Global ativa (acesso, PIN e pergunta de segurança) e já entra no sistema, sem nova tela de login.
