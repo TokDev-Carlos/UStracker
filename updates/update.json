@@ -1,12 +1,12 @@
 {
   "format": "ustracker-update/1",
   "product": "UStracker",
-  "version": "2.1.1",
+  "version": "2.4.1",
   "level": "normal",
-  "notes": "Primeira atualização pela nuvem (validação do canal). Sem mudança nos dados.",
-  "package": "UStracker-2.1.1.usup",
-  "sha256": "621a3996c5014341f387670935b6e582a1b41f029916aea7ed0ba5c1b5fc9bbc",
-  "size": 5245465,
-  "published_at": "2026-10-05T02:58:04.521478+00:00",
-  "sig": "79521556a8d687b0de04a17e9a44ed9110302e647d70f9557f5b0f56f09e05d5e59bf778aa9c97c9d811d9d3d268bf5d15b701dcfd37d2f2b8224191c6798e04"
+  "notes": "2.4.1: atualizador nao da mais erro falso apos instalar; acentos corrigidos",
+  "package": "UStracker-2.4.1.usup",
+  "sha256": "a95804cef79656c7877aca43f63fed3c45c3bd86a78dcd71d3f72ac12ddb50ea",
+  "size": 5269434,
+  "published_at": "2026-10-07T01:47:06.162275+00:00",
+  "sig": "bc1b1624aee10eca6ab94ad1c7e0966220bacd001ae8576a022543080fdbfd3f2f7e35b3cee42da7959fe1c34638d8ade68ae736ba9aace6b15dbc9b019bb60f"
 }
