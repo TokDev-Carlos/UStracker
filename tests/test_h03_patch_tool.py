@@ -99,15 +99,16 @@ class PatchTool(unittest.TestCase):
         with self.assertRaises(pt.PatchError):
             pt.cmd_info(self.root, notzip)
 
-    def test_publish_only_after_this_machine_and_never_backwards(self):
-        gh = FakeGitHub()
-        with self.assertRaises(pt.PatchError):  # option 2 requires option 1 first
-            pt.cmd_publish(self.root, self.patch, 'tok', github=gh)
-        pt.cmd_apply(self.root, self.patch, self.backups, runner=self.runner)
+    def test_option2_publishes_for_the_others_and_skips_this_machine(self):
+        # H-12: option 2 no longer touches this machine; it is marked to ignore that version
         old = json.dumps({'version': '2.1.1', 'package': 'UStracker-2.1.1.usup'}).encode()
         gh = FakeGitHub({'updates/update.json': old, 'updates/UStracker-2.1.1.usup': b'old'})
         out = pt.cmd_publish(self.root, self.patch, 'tok', github=gh)
         self.assertEqual((out['published'], out['previous'], out['removed']), (VERSION, '2.1.1', 'UStracker-2.1.1.usup'))
+        self.assertEqual(out['this_machine'], '2.2.0'); self.assertTrue(out['skipped_here'])
+        skip = json.loads((self.root / 'UserData' / 'State' / 'update_skip.json').read_text(encoding='utf-8'))
+        self.assertEqual(skip['version'], VERSION)
+        self.assertEqual((self.root / 'version.md').read_text(encoding='utf-8').strip(), '2.2.0', 'esta máquina não muda')
         order = [p for _, p in gh.calls]
         self.assertLess(order.index(f'updates/UStracker-{VERSION}.usup'), order.index('updates/update.json'), 'pacote antes do anúncio')
         self.assertNotIn('updates/UStracker-2.1.1.usup', gh.files)
@@ -115,6 +116,14 @@ class PatchTool(unittest.TestCase):
             self.assertEqual(json.loads(gh.files['updates/update.json'])['sig'], json.loads(z.read('update.json'))['sig'])
         with self.assertRaises(pt.PatchError):  # cloud already on this version
             pt.cmd_publish(self.root, self.patch, 'tok', github=gh)
+
+    def test_updater_ignores_the_version_skipped_on_this_machine(self):
+        from ustracker import update_channel as uc
+        state = self.root / 'UserData' / 'State'; state.mkdir(parents=True, exist_ok=True)
+        self.assertFalse(uc.skipped_version(self.root, VERSION))
+        (state / 'update_skip.json').write_text(json.dumps({'version': VERSION}), encoding='utf-8')
+        self.assertTrue(uc.skipped_version(self.root, VERSION))
+        self.assertFalse(uc.skipped_version(self.root, '9.9.9'))
 
     def test_token_is_read_from_the_file_text(self):
         self.assertEqual(pt.parse_token('#Full access: github_pat_' + 'A1' * 20), 'github_pat_' + 'A1' * 20)

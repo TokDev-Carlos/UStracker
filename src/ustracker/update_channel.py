@@ -87,6 +87,15 @@ def build_release(source: Path | str, out_dir: Path | str, version: str, level: 
 
 
 # ----------------------------------------------------------------------------- instalação
+def skipped_version(root: Path, version: str) -> bool:
+    """H-12 — the Aplicador's option 2 marks the machine that launched a version for the others to ignore it."""
+    try:
+        data = json.loads((Path(root) / 'UserData' / 'State' / 'update_skip.json').read_text(encoding='utf-8'))
+        return str(data.get('version')) == str(version)
+    except Exception:
+        return False
+
+
 def can_apply(status: dict, *, is_admin: bool, permissions) -> bool:
     if not status.get('available'):
         return False
@@ -132,7 +141,8 @@ class UpdateService:
                 if not self._pending():
                     self.state.update(available=False)
                 return dict(self.state)
-            newer = version_key(manifest['version']) > version_key(_installed(self.root))
+            newer = (version_key(manifest['version']) > version_key(_installed(self.root))
+                     and not skipped_version(self.root, manifest['version']))
             pending = self._pending()
             self.manifest = manifest if newer else None
             self.state = {'available': newer, 'version': manifest['version'] if newer else None,
