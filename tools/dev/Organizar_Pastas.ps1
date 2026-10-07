@@ -5,6 +5,7 @@
 #   teste_claude_local.txt                      -> Logs
 # Se qualquer conferencia falhar, a origem NAO e removida. Relatorio em Logs\organizar_<data>.txt
 param([string]$Base = 'D:\PROGRAMAS\UStracker_Project', [string]$Drive = 'H:\Meu Drive')
+try { [Console]::OutputEncoding = [Text.Encoding]::UTF8; $OutputEncoding = [Text.Encoding]::UTF8 } catch {}  # git/python falam UTF-8
 
 $ErrorActionPreference = 'Continue'
 $docs = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'UStracker_Backups'

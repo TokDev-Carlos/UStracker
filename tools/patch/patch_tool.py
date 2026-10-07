@@ -129,10 +129,12 @@ def cmd_apply(root: Path, patch: Path, backup_dir: Path, *, runner=None) -> dict
                                             creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0)).returncode)
     code = run()
     now = installed_version(root)
-    if code != 0 or now != manifest['version']:
+    # the installed version decides: version.md only changes when the new version opened (else rollback).
+    # (the 2.4.0 updater exits 1 even after applying — H-11)
+    if now != manifest['version']:
         history = _last_history(root)
-        raise PatchError(f"não aplicado ({history or 'código ' + str(code)}); a máquina continua na {now}. Backup: {saved}")
-    return {'ok': True, 'from': current, 'to': now, 'backup': saved}
+        raise PatchError(f"não aplicado ({history or 'código ' + str(code)}); versão instalada agora: {now}. Backup: {saved}")
+    return {'ok': True, 'from': current, 'to': now, 'backup': saved, 'exit_code': code}
 
 
 def _last_history(root: Path) -> str:
@@ -236,10 +238,10 @@ def main(argv=None) -> int:
         else:
             out = cmd_publish(root, patch, parse_token(sys.stdin.read()))
     except PatchError as exc:
-        print(json.dumps({'error': str(exc)}, ensure_ascii=False)); return 1
+        print(json.dumps({'error': str(exc)}, ensure_ascii=True)); return 1
     except Exception as exc:  # never a stack trace on the screen
-        print(json.dumps({'error': f'erro inesperado: {type(exc).__name__}: {exc}'[:400]}, ensure_ascii=False)); return 1
-    print(json.dumps(out, ensure_ascii=False))
+        print(json.dumps({'error': f'erro inesperado: {type(exc).__name__}: {exc}'[:400]}, ensure_ascii=True)); return 1
+    print(json.dumps(out, ensure_ascii=True))  # ASCII: python -I on Windows prints in cp1252
     return 0
 
 
