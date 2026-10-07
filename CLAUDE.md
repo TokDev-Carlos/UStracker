@@ -45,7 +45,8 @@ Segurança: nunca mostrar, logar ou commitar tokens, PIN, senha ou chave da empr
 - `Validacoes\<versão>_<data>.md`: o que foi testado, resultado, prints/logs.
 
 ## Estado atual (2026-10-07)
-- Instalado nesta máquina: 2.3.0 (build 3). Entregue: `Entregas\2.3.1\UStracker-2.3.1.uspatch` (ativação nunca reinicia a nuvem sozinha) — validar com `Entregas\2.3.1\VALIDAR.md` pelo Aplicador (opção 1).
-- Organização: `Ferramentas\Organizar_Pastas.ps1` move instaladores para `Entregas\`, tokens para Drive › Dev_Sistemas › Tokens (com SHA-256 conferido).
-- Pendências seguintes (ver `Conhecimento\Ideias\`): feedback dos testadores (.docx), assinatura por frota, pagamento mostrando veículos/frota.
+- Instalado nesta máquina: 2.3.0 (build 3). Entregue: `Entregas\2.4.0\UStracker-2.4.0.uspatch` (inclui a 2.3.1) — aplicar direto pelo Aplicador (opção 1) seguindo `Entregas\2.4.0\VALIDAR.md`.
+- Organização: `Ferramentas\Fechar_Organizacao.cmd` (roda Organizar_Pastas + Preparar_Ambiente).
+- Pendente do usuário: frota — veículo que entra/sai depois do contrato muda a cobrança sozinho ou fica fixo? (hoje: quantidade automática só na criação, editável).
+- Depois da validação: push main + tag, Release no GitHub, canal `updates/`, testes pesados.
 - Estruturais (depois): placa por empresa no `acesso-<Empresa>`, segurança padrão Apps Script+Drive+GitHub, conta Google da empresa, WSL2, Docker de build.
