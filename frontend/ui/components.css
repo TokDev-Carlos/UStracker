@@ -223,3 +223,5 @@ tr.tf-hidden{display:none}
 .subs-history summary{cursor:pointer;font-weight:600}
 .pay-cover .pay-cover-name{display:inline;font-weight:700}
 .pay-sub span.pay-cover{display:block}.pay-sub .pay-cover span.pay-cover-name{display:inline}
+/* filtro: botão baixo e discreto (vence regras globais de botão) */
+button.tf-btn{min-height:0!important;height:16px!important;padding:0 4px!important;line-height:14px!important;font-size:10px!important;border-radius:4px!important;margin-left:4px}
