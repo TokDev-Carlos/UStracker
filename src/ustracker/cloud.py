@@ -343,6 +343,7 @@ class CloudSync:
         self.last_turn_use = 0.0
         self.last_pull = 0.0
         self.last_purge = 0.0
+        self.on_tick = None                  # 2.6: tarefas diárias da sessão (cópia de segurança conferida)
         self.data_version = 0                # bumps when another Servidor's data arrived
         self.last_placa = 0.0
 
@@ -393,6 +394,11 @@ class CloudSync:
 
     def tick(self, session) -> None:
         """One pass of the background loop (3 s): purge, placa, send pending changes, free the turn, pull."""
+        if self.on_tick:
+            try:
+                self.on_tick(session)
+            except Exception as exc:
+                self.status['tick_error'] = str(exc)[:200]
         if time.time() - self.last_purge > 3600:
             self.last_purge = time.time()
             self.purge_trash(session)

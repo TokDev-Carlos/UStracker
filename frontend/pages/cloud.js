@@ -10,7 +10,7 @@ export function cloudStatusBadge(s = {}) {
   if (s.conflict) return '<span class="badge badge-alert">Conflito</span>';
   if (s.last_error) return '<span class="badge badge-warn">Com erro</span>';
   if (s.running) return '<span class="badge badge-info">Enviando…</span>';
-  if (s.pending_changes) return '<span class="badge badge-info">Alterações aguardando envio</span>';
+  if (s.pending_changes) return '<span class="badge badge-info">Salvando na nuvem…</span>';
   return '<span class="badge badge-ok">Protegido</span>';
 }
 
@@ -27,7 +27,7 @@ export function renderCloudPanel(s = {}) {
       <dt>Envio automático</dt><dd>Segundos após cada alteração e ao fechar o sistema</dd></dl>
     ${s.last_error && !s.conflict ? `<p class="notice">Último erro: ${esc(s.last_error)}. O sistema tenta de novo sozinho.</p>` : ''}
     ${s.conflict ? `<div class="notice cloud-conflict"><strong>Outra máquina enviou dados mais novos.</strong><p>Para não perder nada, este computador parou de enviar. Se esta é a máquina certa, substitua a nuvem; senão, use Avançado › Restaurar da nuvem.</p><div class="actions"><button type="button" class="ui-btn ui-btn-danger" data-cloud-force>Usar este computador e substituir a nuvem</button></div></div>` : ''}
-    <div class="actions"><button type="button" class="ui-btn ui-btn-primary" data-cloud-sync>Enviar agora</button><button type="button" class="ui-btn ui-btn-secondary" data-cloud-points>Pontos de restauração</button><button type="button" class="ui-btn ui-btn-subtle" data-cloud-kit>Kit de recuperação</button><button type="button" class="ui-btn ui-btn-subtle" data-cloud-disconnect>Desconectar</button></div>
+    <div class="actions"><button type="button" class="ui-btn ui-btn-secondary" data-cloud-points>Pontos de restauração</button><button type="button" class="ui-btn ui-btn-subtle" data-cloud-kit>Kit de recuperação</button><button type="button" class="ui-btn ui-btn-subtle" data-cloud-disconnect>Desconectar</button></div>
     <details class="more-options"><summary>Trocar conexão</summary>${connectForm}</details>`
     : `<p>Guarde uma cópia cifrada de tudo no seu Google Drive. Se o computador quebrar ou a pasta for apagada, você recupera em outra máquina.</p>
        <ol class="cloud-steps"><li>Publique o script <b>UStracker Cloud</b> no seu Google (guia: <code>Docs\\NUVEM_GOOGLE_DRIVE.md</code>, 5 minutos).</li><li>Cole aqui a URL do App da Web e o Código de conexão.</li></ol>${connectForm}`;

@@ -173,23 +173,25 @@ def maybe_automatic_backup(
     *,
     interval_hours: int = 24,
     retention: int = DEFAULT_RETENTION,
+    db_key: bytes | None = None,
 ) -> Path | None:
+    """Cópia diária. 2.6: cada cópia é CONFERIDA (aberta, restaurada à parte, integrity_check e contagens)
+    e o resultado fica registrado para os avisos; se falhar, tenta de novo em 1 hora."""
+    from . import diagnostics as dg
     root = Path(root)
-    state_dir = root / 'UserData' / 'State'
-    state_dir.mkdir(parents=True, exist_ok=True)
-    marker = state_dir / f'auto_backup_{db.environment}.json'
-    current = datetime.now(UTC)
-    if marker.exists():
-        try:
-            data = json.loads(marker.read_text(encoding='utf-8'))
-            last = datetime.fromisoformat(data['at'])
-            if current - last < timedelta(hours=max(1, interval_hours)):
-                return None
-        except Exception:
-            pass
-    backup = create_backup(root, db, vrk)
-    prune_backups(root, db.environment, retention)
-    tmp = marker.with_suffix('.tmp')
-    tmp.write_text(json.dumps({'at': current.isoformat(), 'backup': backup.name}), encoding='utf-8')
-    tmp.replace(marker)
+    if not dg.due(root, db.environment, timedelta(hours=max(1, interval_hours))):
+        return None
+    current = datetime.now(UTC).isoformat()
+    previous = dg.backup_status(root, db.environment)
+    status = {'at': current, 'last_verified_at': previous.get('last_verified_at')}
+    backup = None
+    try:
+        backup = create_backup(root, db, vrk)
+        status['backup'] = backup.name
+        status['counts'] = dg.check_backup(backup, vrk, db_key or db.key, db.environment)
+        status.update(verified=True, last_verified_at=current, error=None)
+        prune_backups(root, db.environment, retention)
+    except Exception as exc:
+        status.update(verified=False, error=str(exc)[:300])
+    dg.write_backup_status(root, db.environment, status)
     return backup
