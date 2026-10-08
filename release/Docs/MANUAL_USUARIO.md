@@ -1,4 +1,4 @@
-# Manual do Usuário — UStracker 2.4.1
+# Manual do Usuário — UStracker 2.5.0
 
 ## Instalar
 1. Execute **UStracker_install_x64.exe** (o Windows pede permissão de administrador) e siga as telas. Ele já leva tudo: programa, WebView2 e o endereço da nuvem da empresa.
@@ -30,11 +30,14 @@ Painel de Controle › Programas (ou Menu Iniciar › UStracker › Desinstalar)
 - Algumas funções técnicas (conexão da nuvem, placa, restaurar backups, assumir gravação, auditoria) são reservadas ao suporte do sistema.
 
 ## Usuários e pacotes
-- Administrador cria pessoas em **Sistema › Usuários** (nome de acesso, senha inicial e pacote).
+- Administrador ou Gerente cria pessoas em **Sistema › Usuários** (login, senha provisória e pacote). Gerente não cria nem altera administradores.
+- **O login vale em todos os computadores da empresa** e é único: "Carlos", "carlos" e "Cárlos" são o mesmo login. Login: letras, números, ponto, hífen ou sublinhado (3 a 32, sem espaço).
+- Criar, alterar, trocar senha ou excluir usuário **precisa de internet**. Login excluído fica reservado (não pode ser criado de novo).
+- Sem internet, o computador ainda entra com a última senha conhecida por **até 1 dia**. Quando a internet volta, senha trocada em outro computador passa a valer e quem estava com a senha antiga é desconectado (o que já foi lançado fica salvo).
 - **Operador**: cria e atualiza clientes, veículos, planos e registra pagamentos. Não exclui, não estorna, não vê despesas nem custos.
-- **Gerente**: tudo do Operador + excluir, estornar, despesas, fiscal, custos, relatórios e Lixeira. Sem o menu Sistema.
-- Pacotes próprios: **+ Novo pacote** e marque o que pode.
-- Cada um troca a própria senha clicando no nome, no topo.
+- **Gerente**: tudo do Operador + excluir, estornar, despesas, fiscal, custos, relatórios, Lixeira e usuários. Sem as funções de administração.
+- Pacotes próprios (só Administrador): **+ Novo pacote** e marque o que pode.
+- Senha criada ou redefinida por outra pessoa é provisória: ao entrar, o sistema pede a troca. Cada um troca a própria senha clicando no nome, no topo.
 
 ## Entrar
 - Todos entram direto nos dados **Reais** com usuário e senha.

@@ -131,7 +131,7 @@ class AuthService:
               created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
               login_key TEXT, cloud_rev INTEGER NOT NULL DEFAULT 0, must_change INTEGER NOT NULL DEFAULT 0
             );
-            CREATE TABLE IF NOT EXISTS auth_meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);
+
             CREATE TABLE IF NOT EXISTS recovery(
               slot INTEGER PRIMARY KEY,
               salt TEXT NOT NULL, nonce TEXT NOT NULL, cipher TEXT NOT NULL,
@@ -683,18 +683,28 @@ class AuthService:
                  'permissions': json.loads(r['permissions']), 'users': counts.get(r['id'], 0)} for r in rows]
 
     # ------------------------------------------------------------------ 2.5.0 cadastro global (nuvem)
-    def _meta(self, key: str, default: str | None = None) -> str | None:
-        with self._connection() as con:
-            row = con.execute('SELECT value FROM auth_meta WHERE key=?', (key,)).fetchone()
-        return row['value'] if row else default
+    # Estado do cadastro global fora do auth.db (não viaja no pacote de acessos da nuvem nem gera envio a cada login).
+    def _meta_path(self) -> Path:
+        return self.root / 'UserData' / 'State' / 'usuarios-globais.json'
 
-    def _set_meta(self, key: str, value: str, con=None) -> None:
-        sql, args = 'INSERT OR REPLACE INTO auth_meta(key,value) VALUES(?,?)', (key, str(value))
-        if con is not None:
-            con.execute(sql, args)
-            return
-        with self._connection() as c:
-            c.execute(sql, args)
+    def _meta_all(self) -> dict:
+        try:
+            return json.loads(self._meta_path().read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            return {}
+
+    def _meta(self, key: str, default: str | None = None) -> str | None:
+        return self._meta_all().get(key, default)
+
+    def _set_meta(self, key: str, value: str) -> None:
+        with self._lock:
+            data = self._meta_all()
+            data[key] = str(value)
+            path = self._meta_path()
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = path.with_suffix('.tmp')
+            tmp.write_text(json.dumps(data), encoding='utf-8')
+            tmp.replace(path)
 
     def set_directory(self, url: str, secret: str, company_key: str) -> None:
         """Guarda (protegido: DPAPI no Windows) o acesso ao cadastro global, para o login funcionar sem sessão."""
@@ -709,10 +719,7 @@ class AuthService:
         cached = getattr(self, '_dir_cache', None)
         if cached:
             return cached
-        try:
-            text = self._meta('directory')
-        except sqlite3.OperationalError:
-            return None
+        text = self._meta('directory')
         if not text:
             return None
         try:
@@ -752,7 +759,9 @@ class AuthService:
         self._init_store()
         with self._lock:
             try:
-                out = d.get(int(self._meta('users_rev', '0') or 0))
+                with self._connection() as con:  # pelo que a cópia local tem de fato (sobrevive a auth.db trocado)
+                    since = con.execute('SELECT MAX(r) FROM (SELECT MAX(cloud_rev) r FROM users UNION ALL SELECT MAX(cloud_rev) FROM packages)').fetchone()[0]
+                out = d.get(int(since or 0))
             except CloudError:
                 if quiet:
                     return False
@@ -805,8 +814,8 @@ class AuthService:
                     else:
                         con.execute('''INSERT INTO users(name,full_name,package_id,salt,vrk_nonce,vrk_cipher,active,must_change,cloud_rev,updated_at,
                                        created_at,login_key) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)''', values + (now, key))
-                self._set_meta('users_rev', str(int(out.get('rev') or 0)), con)
-                self._set_meta('last_cloud_ok', self._now().isoformat(), con)
+            self._set_meta('users_rev', str(int(out.get('rev') or 0)))
+            self._set_meta('last_cloud_ok', self._now().isoformat())
             for uid_ in drop:
                 self._drop_user_sessions(uid_)
         self._refresh_sessions()

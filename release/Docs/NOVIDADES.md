@@ -1,3 +1,13 @@
+# UStracker 2.5.0
+
+- **Começo limpo em qualquer versão** (2.2 a 2.4.1): na primeira abertura da 2.5 o sistema faz uma cópia completa dos dados antigos em `Documentos\UStracker_Backups\Pre-2.5_<data>` (conferida por SHA-256) e começa zerado, só com o Adm Global. Se a cópia não conferir, nada é apagado. Corrige os dados da 2.2 que ficavam travados (sem editar nem excluir) depois de atualizar.
+- **Nuvem zerada uma vez**: a primeira ativação 2.5 do Adm Global move tudo o que havia na nuvem para a `_lixeira` (apagada sozinha depois de 14 dias) e começa a empresa nova. Computadores ainda em versão antiga não gravam mais na nuvem nova.
+- **Banco novo**: estrutura única e limpa (sem colunas e tabelas antigas).
+- **Usuários globais**: login e senha valem em todos os computadores e não se repetem. Na nuvem fica só texto cifrado. Criar ou alterar usuário precisa de internet; sem internet o computador entra com a última senha conhecida por até 1 dia.
+- **Gerente cria usuários** (Operador, Gerente e pacotes sem administração). Senha criada por outra pessoa é provisória e é trocada no primeiro acesso.
+- Excluir usuário (o login fica reservado).
+- Botões ▾ do filtro das tabelas mais baixos.
+
 # UStracker 2.4.1
 
 - **Atualização**: o atualizador terminava com erro mesmo tendo instalado a versão nova (o Aplicador mostrava "não aplicado"). Corrigido; o Aplicador agora confere a versão instalada.
