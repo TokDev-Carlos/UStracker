@@ -24,7 +24,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Dependências (sem sqlcipher3: os testes usam banco sem cifra)
+      - name: 'Dependências (sem sqlcipher3 — os testes usam banco sem cifra)'
         run: |
           grep -v '^sqlcipher3' requirements-runtime.txt > /tmp/req.txt
           python -m pip install -q -r /tmp/req.txt ruff
