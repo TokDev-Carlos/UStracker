@@ -343,6 +343,17 @@ def create_app(root: Path | str) -> FastAPI:
                 recovery_key = auth.ensure_recovery(session)
         return enter(response, session, recovery_key)
 
+    def keep_directory(session: Session, db) -> None:
+        """2.5: o cadastro global de usuários usa a mesma nuvem + chave da empresa (guardado protegido nesta máquina)."""
+        try:
+            if cloud.enabled():
+                company_key = cloud.company_key(session, db)
+                if company_key:
+                    auth.set_directory(cloud.state.get('url'), cloud.state.secret(session.vrk), company_key)
+                    auth.refresh_users(quiet=True)
+        except Exception:
+            pass
+
     def enter(response: Response, session: Session, recovery_key: str | None = None, extra: dict | None = None) -> dict:
         """Common end of every sign in: cookies, cloud restore/attach, station, backups."""
         factory_reset = None
@@ -357,6 +368,7 @@ def create_app(root: Path | str) -> FastAPI:
         station = ensure_station(root, db) if session.environment == 'production' else None
         if session.environment == 'production':
             cloud.attach(session)
+            keep_directory(session, db)
             try:
                 cloud.purge_trash(session)
             except Exception:
@@ -539,11 +551,17 @@ def create_app(root: Path | str) -> FastAPI:
         from .access import ALL
         perms = sorted(ALL) if session.is_admin else sorted(session.permissions)
         return {'kind': session.kind, 'role': session.package_title, 'package': session.package, 'permissions': perms,
-                'is_global': session.is_global}
+                'is_global': session.is_global, 'must_change': session.must_change}
 
     def admin_required(request: Request):
         session = session_required(request, True)
         if not session.is_admin:
+            raise HTTPException(403, 'administrator required')
+        return session
+
+    def manage_required(request: Request):
+        session = session_required(request, True)
+        if not session.can('users.manage'):
             raise HTTPException(403, 'administrator required')
         return session
 
@@ -554,17 +572,20 @@ def create_app(root: Path | str) -> FastAPI:
 
     @app.get('/api/v1/users')
     def users_list(request: Request):
-        admin_required(request)
-        return {'items': auth.list_users(), 'packages': auth.list_packages(), **describe_access()}
+        session = manage_required(request)
+        packages = [{**pk, 'allowed': session.is_admin or 'system' not in pk['permissions']} for pk in auth.list_packages()]
+        allowed = {pk['id'] for pk in packages if pk['allowed']}
+        return {'items': [u for u in auth.list_users() if u['package_id'] in allowed], 'packages': packages, **describe_access(),
+                'can_packages': session.is_admin, 'global_users': auth.global_users()}
 
     @app.post('/api/v1/users', status_code=201)
     def users_create(request: Request, p: dict = Body(...)):
-        session = admin_required(request); csrf_required(request, session)
+        session = manage_required(request); csrf_required(request, session)
         out = auth.create_user(session, p); cloud.mark_dirty(); return out
 
     @app.patch('/api/v1/users/{user_id}')
     def users_update(user_id: int, request: Request, p: dict = Body(...)):
-        session = admin_required(request); csrf_required(request, session)
+        session = manage_required(request); csrf_required(request, session)
         out = auth.update_user(session, user_id, p); cloud.mark_dirty(); return out
 
     @app.post('/api/v1/packages', status_code=201)
