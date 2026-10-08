@@ -84,7 +84,10 @@ class CloudEndToEnd(unittest.TestCase):
             CloudClient(self.url, 'x' * 48).call('ping', {})
         self.assertEqual(ctx.exception.code, 'AUTH')
 
-        # --- disaster: machine A is gone. Machine B restores everything from the cloud
+        # --- disaster: machine A is gone. Its turn expires by itself (TTL); here it is released at once
+        from ustracker.station import local_identity
+        CloudClient(self.url, self.secret).call('lease', {'op': 'release', 'holder': local_identity(root_a)['id']})
+        # Machine B restores everything from the cloud
         root_b, _ = self.machine('B', bootstrap=False)
         info = restore_from_cloud(root_b, self.url, self.secret)
         self.assertEqual(info['generation'], 1)

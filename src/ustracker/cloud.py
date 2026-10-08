@@ -342,6 +342,7 @@ class CloudSync:
         self.lease_until = 0.0
         self.last_turn_use = 0.0
         self.last_pull = 0.0
+        self.last_purge = 0.0
         self.data_version = 0                # bumps when another Servidor's data arrived
         self.last_placa = 0.0
 
@@ -382,40 +383,63 @@ class CloudSync:
         self.stop_event.set()
 
     def _loop(self) -> None:
-        last_purge = 0.0
         while not self.stop_event.wait(3):
             try:
                 session = self._session()
-                if not session:
-                    continue
-                if time.time() - last_purge > 3600:
-                    last_purge = time.time()
-                    self.purge_trash(session)
-                if time.time() - self.last_placa >= PLACA_EVERY:
-                    self.last_placa = time.time()
-                    try:
-                        self.check_placa(session)
-                    except Exception as exc:
-                        self.status['placa_error'] = str(exc)[:200]
-                if not self.enabled():
-                    continue
-                if self.state.get('bank_switch'):
-                    self.pull(session)
-                holding = self.lease_until > time.time()
-                idle = time.time() - float(self.state.get('last_change') or 0)
-                if self.state.get('dirty_since') and idle >= min(TURN_DEBOUNCE, self.debounce):
-                    if not holding:
-                        try:
-                            self.acquire_turn(session, wait=0)
-                        except CloudError:
-                            continue  # another Servidor is saving; try again on the next tick
-                    self.sync_now(session)
-                if holding and not self.state.get('dirty_since') and time.time() - self.last_turn_use >= HOLD_SECONDS:
-                    self.release_turn(session)
-                elif not holding and not self.state.get('dirty_since') and time.time() - self.last_pull >= PULL_EVERY:
-                    self.pull(session)
+                if session:
+                    self.tick(session)
             except Exception as exc:  # never kill the loop
                 self.status['last_error'] = str(exc)
+
+    def tick(self, session) -> None:
+        """One pass of the background loop (3 s): purge, placa, send pending changes, free the turn, pull."""
+        if time.time() - self.last_purge > 3600:
+            self.last_purge = time.time()
+            self.purge_trash(session)
+        if time.time() - self.last_placa >= PLACA_EVERY:
+            self.last_placa = time.time()
+            try:
+                self.check_placa(session)
+            except Exception as exc:
+                self.status['placa_error'] = str(exc)[:200]
+        if not self.enabled():
+            return
+        if self.state.get('bank_switch'):
+            self.pull(session)
+        if self.state.get('conflict'):
+            # 2.6: em conflito este computador para de enviar sozinho (a tela pede a decisão) e não segura a vez
+            if self.lease_until > 0:
+                self._drop_turn(session)
+            return
+        holding = self.lease_until > time.time()
+        idle = time.time() - float(self.state.get('last_change') or 0)
+        if self.state.get('dirty_since') and idle >= min(TURN_DEBOUNCE, self.debounce):
+            if not holding:
+                try:
+                    self.acquire_turn(session, wait=0)
+                except CloudError:
+                    return  # another Servidor is saving; try again on the next tick
+            try:
+                self.sync_now(session)
+            except CloudError as exc:
+                if exc.code == 'CONFLICT':
+                    self._drop_turn(session)
+                raise
+            return
+        if holding and not self.state.get('dirty_since') and time.time() - self.last_turn_use >= HOLD_SECONDS:
+            self.release_turn(session)
+        elif not holding and not self.state.get('dirty_since') and time.time() - self.last_pull >= PULL_EVERY:
+            self.pull(session)
+
+    def _drop_turn(self, session) -> None:
+        """Solta a vez mesmo com alterações pendentes (conflito: elas ficam aqui até a decisão na tela)."""
+        with self.turn_lock:
+            try:
+                self.client(session.vrk).call('lease', {'op': 'release', 'holder': self._ident()['id']}, retries=1)
+            except Exception:
+                pass
+            finally:
+                self.lease_until = 0.0
 
     def flush(self, timeout: float = 60.0) -> bool:
         """Called when the system closes: upload pending changes right away, then free the turn."""
@@ -462,10 +486,15 @@ class CloudSync:
             con.execute("INSERT OR IGNORE INTO settings(key,value,updated_at) VALUES('cloud_dataset_id',?,?)", (value, _now_iso()))
         return db.one("SELECT value FROM settings WHERE key='cloud_dataset_id'")[0]
 
-    def sync_now(self, session, *, force: bool = False) -> dict:
+    def sync_now(self, session, *, force: bool = False, turn_wait: float = TURN_WAIT) -> dict:
         from .backup import create_backup
         from .db import Database
         from .station import local_identity
+        if self.enabled() and not force and self.lease_until <= time.time():
+            # 2.6: só envia com a vez (antes "Enviar agora" subia por cima de quem estava gravando → CONFLITO no outro)
+            got = self.acquire_turn(session, wait=turn_wait)
+            if got and got.get('offline'):
+                raise CloudError('NETWORK', self.status.get('last_error') or 'sem conexão com a nuvem')
         with self.lock:
             if not self.enabled():
                 raise CloudError('DISABLED', 'nuvem não conectada')

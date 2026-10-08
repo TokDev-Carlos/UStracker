@@ -622,7 +622,7 @@ def create_app(root: Path | str) -> FastAPI:
 
     @app.get('/api/v1/clients')
     def clients(request: Request):
-        return {'items': list_clients(get_db(session_required(request, True)), limit=500)}
+        return {'items': list_clients(get_db(session_required(request, True)))}  # 2.6: sem corte em 500 (a tela pagina)
 
     @app.get('/api/v1/entities/clients')
     def client_entities(request: Request, q: str = Query(default=''), limit: int = Query(default=20)):
@@ -739,7 +739,7 @@ def create_app(root: Path | str) -> FastAPI:
 
     @app.get('/api/v1/vehicles')
     def vehicles(request: Request):
-        return {'items': list_table(get_db(session_required(request, True)), 'vehicles', limit=500)}
+        return {'items': list_table(get_db(session_required(request, True)), 'vehicles', limit=20000)}
 
     @app.post('/api/v1/vehicles', status_code=201)
     def vehicles_create(request: Request, p: dict = Body(...)):
@@ -1231,7 +1231,8 @@ def create_app(root: Path | str) -> FastAPI:
             raise ValueError('cloud is available only in Production')
         if write:
             csrf_required(request, session)
-            require_writer(root, get_db(session))
+            if not cloud.enabled():  # 2.6: com a nuvem ligada vale a vez de gravar (S-03), não a estação única antiga
+                require_writer(root, get_db(session))
         cloud.attach(session)
         return session
 
@@ -1242,7 +1243,7 @@ def create_app(root: Path | str) -> FastAPI:
         try:
             return fn()
         except CloudError as exc:
-            raise HTTPException(409 if exc.code in ('CONFLICT', 'READ_ONLY') else 502,
+            raise HTTPException(409 if exc.code in ('CONFLICT', 'READ_ONLY', 'BUSY') else 502,
                                 detail={'code': f'CLOUD_{exc.code}', 'detail': exc.detail, 'message': exc.detail}) from exc
 
     @app.get('/api/v1/cloud/status')
