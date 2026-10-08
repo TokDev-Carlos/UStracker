@@ -134,6 +134,12 @@ def create_app(root: Path | str) -> FastAPI:
 
     cloud = CloudSync(root, auth)
     app.state.cloud = cloud
+
+    def daily_backup(session) -> None:  # 2.6: cópia conferida também com o sistema aberto por dias
+        db = repository.database('production', session.db_key)
+        settings = {r['key']: r['value'] for r in db.query('SELECT key,value FROM settings')}
+        maybe_automatic_backup(root, db, session.vrk, retention=int(settings.get('backup_retention', 14)), db_key=session.db_key)
+    cloud.on_tick = daily_backup
     from .update_channel import UpdateService, can_apply as update_can_apply
     updates = UpdateService(root)
     app.state.updates = updates
@@ -388,7 +394,7 @@ def create_app(root: Path | str) -> FastAPI:
         backup_info = None
         backup_warning = None
         try:
-            created = maybe_automatic_backup(root, db, session.vrk, retention=int(settings.get('backup_retention', 14)))
+            created = maybe_automatic_backup(root, db, session.vrk, retention=int(settings.get('backup_retention', 14)), db_key=session.db_key)
             backup_info = created.name if created else None
         except Exception as exc:
             backup_warning = str(exc)
@@ -1526,6 +1532,34 @@ def create_app(root: Path | str) -> FastAPI:
     def integrations(request: Request):
         session_required(request, True)
         return {'drive':{'enabled':cloud.enabled(),'implemented':True},'tracking':{'enabled':False,'implemented':False},'fiscal_official':{'enabled':False,'implemented':False}}
+
+    # ------------------------------------------------------------------ 2.6 Diagnóstico (só administradores)
+    def cloud_facts() -> dict:
+        return {**cloud.describe(), 'pending_since': cloud.state.get('dirty_since')}
+
+    @app.get('/api/v1/system/alerts')
+    def system_alerts(request: Request):
+        session = session_required(request)
+        if not session.is_admin:
+            return {'items': []}
+        from . import diagnostics
+        return {'items': diagnostics.alerts(root, cloud_facts())}
+
+    @app.get('/api/v1/system/diagnostics')
+    def system_diagnostics(request: Request):
+        session = admin_required(request)
+        from . import diagnostics
+        users_active = sum(1 for u in auth.list_users() if u['active'])
+        return {**diagnostics.snapshot(root, get_db(session), cloud_facts(), users_active), 'alerts': diagnostics.alerts(root, cloud_facts())}
+
+    @app.get('/api/v1/system/support-package')
+    def system_support_package(request: Request):
+        session = admin_required(request)
+        from . import diagnostics
+        users_active = sum(1 for u in auth.list_users() if u['active'])
+        blob = diagnostics.support_package(root, get_db(session), cloud_facts(), users_active)
+        name = f"UStracker_suporte_{datetime.now().strftime('%Y%m%d_%H%M')}.zip"
+        return Response(blob, media_type='application/zip', headers={'Content-Disposition': f'attachment; filename="{name}"'})
 
     @app.get('/api/v1/system/runtime')
     def runtime_status(request: Request):

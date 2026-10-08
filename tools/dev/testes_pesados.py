@@ -322,6 +322,13 @@ if sync_playwright:
         pg.wait_for_function("!document.body.classList.contains('is-navigating')", timeout=60000); pg.wait_for_timeout(800)
         t0 = time.perf_counter(); pg.click('th .tf-btn'); pg.wait_for_selector('.tf-pop'); TIMES.setdefault('navegador: abrir filtro (Clientes)', []).append(time.perf_counter() - t0)
         pg.screenshot(path=str(OUT / 'clientes_500.png'))
+        pg.keyboard.press('Escape'); pg.mouse.click(5, 5)
+        pg.evaluate("document.querySelector('[data-page=system]').click()")
+        pg.wait_for_function("!document.body.classList.contains('is-navigating')", timeout=60000)
+        pg.click('[data-system-tab=diagnostics]'); pg.wait_for_selector('[data-support-package]', timeout=30000)
+        diag_txt = pg.inner_text('[data-system-panel=diagnostics]')
+        pg.screenshot(path=str(OUT / 'diagnostico.png'), full_page=True)
+        check('Conferida' in diag_txt and 'Espaço livre' in diag_txt, 'navegador: aba Sistema › Diagnóstico abre com a cópia conferida')
         browser.close()
     slow_ui = [f'{k} {v:.2f}s' for k, v in page_times.items() if v > 2.0]
     check(not slow_ui, 'navegador: todas as telas prontas em menos de 2 s', '; '.join(f'{k} {v:.2f}s' for k, v in page_times.items()))
@@ -413,6 +420,17 @@ check(st == 201, 'Gerente cria Operador', str(op)[:120])
 O = login(A.base, 'operador.um', '1234')
 check(O.req('POST', '/api/v1/users', {'name': 'x123', 'password': '1234'})[0] == 403, 'Operador não cria usuário')
 check(O.req('GET', '/api/v1/clients')[0] == 200 and O.req('GET', '/api/v1/expenses')[0] == 403, 'Operador vê clientes e não vê despesas')
+
+# ------------------------------------------------------------------ 6. diagnóstico (2.6 Etapa 2)
+print('== diagnóstico', flush=True)
+st, dgn = A.req('GET', '/api/v1/system/diagnostics', label='tela: Diagnóstico')
+check(st == 200 and (dgn.get('backup') or {}).get('verified') is True, 'Diagnóstico: cópia de segurança diária conferida', str((dgn.get('backup') or {}).get('counts'))[:120])
+check(O.req('GET', '/api/v1/system/diagnostics')[0] == 403 and G.req('GET', '/api/v1/system/diagnostics')[0] == 403, 'Diagnóstico só para administradores')
+st, z = A.req('GET', '/api/v1/system/support-package', raw=True, label='pacote de suporte')
+import io as _io, zipfile as _zip
+names = _zip.ZipFile(_io.BytesIO(z)).namelist() if st == 200 else []
+text = ''.join(_zip.ZipFile(_io.BytesIO(z)).read(n).decode('utf-8', 'replace') for n in names) if names else ''
+check(st == 200 and 'diagnostico.json' in names and 'Cliente Teste 0001' not in text and cpf(1) not in text, 'pacote de suporte gerado sem dados de clientes', f'{len(z) / 1024:.0f} KB, {names}')
 
 # ------------------------------------------------------------------ relatório
 total = time.time() - t_start
