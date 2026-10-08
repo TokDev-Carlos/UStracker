@@ -925,7 +925,7 @@ class AuthService:
         salt, nonce, cipher = self._user_envelope(session.vrk, str(p.get('password') or ''))
         now = self._now().isoformat()
         rec = {'login': name, 'full_name': str(p.get('full_name') or '').strip(), 'package_id': package_id, 'salt': salt,
-               'vrk_nonce': nonce, 'vrk_cipher': cipher, 'active': 1, 'must_change': int(bool(p.get('must_change'))), 'updated_at': now}
+               'vrk_nonce': nonce, 'vrk_cipher': cipher, 'active': 1, 'must_change': int(bool(p.get('must_change', True))), 'updated_at': now}
         key = login_key(d.dk, name) if d else None
         rev = self._cloud_put(key, rec, 0) if d else 0
         with self._lock, self._connection() as con:

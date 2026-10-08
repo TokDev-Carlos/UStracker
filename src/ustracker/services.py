@@ -213,7 +213,7 @@ def update_client(db:Database, actor:int, cid:str, p:dict)->dict:
         return after
 
 
-def list_clients(db:Database, *, include_archived:bool=False, limit:int=500)->list[dict]:
+def list_clients(db:Database, *, include_archived:bool=False, limit:int=20000)->list[dict]:
     where='' if include_archived else 'WHERE c.archived=0'
     rows=db.query(f'''SELECT c.*,
         COALESCE((SELECT cc.legal_name FROM client_companies cc WHERE cc.client_id=c.id AND cc.archived=0
