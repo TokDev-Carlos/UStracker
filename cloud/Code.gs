@@ -18,6 +18,8 @@
 var UST_VERSION = 1;
 var UST_RETENTION_DAYS = 14;
 var UST_FOLDER = 'UStracker Cloud';
+// 2.5: pasta de dados fixa pelo ID (pode ficar em qualquer lugar do Drive); o nome só é usado se o ID sumir.
+var UST_FOLDER_ID = '12_h5cYlazQkrA_V2eh0n4ol7pPRpFw6R';
 var UST_MAX_SKEW_MS = 10 * 60 * 1000;
 
 /* ---------------------------------------------------------------- instalação */
@@ -58,19 +60,91 @@ function doPost(e) {
 }
 
 var UST_ACTIONS = {
-  ping: function () { return { version: UST_VERSION, head: ust_head_(), auth_head: ust_prop_json_('AUTH_HEAD'), lease: ust_prop_json_('LEASE'), now: new Date().toISOString() }; },
+  ping: function () { return { version: UST_VERSION, epoch: ust_epoch_(), head: ust_head_(), auth_head: ust_prop_json_('AUTH_HEAD'), lease: ust_prop_json_('LEASE'), now: new Date().toISOString() }; },
+  reset_company: ust_reset_company_,
+  users_get: ust_users_get_,
+  user_put: function (b) { ust_check_epoch_(b); return ust_user_put_(b); },
   put_part: ust_put_part_,
-  commit: ust_commit_,
+  commit: function (b) { ust_check_epoch_(b); return ust_commit_(b); },
   list_snapshots: ust_list_snapshots_,
   get_manifest: ust_get_manifest_,
   get_part: ust_get_part_,
-  put_blob: ust_put_blob_,
+  put_blob: function (b) { ust_check_epoch_(b); return ust_put_blob_(b); },
   list_blobs: ust_list_blobs_,
   get_blob: ust_get_blob_,
-  delete_blobs: ust_delete_blobs_,
-  compact: ust_compact_,
+  delete_blobs: function (b) { ust_check_epoch_(b); return ust_delete_blobs_(b); },
+  compact: function (b) { ust_check_epoch_(b); return ust_compact_(b); },
   lease: ust_lease_
 };
+
+/* ---------------------------------------------------------------- 2.5 época da empresa
+ * EPOCH = "vida" da empresa na nuvem. reset_company (uma vez por época) move TUDO para
+ * _lixeira/<data> (nada é apagado aqui; a limpeza diária esvazia depois de 14 dias) e grava a época nova.
+ * Com época definida, toda gravação precisa trazer a mesma época: versões antigas não sobem dados velhos. */
+function ust_epoch_() { return Number(PropertiesService.getScriptProperties().getProperty('EPOCH') || 0); }
+function ust_check_epoch_(b) {
+  var cur = ust_epoch_();
+  if (cur > 0 && Number(b.epoch || 0) !== cur) throw ust_err_('EPOCH', JSON.stringify({ cloud: cur, client: Number(b.epoch || 0) }));
+}
+function ust_reset_company_(b) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var target = Number(b.epoch || 0);
+    var cur = ust_epoch_();
+    if (!(target > cur)) throw ust_err_('EPOCH', JSON.stringify({ cloud: cur, requested: target }));
+    var root = ust_root_();
+    var bin = ust_child_(ust_child_(root, '_lixeira'), new Date().toISOString().replace(/[-:]/g, '').replace(/\..*/, '') + '-epoca' + cur);
+    var moved = 0, it, f, items = [];
+    it = root.getFolders(); while (it.hasNext()) { f = it.next(); if (f.getName() !== '_lixeira') items.push(f); }
+    it = root.getFiles(); while (it.hasNext()) items.push(it.next());
+    items.forEach(function (x) { x.moveTo(bin); moved++; });
+    ['uploads', 'snapshots', 'blobs', 'auth', 'users'].forEach(function (n) { ust_child_(root, n); });
+    var props = PropertiesService.getScriptProperties();
+    ['HEAD', 'AUTH_HEAD', 'LEASE', 'SERVERS', 'USERS_REV'].forEach(function (k) { props.deleteProperty(k); });
+    props.setProperty('EPOCH', String(target));
+    return { epoch: target, moved: moved, trash: bin.getName() };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/* ---------------------------------------------------------------- 2.5 cadastro global de usuários
+ * Um registro por login: a chave é HMAC(chave da empresa, login) — o script nunca vê o login nem a senha;
+ * o registro chega cifrado pelo computador. Criação/alteração com LockService e revisão: o mesmo login em
+ * dois computadores ao mesmo tempo → só um cria (LOGIN_EXISTS); revisão diferente → CONFLICT.
+ * Excluído continua reservado (não volta a ser criado). Pacotes usam a chave "p:<id>". */
+var UST_USER_KEY_RE = /^([0-9a-f]{64}|p:[A-Za-z0-9_-]{1,40})$/;
+function ust_users_file_() { return ust_file_(ust_child_(ust_root_(), 'users'), 'registry.json'); }
+function ust_users_load_() { var f = ust_users_file_(); return f ? JSON.parse(f.getBlob().getDataAsString()) : {}; }
+function ust_users_get_(b) {
+  var since = Number(b.since || 0), reg = ust_users_load_(), items = [];
+  Object.keys(reg).forEach(function (k) { var r = reg[k]; if (r.rev > since) items.push({ key: k, rev: r.rev, record: r.record, deleted: !!r.deleted }); });
+  items.sort(function (a, c) { return a.rev - c.rev; });
+  return { rev: Number(PropertiesService.getScriptProperties().getProperty('USERS_REV') || 0), items: items };
+}
+function ust_user_put_(b) {
+  var key = ust_name_ok_(b.key, UST_USER_KEY_RE);
+  var record = String(b.record || '');
+  if (!record || record.length > 20000) throw ust_err_('BAD_RECORD', 'registro');
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var props = PropertiesService.getScriptProperties();
+    var reg = ust_users_load_(), cur = reg[key], expected = Number(b.expected_rev || 0);
+    if (expected === 0 && cur) throw ust_err_('LOGIN_EXISTS', key.slice(0, 8));
+    if (expected !== 0 && (!cur || cur.rev !== expected)) throw ust_err_('CONFLICT', JSON.stringify({ rev: cur ? cur.rev : 0 }));
+    if (cur && cur.deleted) throw ust_err_('DELETED', key.slice(0, 8));
+    var rev = Number(props.getProperty('USERS_REV') || 0) + 1;
+    reg[key] = { rev: rev, record: record, deleted: !!b.deleted, at: new Date().toISOString() };
+    var folder = ust_child_(ust_root_(), 'users');
+    ust_write_(folder, 'registry.json', JSON.stringify(reg));
+    props.setProperty('USERS_REV', String(rev));
+    return { rev: rev };
+  } finally {
+    lock.releaseLock();
+  }
+}
 
 /* ---------------------------------------------------------------- vez de gravar (S-03)
  * Um Servidor grava por vez. acquire: concede se livre, vencido ou já é dele; renew: estende;
@@ -128,8 +202,11 @@ function ust_safe_eq_(a, b) {
 /* ---------------------------------------------------------------- pastas e utilidades */
 function ust_root_() {
   var props = PropertiesService.getScriptProperties();
-  var id = props.getProperty('FOLDER_ID');
-  if (id) { try { return DriveApp.getFolderById(id); } catch (e) { /* recria abaixo */ } }
+  var ids = [props.getProperty('FOLDER_ID'), UST_FOLDER_ID];
+  for (var i = 0; i < ids.length; i++) {
+    if (!ids[i]) continue;
+    try { var byId = DriveApp.getFolderById(ids[i]); props.setProperty('FOLDER_ID', byId.getId()); return byId; } catch (e) { /* tenta o próximo */ }
+  }
   var it = DriveApp.getFoldersByName(UST_FOLDER);
   var folder = it.hasNext() ? it.next() : DriveApp.createFolder(UST_FOLDER);
   props.setProperty('FOLDER_ID', folder.getId());
@@ -343,6 +420,9 @@ function limpezaDiaria() {
   var stale = [];
   while (it.hasNext()) { var f = it.next(); if (f.getDateCreated() < day) stale.push(f); }
   stale.forEach(function (f) { ust_remove_(f); });
+  var bins = ust_child_(ust_root_(), '_lixeira').getFolders(), old = [];
+  while (bins.hasNext()) { var bf = bins.next(); if (bf.getDateCreated().toISOString() < limit) old.push(bf); }
+  old.forEach(function (f) { ust_remove_(f); });
   Logger.log('Limpeza: ' + removed + ' pontos expirados, ' + stale.length + ' envios incompletos removidos.');
   return { removed: removed, stale_uploads: stale.length };
 }

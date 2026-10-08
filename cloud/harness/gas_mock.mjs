@@ -29,6 +29,7 @@ export function createGas({ now = () => Date.now() } = {}) {
       createFolder: n => mkFolder(n, node.id),
       createFile: blob => { const f = { kind: 'file', id: id(), name: blob.getName(), parent: node.id, data: Buffer.from(blob._bytes), description: null, trashed: false, created: new Date(now()) }; items.set(f.id, f); return wrapFile(f); },
       setTrashed: v => { node.trashed = !!v; },
+      moveTo: folder => { node.parent = folder.getId(); },
       _node: node,
     };
   }

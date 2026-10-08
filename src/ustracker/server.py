@@ -17,6 +17,7 @@ from fastapi import Body, FastAPI, File, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from . import activation
 from .auth import AuthService, Session
 from .attachments import list_attachments, load_attachment, store_attachment, store_link
 from .codes import resolve_entity_ref
@@ -24,7 +25,7 @@ from .backup import create_backup, maybe_automatic_backup, prune_backups, restor
 from .branding import asset_dir, store_brand_asset
 from .billing import client_payment_options, register_subscription_payment, subscription_payment_status
 from .catalog import list_catalog, remove_catalog_item
-from .cloud import CloudError, CloudSync, apply_pending_restore, restore_from_cloud
+from .cloud import CLOUD_EPOCH, CloudError, CloudSync, apply_pending_restore, restore_from_cloud
 from .trash import list_trash, restore as restore_trash
 from .subscription_edit import amend_subscription
 from .expenses import convert_expense_to_sale, create_company_expense, delete_expense, pay_expense, run_recurring_expenses, stop_recurring_expense
@@ -112,6 +113,12 @@ def create_app(root: Path | str) -> FastAPI:
     root = paths.app_root
     root.mkdir(parents=True, exist_ok=True)
     paths.ensure_runtime_directories()
+    # 2.5.0: any older installation starts clean (backup with SHA-256 first; all or nothing; once)
+    clean_start_info = {'cleaned': False, 'backup': None}
+    try:
+        clean_start_info = activation.clean_start(root)
+    except Exception as exc:  # backup failed: nothing removed; the screen shows the problem
+        clean_start_info = {'cleaned': False, 'backup': None, 'error': str(exc)[:300]}
     repository = LocalRepository(root)
     product_version = read_version(root)
     auth = AuthService(root)
@@ -119,6 +126,7 @@ def create_app(root: Path | str) -> FastAPI:
     app.state.root = root
     app.state.auth = auth
     app.state.server = None
+    app.state.clean_start = clean_start_info
     read_public(root)
 
     def get_db(session: Session) -> Database:
@@ -335,6 +343,17 @@ def create_app(root: Path | str) -> FastAPI:
                 recovery_key = auth.ensure_recovery(session)
         return enter(response, session, recovery_key)
 
+    def keep_directory(session: Session, db) -> None:
+        """2.5: o cadastro global de usuários usa a mesma nuvem + chave da empresa (guardado protegido nesta máquina)."""
+        try:
+            if cloud.enabled():
+                company_key = cloud.company_key(session, db)
+                if company_key:
+                    auth.set_directory(cloud.state.get('url'), cloud.state.secret(session.vrk), company_key)
+                    auth.refresh_users(quiet=True)
+        except Exception:
+            pass
+
     def enter(response: Response, session: Session, recovery_key: str | None = None, extra: dict | None = None) -> dict:
         """Common end of every sign in: cookies, cloud restore/attach, station, backups."""
         factory_reset = None
@@ -349,6 +368,7 @@ def create_app(root: Path | str) -> FastAPI:
         station = ensure_station(root, db) if session.environment == 'production' else None
         if session.environment == 'production':
             cloud.attach(session)
+            keep_directory(session, db)
             try:
                 cloud.purge_trash(session)
             except Exception:
@@ -531,11 +551,17 @@ def create_app(root: Path | str) -> FastAPI:
         from .access import ALL
         perms = sorted(ALL) if session.is_admin else sorted(session.permissions)
         return {'kind': session.kind, 'role': session.package_title, 'package': session.package, 'permissions': perms,
-                'is_global': session.is_global}
+                'is_global': session.is_global, 'must_change': session.must_change}
 
     def admin_required(request: Request):
         session = session_required(request, True)
         if not session.is_admin:
+            raise HTTPException(403, 'administrator required')
+        return session
+
+    def manage_required(request: Request):
+        session = session_required(request, True)
+        if not session.can('users.manage'):
             raise HTTPException(403, 'administrator required')
         return session
 
@@ -546,17 +572,20 @@ def create_app(root: Path | str) -> FastAPI:
 
     @app.get('/api/v1/users')
     def users_list(request: Request):
-        admin_required(request)
-        return {'items': auth.list_users(), 'packages': auth.list_packages(), **describe_access()}
+        session = manage_required(request)
+        packages = [{**pk, 'allowed': session.is_admin or 'system' not in pk['permissions']} for pk in auth.list_packages()]
+        allowed = {pk['id'] for pk in packages if pk['allowed']}
+        return {'items': [u for u in auth.list_users() if u['package_id'] in allowed], 'packages': packages, **describe_access(),
+                'can_packages': session.is_admin, 'global_users': auth.global_users()}
 
     @app.post('/api/v1/users', status_code=201)
     def users_create(request: Request, p: dict = Body(...)):
-        session = admin_required(request); csrf_required(request, session)
+        session = manage_required(request); csrf_required(request, session)
         out = auth.create_user(session, p); cloud.mark_dirty(); return out
 
     @app.patch('/api/v1/users/{user_id}')
     def users_update(user_id: int, request: Request, p: dict = Body(...)):
-        session = admin_required(request); csrf_required(request, session)
+        session = manage_required(request); csrf_required(request, session)
         out = auth.update_user(session, user_id, p); cloud.mark_dirty(); return out
 
     @app.post('/api/v1/packages', status_code=201)
@@ -1318,12 +1347,8 @@ def create_app(root: Path | str) -> FastAPI:
         from .placa import fetch_placa, load_bootstrap, read_placa
         from . import activation
         csrf_required(request)
-        restart = p.get('restart')
-        if restart is not None and str(restart) != activation.RESTART_WORD:
-            raise ValueError('type RECOMEÇAR to restart the company')
         st = auth.setup_status()
-        # 2.3.1: a computer that brought down an unvalidated cloud may come back here only to RECOMEÇAR
-        if st['activated'] and not (restart and not st['global_ready']):
+        if st['activated']:
             raise ValueError('this computer is already activated; use the normal sign in')
         trust = adm_global.load_trust(root)
         if not trust:
@@ -1363,9 +1388,16 @@ def create_app(root: Path | str) -> FastAPI:
                 raise CloudErrorHTTP('PLACA', str(exc)) from exc
             banks, seq = placa['banks'], placa['seq']
         has_data = False
+        cloud_reset = False
         if banks:
             try:
-                ping = CloudClient(banks[0]['url'], banks[0]['key']).call('ping', {}, retries=2)
+                client = CloudClient(banks[0]['url'], banks[0]['key'])
+                ping = client.call('ping', {}, retries=2, check_epoch=False)
+                if int(ping.get('epoch') or 0) < CLOUD_EPOCH:
+                    # 2.5.0: the first 2.5 activation starts the company clean ONCE (old cloud goes to _lixeira)
+                    client.call('reset_company', {'epoch': CLOUD_EPOCH}, retries=1)
+                    cloud_reset = True
+                    ping = client.call('ping', {}, retries=2)
             except CloudError as exc:
                 raise CloudErrorHTTP(exc.code, exc.detail) from exc
             has_data = bool(ping.get('head') and ping.get('auth_head'))
@@ -1382,27 +1414,14 @@ def create_app(root: Path | str) -> FastAPI:
             except adm_global.AccessDenied:
                 session = None
             if session is not None:
-                out = enter(response, session, None, {'activated': True, 'restored': True})
+                out = enter(response, session, None, {'activated': True, 'restored': True, 'cloud_reset': False})
                 try:
                     cloud.keep_company_key(session, company_key)
                 except Exception:
                     pass
                 return out
-            # 2.3.1: the cloud holds data the Adm Global never validated (older version). NEVER restart it on its own:
-            # the default is the company Administrator signing in once (validates and keeps everything); restarting needs
-            # the word RECOMEÇAR and is blocked while another Servidor saved in the last 24 h.
-            cloud_data = {'counts': restored.get('counts') or {}, 'saved_at': restored.get('created_at')}
-            if not restart:
-                return {'activated': True, 'restored': True, 'needs_decision': True, 'cloud_data': cloud_data}
-            if activation.saved_recently(cloud_data['saved_at']):
-                return JSONResponse({'error': 'RECENT', 'detail': 'another Servidor saved the company cloud in the last 24 hours',
-                                     'cloud_data': cloud_data}, status_code=409)
-            old_cloud_saved = activation.retire_unvalidated_data(root)
-            auth.clear_sessions()
-            auth._init_store()
-            cloud.state = type(cloud.state)(root)
-            cloud.pending_secret = bank['key']
-            cloud.state.set(placa_seq=0)
+            # 2.5.0: every cloud of this epoch was started by the Adm Global (the old one went to _lixeira)
+            raise CloudErrorHTTP('INVALID_CLOUD', 'the company cloud has no Adm Global access; contact support')
         # 3b) new company (empty cloud or no cloud): the Adm Global enters at once; the local admin is created inside (Sistema)
         session = auth.bootstrap_global(trust, keys, 'production')
         cloud_info = {'connected': False}
@@ -1410,12 +1429,8 @@ def create_app(root: Path | str) -> FastAPI:
             if company_key:
                 cloud.keep_company_key(session, company_key)
             cloud.apply_banks(session, banks, seq)
-            if has_data:
-                cloud.state.set(wipe_cloud=True)  # old photos/attachments leave the cloud (the backup keeps them)
             cloud.mark_dirty()
-        out = enter(response, session, None, {'activated': True, 'new_company': True})
-        if has_data:
-            out['old_cloud_saved'] = old_cloud_saved
+        out = enter(response, session, None, {'activated': True, 'new_company': True, 'cloud_reset': cloud_reset})
         if banks:
             try:  # accesses and the empty base go up right now
                 cloud_info = {'connected': True, **cloud.sync_now(session, force=True)}

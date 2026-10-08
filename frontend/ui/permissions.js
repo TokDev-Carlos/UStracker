@@ -5,7 +5,7 @@ let current = { admin: true, perms: new Set() };
 export const NAV_PERMISSION = {
   dashboard: ['dashboard.view'], clients: ['clients.view'], mobility: ['mobility.view'], catalog: ['catalog.view'],
   commercial: ['commercial.view'], finance: ['finance.view', 'expenses.view', 'fiscal.view'], files: ['files.view'],
-  reports: ['reports.view'], system: ['system', 'trash.view'],
+  reports: ['reports.view'], system: ['system', 'trash.view', 'users.manage'],
 };
 
 // selector → permission(s) needed for the element to be shown

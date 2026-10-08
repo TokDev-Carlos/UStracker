@@ -39,8 +39,9 @@ class Users(unittest.TestCase):
             self.auth.login('bia', 'abcd')
         self.auth.update_user(self.admin, u['id'], {'active': True, 'password': 'nova1'})
         self.assertEqual(self.auth.login('bia', 'nova1').package_title, 'Gerente')
+        self.auth.create_user(self.auth.login('bia', 'nova1'), {'name': 'op1', 'password': '1234'})  # 2.5: Gerente cria usuários
         with self.assertRaises(PermissionError):
-            self.auth.create_user(self.auth.login('bia', 'nova1'), {'name': 'x', 'password': '1234'})
+            self.auth.create_user(self.auth.login('op1', '1234'), {'name': 'x', 'password': '1234'})
 
     def test_custom_package_applies_to_open_sessions(self):
         pkg = self.auth.save_package(self.admin, {'title': 'Financeiro sem Despesas', 'permissions': ['finance.view', 'finance.pay', 'nope']})
@@ -72,7 +73,8 @@ class Rules(unittest.TestCase):
         self.assertEqual(r('POST', '/api/v1/billing/payments'), 'finance.pay')
         self.assertEqual(r('GET', '/api/v1/expenses'), 'expenses.view')
         self.assertEqual(r('GET', '/api/v1/backups'), 'system')
-        self.assertEqual(r('POST', '/api/v1/users'), 'system')
+        self.assertEqual(r('POST', '/api/v1/users'), 'users.manage')
+        self.assertEqual(r('POST', '/api/v1/packages'), 'system')
         self.assertIsNone(r('GET', '/api/v1/auth/me'))
         self.assertEqual(r('GET', '/api/v1/unknown'), 'system', 'rota nova sem regra = só administrador')
 

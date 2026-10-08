@@ -45,6 +45,7 @@ class Session:
     package_title: str = 'Administrador'
     permissions: frozenset = frozenset()
     global_keys: dict | None = None
+    must_change: bool = False
 
     @property
     def is_admin(self) -> bool:
@@ -116,7 +117,8 @@ class AuthService:
               description TEXT NOT NULL DEFAULT '',
               permissions TEXT NOT NULL DEFAULT '[]',
               builtin INTEGER NOT NULL DEFAULT 0,
-              updated_at TEXT NOT NULL
+              updated_at TEXT NOT NULL,
+              cloud_rev INTEGER NOT NULL DEFAULT 0
             );
             CREATE TABLE IF NOT EXISTS users(
               id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -126,8 +128,10 @@ class AuthService:
               salt TEXT NOT NULL, vrk_nonce TEXT NOT NULL, vrk_cipher TEXT NOT NULL,
               active INTEGER NOT NULL DEFAULT 1,
               revision INTEGER NOT NULL DEFAULT 1,
-              created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+              created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+              login_key TEXT, cloud_rev INTEGER NOT NULL DEFAULT 0, must_change INTEGER NOT NULL DEFAULT 0
             );
+
             CREATE TABLE IF NOT EXISTS recovery(
               slot INTEGER PRIMARY KEY,
               salt TEXT NOT NULL, nonce TEXT NOT NULL, cipher TEXT NOT NULL,
@@ -153,6 +157,10 @@ class AuthService:
               detail TEXT NOT NULL
             );
             ''')
+            for table, col, ddl in (('users', 'login_key', 'TEXT'), ('users', 'cloud_rev', 'INTEGER NOT NULL DEFAULT 0'),
+                                    ('users', 'must_change', 'INTEGER NOT NULL DEFAULT 0'), ('packages', 'cloud_rev', 'INTEGER NOT NULL DEFAULT 0')):
+                if col not in {r[1] for r in con.execute(f'PRAGMA table_info({table})')}:
+                    con.execute(f'ALTER TABLE {table} ADD COLUMN {col} {ddl}')
             now = self._now().isoformat()
             # G-04: one local administrator. Never-used reserve slots (2, 3) go away.
             con.execute('INSERT OR IGNORE INTO admins(slot,status,updated_at) VALUES(1,?,?)', ('PENDING_ENROLLMENT', now))
@@ -298,12 +306,16 @@ class AuthService:
         if environment not in ('production', 'test'):
             raise ValueError('invalid environment')
         identity = name.strip().casefold()
+        self._check_login_throttle(identity)
+        online = self.refresh_users(quiet=True) if self._directory() else None
         with self._lock, self._connection() as con:
             self._check_login_throttle(identity)
             row = con.execute("SELECT * FROM admins WHERE name=? AND status='ENROLLED'", (name.strip(),)).fetchone()
             if not row and not con.execute("SELECT 1 FROM sqlite_master WHERE name='users'").fetchone():
                 self._init_store()
-            user = None if row else con.execute('SELECT * FROM users WHERE name=? AND active=1', (name.strip(),)).fetchone()
+            user = None if row else con.execute('SELECT * FROM users WHERE name=? AND active=1', (self._login_name(name),)).fetchone()
+            if user and online is False and not self._offline_ok():
+                raise ValueError('offline too long: connect to the internet to sign in')
             if not row and not user:
                 try:  # same cost as a real check: the answer time does not reveal which names exist
                     derive_password_key(password if len(password) >= 4 else 'xxxx', b'\0' * 16)
@@ -329,6 +341,7 @@ class AuthService:
                 pkg = con.execute('SELECT * FROM packages WHERE id=?', (user['package_id'],)).fetchone()
                 from .access import clean
                 extra = {'kind': 'user', 'package': user['package_id'], 'package_title': pkg['title'] if pkg else '',
+                         'must_change': bool(user['must_change']),
                          'permissions': clean(json.loads(pkg['permissions']) if pkg else [])}
             slot = row['slot'] if row else USER_SLOT_BASE + user['id']
             session = Session(
@@ -646,7 +659,6 @@ class AuthService:
         self.mark_global_validated(trust)
         return session
 
-    # ------------------------------------------------------------------ U-01..U-04 usuários e pacotes
     def _user_envelope(self, vrk: bytes, password: str) -> tuple[str, str, str]:
         self._validate_secret(password)
         salt = random_bytes(16)
@@ -670,6 +682,169 @@ class AuthService:
         return [{'id': r['id'], 'title': r['title'], 'description': r['description'], 'builtin': bool(r['builtin']),
                  'permissions': json.loads(r['permissions']), 'users': counts.get(r['id'], 0)} for r in rows]
 
+    # ------------------------------------------------------------------ 2.5.0 cadastro global (nuvem)
+    # Estado do cadastro global fora do auth.db (não viaja no pacote de acessos da nuvem nem gera envio a cada login).
+    def _meta_path(self) -> Path:
+        return self.root / 'UserData' / 'State' / 'usuarios-globais.json'
+
+    def _meta_all(self) -> dict:
+        try:
+            return json.loads(self._meta_path().read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            return {}
+
+    def _meta(self, key: str, default: str | None = None) -> str | None:
+        return self._meta_all().get(key, default)
+
+    def _set_meta(self, key: str, value: str) -> None:
+        with self._lock:
+            data = self._meta_all()
+            data[key] = str(value)
+            path = self._meta_path()
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = path.with_suffix('.tmp')
+            tmp.write_text(json.dumps(data), encoding='utf-8')
+            tmp.replace(path)
+
+    def set_directory(self, url: str, secret: str, company_key: str) -> None:
+        """Guarda (protegido: DPAPI no Windows) o acesso ao cadastro global, para o login funcionar sem sessão."""
+        from .users_global import dir_key, protect
+        self._init_store()
+        blob = json.dumps({'url': url, 'secret': secret, 'dk': b64e(dir_key(company_key))}).encode('utf-8')
+        self._set_meta('directory', protect(blob))
+        self._dir_cache = None
+
+    def _directory(self):
+        from .users_global import Directory, unprotect
+        cached = getattr(self, '_dir_cache', None)
+        if cached:
+            return cached
+        text = self._meta('directory')
+        if not text:
+            return None
+        try:
+            d = json.loads(unprotect(text).decode('utf-8'))
+            self._dir_cache = Directory(d['url'], d['secret'], b64d(d['dk']))
+        except Exception:
+            return None
+        return self._dir_cache
+
+    def global_users(self) -> bool:
+        return self._directory() is not None
+
+    def _offline_ok(self) -> bool:
+        from .users_global import OFFLINE_DAYS
+        last = self._meta('last_cloud_ok')
+        try:
+            return bool(last) and self._now() - datetime.fromisoformat(last) < timedelta(days=OFFLINE_DAYS)
+        except ValueError:
+            return False
+
+    @staticmethod
+    def _login_name(name: str) -> str:
+        from .users_global import normalize_login
+        try:
+            return normalize_login(name)
+        except ValueError:
+            return str(name or '').strip()
+
+    def refresh_users(self, quiet: bool = False) -> bool:
+        """Traz da nuvem o que mudou (revisão maior substitui o registro inteiro; nunca mescla campos).
+        Usuário alterado/excluído em outro computador: as sessões dele aqui caem. False = sem nuvem."""
+        from .cloud import CloudError
+        from .users_global import open_record
+        d = self._directory()
+        if not d:
+            return False
+        self._init_store()
+        with self._lock:
+            try:
+                with self._connection() as con:  # pelo que a cópia local tem de fato (sobrevive a auth.db trocado)
+                    since = con.execute('SELECT MAX(r) FROM (SELECT MAX(cloud_rev) r FROM users UNION ALL SELECT MAX(cloud_rev) FROM packages)').fetchone()[0]
+                out = d.get(int(since or 0))
+            except CloudError:
+                if quiet:
+                    return False
+                raise ValueError('internet required')
+            drop: set[int] = set()
+            items = sorted(out.get('items') or [], key=lambda i: (not str(i['key']).startswith('p:'), i['rev']))
+            now = self._now().isoformat()
+            with self._connection() as con:
+                for it in items:
+                    key, rev = str(it['key']), int(it['rev'])
+                    try:
+                        rec = open_record(d.dk, key, it['record'])
+                    except Exception:
+                        continue  # registro de outra empresa / corrompido: ignora
+                    if key.startswith('p:'):
+                        pid = key[2:]
+                        mine = con.execute('SELECT cloud_rev,builtin FROM packages WHERE id=?', (pid,)).fetchone()
+                        if mine and (mine['builtin'] or mine['cloud_rev'] >= rev):
+                            continue
+                        if it.get('deleted'):
+                            if not con.execute('SELECT 1 FROM users WHERE package_id=?', (pid,)).fetchone():
+                                con.execute('DELETE FROM packages WHERE id=?', (pid,))
+                            continue
+                        con.execute('DELETE FROM packages WHERE title=? AND id<>? AND builtin=0', (rec['title'], pid))
+                        con.execute('''INSERT INTO packages(id,title,description,permissions,builtin,updated_at,cloud_rev) VALUES(?,?,?,?,0,?,?)
+                                       ON CONFLICT(id) DO UPDATE SET title=excluded.title,description=excluded.description,
+                                       permissions=excluded.permissions,updated_at=excluded.updated_at,cloud_rev=excluded.cloud_rev''',
+                                    (pid, rec['title'], rec.get('description', ''), json.dumps(rec.get('permissions') or []), now, rev))
+                        continue
+                    mine = con.execute('SELECT id,cloud_rev FROM users WHERE login_key=?', (key,)).fetchone()
+                    if mine and mine['cloud_rev'] >= rev:
+                        continue
+                    if mine:
+                        drop.add(mine['id'])
+                    if it.get('deleted'):
+                        if mine:
+                            con.execute('DELETE FROM users WHERE id=?', (mine['id'],))
+                        continue
+                    if not con.execute('SELECT 1 FROM packages WHERE id=?', (rec['package_id'],)).fetchone():
+                        rec['package_id'] = 'OPERADOR'
+                    clash = con.execute('SELECT id FROM users WHERE name=? AND (login_key IS NULL OR login_key<>?)', (rec['login'], key)).fetchone()
+                    if clash:  # cópia só local com o mesmo nome: a nuvem é a verdade
+                        drop.add(clash['id'])
+                        con.execute('DELETE FROM users WHERE id=?', (clash['id'],))
+                    values = (rec['login'], rec.get('full_name', ''), rec['package_id'], rec['salt'], rec['vrk_nonce'], rec['vrk_cipher'],
+                              1 if rec.get('active', True) else 0, int(bool(rec.get('must_change'))), rev, rec.get('updated_at') or now)
+                    if mine:
+                        con.execute('''UPDATE users SET name=?,full_name=?,package_id=?,salt=?,vrk_nonce=?,vrk_cipher=?,active=?,must_change=?,
+                                       cloud_rev=?,updated_at=?,revision=revision+1 WHERE id=?''', values + (mine['id'],))
+                    else:
+                        con.execute('''INSERT INTO users(name,full_name,package_id,salt,vrk_nonce,vrk_cipher,active,must_change,cloud_rev,updated_at,
+                                       created_at,login_key) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)''', values + (now, key))
+            self._set_meta('users_rev', str(int(out.get('rev') or 0)))
+            self._set_meta('last_cloud_ok', self._now().isoformat())
+            for uid_ in drop:
+                self._drop_user_sessions(uid_)
+        self._refresh_sessions()
+        return True
+
+    def _cloud_put(self, key: str, value: dict, expected_rev: int, deleted: bool = False) -> int:
+        """Nuvem primeiro (LockService + revisão); só depois a cópia local."""
+        from .cloud import CloudError
+        try:
+            return self._directory().put(key, value, expected_rev, deleted)
+        except CloudError as exc:
+            if exc.code in ('LOGIN_EXISTS', 'DELETED'):
+                raise ValueError('login already exists') from exc
+            if exc.code == 'CONFLICT':
+                self.refresh_users(quiet=True)
+                raise ValueError('changed on another computer: open the list again') from exc
+            raise ValueError('internet required') from exc
+
+    # ------------------------------------------------------------------ U-01..U-04 usuários e pacotes
+    def _require_users_manage(self, session: Session, package_id: str | None = None, con=None) -> None:
+        """Adm Global / Administrador: tudo. Gerente (users.manage): não cria nem mexe em quem tem 'system'."""
+        if not session or not session.can('users.manage'):
+            raise PermissionError('administrator required')
+        if session.is_admin or not package_id:
+            return
+        row = con.execute('SELECT permissions FROM packages WHERE id=?', (package_id,)).fetchone()
+        if row and 'system' in json.loads(row['permissions']):
+            raise PermissionError('administrator required')
+
     def save_package(self, session: Session, p: dict, package_id: str | None = None) -> dict:
         from .access import clean
         self._require_admin(session)
@@ -679,39 +854,42 @@ class AuthService:
         perms = sorted(clean(p.get('permissions')))
         desc = str(p.get('description') or '').strip()[:300]
         now = self._now().isoformat()
+        d = self._directory()
         with self._lock, self._connection() as con:
+            rev = 0
             if package_id:
-                row = con.execute('SELECT builtin FROM packages WHERE id=?', (package_id,)).fetchone()
+                row = con.execute('SELECT builtin,cloud_rev FROM packages WHERE id=?', (package_id,)).fetchone()
                 if not row:
                     raise KeyError('package not found')
                 if row['builtin']:
                     raise ValueError('built-in package cannot be changed')
-                try:
-                    con.execute('UPDATE packages SET title=?,description=?,permissions=?,updated_at=? WHERE id=?',
-                                (title, desc, json.dumps(perms), now, package_id))
-                except sqlite3.IntegrityError as exc:
-                    raise ValueError('package title already in use') from exc
+                rev = row['cloud_rev']
             else:
                 package_id = 'P' + secrets.token_hex(6).upper()
-                try:
-                    con.execute('INSERT INTO packages(id,title,description,permissions,builtin,updated_at) VALUES(?,?,?,?,0,?)',
-                                (package_id, title, desc, json.dumps(perms), now))
-                except sqlite3.IntegrityError as exc:
-                    raise ValueError('package title already in use') from exc
+            if con.execute('SELECT 1 FROM packages WHERE title=? AND id<>?', (title, package_id)).fetchone():
+                raise ValueError('package title already in use')
+            if d:
+                rev = self._cloud_put('p:' + package_id, {'id': package_id, 'title': title, 'description': desc, 'permissions': perms}, rev)
+            con.execute('''INSERT INTO packages(id,title,description,permissions,builtin,updated_at,cloud_rev) VALUES(?,?,?,?,0,?,?)
+                           ON CONFLICT(id) DO UPDATE SET title=excluded.title,description=excluded.description,permissions=excluded.permissions,
+                           updated_at=excluded.updated_at,cloud_rev=excluded.cloud_rev''', (package_id, title, desc, json.dumps(perms), now, rev))
             self._audit(con, session.slot, 'PACKAGE_SAVE', {'id': package_id, 'title': title})
         self._refresh_sessions()
         return next(x for x in self.list_packages() if x['id'] == package_id)
 
     def delete_package(self, session: Session, package_id: str) -> dict:
         self._require_admin(session)
+        d = self._directory()
         with self._lock, self._connection() as con:
-            row = con.execute('SELECT builtin FROM packages WHERE id=?', (package_id,)).fetchone()
+            row = con.execute('SELECT * FROM packages WHERE id=?', (package_id,)).fetchone()
             if not row:
                 raise KeyError('package not found')
             if row['builtin']:
                 raise ValueError('built-in package cannot be changed')
             if con.execute('SELECT 1 FROM users WHERE package_id=?', (package_id,)).fetchone():
                 raise ValueError('package in use by users')
+            if d:
+                self._cloud_put('p:' + package_id, {'id': package_id, 'title': row['title']}, row['cloud_rev'], deleted=True)
             con.execute('DELETE FROM packages WHERE id=?', (package_id,))
             self._audit(con, session.slot, 'PACKAGE_DELETE', {'id': package_id})
         return {'id': package_id, 'deleted': True}
@@ -719,66 +897,100 @@ class AuthService:
     def list_users(self) -> list[dict]:
         self._init_store()
         with self._connection() as con:
-            rows = con.execute('''SELECT u.id,u.name,u.full_name,u.package_id,u.active,u.created_at,u.updated_at,p.title AS package_title
+            rows = con.execute('''SELECT u.id,u.name,u.full_name,u.package_id,u.active,u.must_change,u.created_at,u.updated_at,p.title AS package_title
                                     FROM users u LEFT JOIN packages p ON p.id=u.package_id ORDER BY u.active DESC,u.name''').fetchall()
-        return [{**dict(r), 'active': bool(r['active'])} for r in rows]
+        return [{**dict(r), 'active': bool(r['active']), 'must_change': bool(r['must_change'])} for r in rows]
 
     def _name_free(self, con, name: str, user_id: int | None = None) -> None:
         if con.execute('SELECT 1 FROM admins WHERE name=? COLLATE NOCASE', (name,)).fetchone():
             raise ValueError('admin name already in use')
         if con.execute('SELECT 1 FROM users WHERE name=? AND id<>?', (name, user_id or -1)).fetchone():
-            raise ValueError('admin name already in use')
+            raise ValueError('login already exists')
 
     def create_user(self, session: Session, p: dict) -> dict:
-        self._require_admin(session)
+        from .users_global import login_key, normalize_login
         self._init_store()
+        d = self._directory()
         name = str(p.get('name') or '').strip()
         if not name:
             raise ValueError('admin name is required')
+        if d:
+            name = normalize_login(name)
         package_id = str(p.get('package_id') or 'OPERADOR')
-        salt, nonce, cipher = self._user_envelope(session.vrk, str(p.get('password') or ''))
-        now = self._now().isoformat()
-        with self._lock, self._connection() as con:
+        with self._connection() as con:
+            self._require_users_manage(session, package_id, con)
             if not con.execute('SELECT 1 FROM packages WHERE id=?', (package_id,)).fetchone():
                 raise KeyError('package not found')
             self._name_free(con, name)
-            cur = con.execute('''INSERT INTO users(name,full_name,package_id,salt,vrk_nonce,vrk_cipher,active,created_at,updated_at)
-                                 VALUES(?,?,?,?,?,?,1,?,?)''', (name, str(p.get('full_name') or '').strip(), package_id, salt, nonce, cipher, now, now))
+        salt, nonce, cipher = self._user_envelope(session.vrk, str(p.get('password') or ''))
+        now = self._now().isoformat()
+        rec = {'login': name, 'full_name': str(p.get('full_name') or '').strip(), 'package_id': package_id, 'salt': salt,
+               'vrk_nonce': nonce, 'vrk_cipher': cipher, 'active': 1, 'must_change': int(bool(p.get('must_change'))), 'updated_at': now}
+        key = login_key(d.dk, name) if d else None
+        rev = self._cloud_put(key, rec, 0) if d else 0
+        with self._lock, self._connection() as con:
+            if key:
+                con.execute('DELETE FROM users WHERE login_key=?', (key,))  # uma atualização da nuvem pode ter chegado antes
+            cur = con.execute('''INSERT INTO users(name,full_name,package_id,salt,vrk_nonce,vrk_cipher,active,must_change,created_at,updated_at,login_key,cloud_rev)
+                                 VALUES(?,?,?,?,?,?,1,?,?,?,?,?)''',
+                              (name, rec['full_name'], package_id, salt, nonce, cipher, rec['must_change'], now, now, key, rev))
             uid_ = cur.lastrowid
             self._audit(con, session.slot, 'USER_CREATE', {'id': uid_, 'name': name, 'package': package_id})
         return next(u for u in self.list_users() if u['id'] == uid_)
 
     def update_user(self, session: Session, user_id: int, p: dict) -> dict:
-        self._require_admin(session)
+        d = self._directory()
         now = self._now().isoformat()
         with self._lock, self._connection() as con:
             row = con.execute('SELECT * FROM users WHERE id=?', (user_id,)).fetchone()
             if not row:
                 raise KeyError('user not found')
-            name = str(p.get('name') or row['name']).strip()
-            self._name_free(con, name, user_id)
+            self._require_users_manage(session, row['package_id'], con)
             package_id = str(p.get('package_id') or row['package_id'])
+            self._require_users_manage(session, package_id, con)
+            if p.get('deleted') in (True, 1, '1', 'true'):
+                if d and row['login_key']:
+                    self._cloud_put(row['login_key'], {'login': row['name']}, row['cloud_rev'], deleted=True)
+                con.execute('DELETE FROM users WHERE id=?', (user_id,))
+                self._audit(con, session.slot, 'USER_DELETE', {'id': user_id, 'name': row['name']})
+                self._drop_user_sessions(user_id)
+                return {'id': user_id, 'name': row['name'], 'deleted': True}
+            name = row['name'] if d else str(p.get('name') or row['name']).strip()  # login global não muda
+            self._name_free(con, name, user_id)
             if not con.execute('SELECT 1 FROM packages WHERE id=?', (package_id,)).fetchone():
                 raise KeyError('package not found')
             active = int(p['active'] in (True, 1, '1', 'true')) if 'active' in p else row['active']
-            con.execute('UPDATE users SET name=?,full_name=?,package_id=?,active=?,revision=revision+1,updated_at=? WHERE id=?',
-                        (name, str(p.get('full_name', row['full_name']) or '').strip(), package_id, active, now, user_id))
+            rec = {'login': name, 'full_name': str(p.get('full_name', row['full_name']) or '').strip(), 'package_id': package_id,
+                   'salt': row['salt'], 'vrk_nonce': row['vrk_nonce'], 'vrk_cipher': row['vrk_cipher'], 'active': active,
+                   'must_change': int(bool(p.get('must_change', bool(p.get('password')) or row['must_change']))), 'updated_at': now}
             if p.get('password'):
-                salt, nonce, cipher = self._user_envelope(session.vrk, str(p['password']))
-                con.execute('UPDATE users SET salt=?,vrk_nonce=?,vrk_cipher=? WHERE id=?', (salt, nonce, cipher, user_id))
+                rec['salt'], rec['vrk_nonce'], rec['vrk_cipher'] = self._user_envelope(session.vrk, str(p['password']))
+            rev = row['cloud_rev']
+            if d and row['login_key']:
+                rev = self._cloud_put(row['login_key'], rec, row['cloud_rev'])
+            con.execute('''UPDATE users SET name=?,full_name=?,package_id=?,active=?,salt=?,vrk_nonce=?,vrk_cipher=?,must_change=?,
+                           cloud_rev=?,revision=revision+1,updated_at=? WHERE id=?''',
+                        (name, rec['full_name'], package_id, active, rec['salt'], rec['vrk_nonce'], rec['vrk_cipher'], rec['must_change'], rev, now, user_id))
             self._audit(con, session.slot, 'USER_UPDATE', {'id': user_id, 'package': package_id, 'active': active, 'password_reset': bool(p.get('password'))})
         self._drop_user_sessions(user_id)
         return next(u for u in self.list_users() if u['id'] == user_id)
 
     def _change_user_password(self, session: Session, current_password: str, new_password: str) -> None:
         user_id = session.slot - USER_SLOT_BASE
+        d = self._directory()
         with self._lock, self._connection() as con:
             row = con.execute('SELECT * FROM users WHERE id=?', (user_id,)).fetchone()
             old = derive_password_key(current_password, b64d(row['salt']))
             vrk = aes_decrypt(old, b64d(row['vrk_nonce']), b64d(row['vrk_cipher']), b'UStracker/VRK/user/v1')
             salt, nonce, cipher = self._user_envelope(vrk, new_password)
-            con.execute('UPDATE users SET salt=?,vrk_nonce=?,vrk_cipher=?,revision=revision+1,updated_at=? WHERE id=?',
-                        (salt, nonce, cipher, self._now().isoformat(), user_id))
+            now = self._now().isoformat()
+            rev = row['cloud_rev']
+            if d and row['login_key']:
+                rec = {**{k: row[k] for k in ('full_name', 'package_id', 'active')}, 'login': row['name'], 'salt': salt,
+                       'vrk_nonce': nonce, 'vrk_cipher': cipher, 'must_change': 0, 'updated_at': now}
+                rev = self._cloud_put(row['login_key'], rec, row['cloud_rev'])
+            con.execute('UPDATE users SET salt=?,vrk_nonce=?,vrk_cipher=?,must_change=0,cloud_rev=?,revision=revision+1,updated_at=? WHERE id=?',
+                        (salt, nonce, cipher, rev, now, user_id))
         self._drop_user_sessions(user_id)
 
     def _drop_user_sessions(self, user_id: int) -> None:
@@ -805,6 +1017,7 @@ class AuthService:
         added once. Local changes not yet sent are kept, remote ones arrive."""
         self._init_store()
         added = {'admins': 0, 'users': 0, 'packages': 0}
+        global_users = self._directory() is not None  # 2.5: usuários e pacotes vêm só do cadastro global
         with self._lock, self._connection() as con:
             con.execute('ATTACH DATABASE ? AS r', (str(other_db),))
             try:
@@ -819,7 +1032,7 @@ class AuthService:
                             con.execute('INSERT OR REPLACE INTO admins(slot,name,salt,vrk_nonce,vrk_cipher,status,revision,updated_at) VALUES(?,?,?,?,?,?,?,?)',
                                         (row['slot'], row['name'], row['salt'], row['vrk_nonce'], row['vrk_cipher'], row['status'], row['revision'], row['updated_at']))
                             added['admins'] += 1
-                if 'packages' in tables:
+                if 'packages' in tables and not global_users:
                     for row in con.execute('SELECT * FROM r.packages WHERE builtin=0').fetchall():
                         mine = con.execute('SELECT updated_at FROM packages WHERE id=?', (row['id'],)).fetchone()
                         if not mine or str(row['updated_at']) > str(mine['updated_at']):
@@ -827,7 +1040,7 @@ class AuthService:
                             con.execute('INSERT OR REPLACE INTO packages(id,title,description,permissions,builtin,updated_at) VALUES(?,?,?,?,0,?)',
                                         (row['id'], row['title'], row['description'], row['permissions'], row['updated_at']))
                             added['packages'] += 1
-                if 'users' in tables:
+                if 'users' in tables and not global_users:
                     for row in con.execute('SELECT * FROM r.users').fetchall():
                         mine = con.execute('SELECT id,updated_at FROM users WHERE name=?', (row['name'],)).fetchone()
                         if mine and str(row['updated_at']) <= str(mine['updated_at']):
