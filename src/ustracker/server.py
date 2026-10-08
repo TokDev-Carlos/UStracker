@@ -17,6 +17,7 @@ from fastapi import Body, FastAPI, File, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from . import activation
 from .auth import AuthService, Session
 from .attachments import list_attachments, load_attachment, store_attachment, store_link
 from .codes import resolve_entity_ref
@@ -112,6 +113,12 @@ def create_app(root: Path | str) -> FastAPI:
     root = paths.app_root
     root.mkdir(parents=True, exist_ok=True)
     paths.ensure_runtime_directories()
+    # 2.5.0: any older installation starts clean (backup with SHA-256 first; all or nothing; once)
+    clean_start_info = {'cleaned': False, 'backup': None}
+    try:
+        clean_start_info = activation.clean_start(root)
+    except Exception as exc:  # backup failed: nothing removed; the screen shows the problem
+        clean_start_info = {'cleaned': False, 'backup': None, 'error': str(exc)[:300]}
     repository = LocalRepository(root)
     product_version = read_version(root)
     auth = AuthService(root)
@@ -119,6 +126,7 @@ def create_app(root: Path | str) -> FastAPI:
     app.state.root = root
     app.state.auth = auth
     app.state.server = None
+    app.state.clean_start = clean_start_info
     read_public(root)
 
     def get_db(session: Session) -> Database:
