@@ -46,6 +46,6 @@ GitHub `TokDev-Carlos`: `UStracker` (main = lançada, `Dev` = desenvolvimento, `
 `Ferramentas\Testes_Rapidos.ps1` ou `$env:PYTHONPATH="src;."; $env:USTRACKER_DEV_PLAINTEXT="1"; .venv\Scripts\python -m unittest discover -s tests -p "test_*.py"` e `node --test tests/*.test.mjs`.
 
 ## Estado atual (2026-10-07)
-- Lançada: 2.4.1 (main, tag, Release). Canal `updates/` ainda anuncia 2.1.1.
-- Em andamento: 2.5.0 — começo limpo para todas as versões + usuários globais (plano no projeto claude.ai: `PLANO_2.5_ZERAR_E_USUARIOS_GLOBAIS.md`).
+- Lançada: 2.5.0 (main, tag, Release) — começo limpo (backup `Pre-2.5_<data>`), nuvem época 25, banco esquema 16, usuários globais. Canal `updates/` só via Aplicador opção 2.
+- Validação no PC: `Entregas\2.5.0\VALIDAR.md` (colar `UStracker-Cloud-Code.gs` na MESMA implantação antes de abrir a 2.5).
 - Pendente do usuário: frota — cobrança acompanha veículo que entra/sai depois do contrato?
