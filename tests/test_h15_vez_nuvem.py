@@ -65,6 +65,16 @@ class VezDeGravar(unittest.TestCase):
         self.assertIsNone(ca.state.get('conflict'))
         self.assertEqual(self.head(), before + 1)
 
+    def test_turn_is_freed_7_seconds_after_the_last_change(self):
+        import time
+        ra, sa, ca = self.a; rb, sb, cb = self.b
+        self.write(self.a, 'cliente A'); ca.sync_now(sa)
+        ca.last_turn_use = time.time() - 7                 # 7 s parado depois de enviar
+        ca.tick(sa)
+        self.assertEqual(ca.lease_until, 0.0, 'decisão 2026-10-08: o outro computador espera ~6 s, não ~21 s')
+        self.write(self.b, 'cliente B')                     # B grava sem esperar
+        self.assertGreater(cb.lease_until, 0)
+
     def test_conflict_stops_auto_send_and_frees_the_turn(self):
         ra, sa, ca = self.a; rb, sb, cb = self.b
         self.write(self.a, 'cliente A')

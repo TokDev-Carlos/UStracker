@@ -38,8 +38,8 @@ PART_SIZE = 4 * 1024 * 1024
 DEBOUNCE_SECONDS = 120
 # S-02/S-03 — vários Servidores no mesmo banco: vez de gravar automática
 LEASE_TTL = 120          # a vez vence sozinha se o Servidor cair
-HOLD_SECONDS = 20        # sem alteração por 20 s → envia e solta a vez
-TURN_DEBOUNCE = 4        # com a vez na mão, envia 4 s após a última alteração
+HOLD_SECONDS = 4         # sem alteração por 4 s → solta a vez (2.6: era 20 s; o outro computador esperava ~21 s)
+TURN_DEBOUNCE = 2        # com a vez na mão, envia 2 s após a última alteração
 PULL_EVERY = 25          # sem a vez, confere a cada 25 s se outro Servidor gravou
 PLACA_EVERY = 6 * 3600   # confere a placa de direção a cada 6 h (e ao entrar)
 TURN_WAIT = 45           # espera máxima pela vez ao salvar
@@ -425,7 +425,7 @@ class CloudSync:
                 if exc.code == 'CONFLICT':
                     self._drop_turn(session)
                 raise
-            return
+            holding = self.lease_until > time.time()   # enviou: se já está parado, solta a vez agora (o outro não espera mais um ciclo)
         if holding and not self.state.get('dirty_since') and time.time() - self.last_turn_use >= HOLD_SECONDS:
             self.release_turn(session)
         elif not holding and not self.state.get('dirty_since') and time.time() - self.last_pull >= PULL_EVERY:
@@ -606,7 +606,7 @@ class CloudSync:
                 if time.time() >= deadline:
                     self.status['waiting_for'] = None
                     raise CloudError('BUSY', f"{out.get('holder_name') or 'Outro Servidor'} está salvando agora. Tente de novo em alguns segundos.")
-                time.sleep(2)
+                time.sleep(1)
             self.status.update(offline=False, waiting_for=None, script_outdated=False)
             self.lease_until = time.time() + LEASE_TTL - 10
             self.last_turn_use = time.time()
