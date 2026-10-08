@@ -42,10 +42,14 @@ PC: programa `C:\Program Files\UStracker\` · dados `C:\ProgramData\UStracker\Us
 Drive: `Empresas\UStracker\Desenvolvimento\` (cópia de Conhecimento/Ferramentas/Entregas) · `Empresas\UStracker\Tokens\GitHub` e `\UStracker` · registro de pastas `Bancos\registro_pastas.json`. A nuvem do sistema acha a pasta `UStracker Cloud` pelo ID (`Code.gs`, `FOLDER_ID`).
 GitHub `TokDev-Carlos`: `UStracker` (main = lançada, `Dev` = desenvolvimento, `updates/` = canal) · `acesso-UStracker` (privado).
 
+## Lançar versão
+Só com o check **Testes** (GitHub Actions) verde no commit da `Dev`. Testes pesados: `tools/dev/testes_pesados.py <pasta> 500 1500`.
+
 ## Testes rápidos
 `Ferramentas\Testes_Rapidos.ps1` ou `$env:PYTHONPATH="src;."; $env:USTRACKER_DEV_PLAINTEXT="1"; .venv\Scripts\python -m unittest discover -s tests -p "test_*.py"` e `node --test tests/*.test.mjs`.
 
-## Estado atual (2026-10-07)
-- Lançada: 2.5.0 (main, tag, Release) — começo limpo (backup `Pre-2.5_<data>`), nuvem época 25, banco esquema 16, usuários globais. Canal `updates/` só via Aplicador opção 2.
-- Validação no PC: `Entregas\2.5.0\VALIDAR.md` (colar `UStracker-Cloud-Code.gs` na MESMA implantação antes de abrir a 2.5).
+## Estado atual (2026-10-08)
+- Lançada: 2.6.0 (main, tag, Release) — confiança: nuvem automática e vez de gravar corrigida, backup diário conferido, Diagnóstico, LGPD (prazos 14 dias/5 anos, exportar dados), CI no GitHub.
+- 2.5.0 e 2.6.0 ainda não validadas no PC do Carlos (`Entregas\2.5.0\VALIDAR.md` e `Entregas\2.6.0\VALIDAR.md`). Canal `updates/` anuncia 2.4.1 (lançar pelo Aplicador opção 2).
+- Próximo: 2.7 Cobrança (plano no projeto claude.ai: `PANORAMA_2.5_E_PLANO_PROFISSIONAL.md`).
 - Pendente do usuário: frota — cobrança acompanha veículo que entra/sai depois do contrato?

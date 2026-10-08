@@ -1,3 +1,23 @@
+# UStracker 2.6.0
+
+- **Nuvem automática de verdade:** sem botão "Enviar agora"; o sistema salva sozinho.
+  - Dois computadores revezam a gravação em ~6 s (antes ~21 s).
+  - "Enviar agora" no 2º computador não trava mais o outro.
+  - Em conflito, o computador para de enviar e libera os outros.
+- **Cópia de segurança diária conferida:** o sistema abre a cópia, confere o banco e conta clientes, veículos e pagamentos.
+  - Roda também com o sistema aberto por dias.
+  - Se falhar, tenta de novo em 1 hora.
+- **Avisos para administradores** no topo: cópia que falhou ou atrasada, nuvem sem enviar há mais de 1 dia, conflito.
+- **Sistema › Diagnóstico:** versão, nuvem, cópias, espaço em disco, últimos erros e **pacote de suporte** sem dados de clientes.
+- **LGPD:**
+  - prazos automáticos do cliente excluído: 14 dias; com financeiro, 5 anos; os valores ficam para sempre;
+  - botão **Exportar dados** na ficha do cliente;
+  - modelo de aviso de privacidade.
+- **Correções:**
+  - a tela Clientes mostra todos (antes parava em 500);
+  - senha criada por outra pessoa pede troca no 1º acesso.
+- Testes automáticos no GitHub a cada envio de código.
+
 # UStracker 2.5.0
 
 - **Começo limpo em qualquer versão** (2.2 a 2.4.1): na primeira abertura da 2.5 o sistema faz uma cópia completa dos dados antigos em `Documentos\UStracker_Backups\Pre-2.5_<data>` (conferida por SHA-256) e começa zerado, só com o Adm Global. Se a cópia não conferir, nada é apagado. Corrige os dados da 2.2 que ficavam travados (sem editar nem excluir) depois de atualizar.

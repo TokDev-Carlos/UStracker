@@ -1,4 +1,4 @@
-# Manual do Usuário — UStracker 2.5.0
+# Manual do Usuário — UStracker 2.6.0
 
 ## Instalar
 1. Execute **UStracker_install_x64.exe** (o Windows pede permissão de administrador) e siga as telas. Ele já leva tudo: programa, WebView2 e o endereço da nuvem da empresa.
@@ -82,9 +82,19 @@ Em qualquer tabela, o botão **▾** ao lado do título da coluna ordena (A→Z,
 - Excluir uma **frota**: você escolhe se os veículos ficam como Particular ou se vão junto.
 - Itens com assinatura ativa não podem ser excluídos: encerre a assinatura antes.
 - O histórico financeiro é sempre mantido.
+- **Prazos (LGPD)** — depois dos 14 dias:
+  - cliente **sem** nada financeiro: sai de vez, com veículos, fotos e anexos;
+  - cliente **com** financeiro: saem contatos, endereço, observações, fotos e anexos. Ficam nome, documento, placas e pagamentos por **5 anos** (prova de pagamento e contador);
+  - depois de 5 anos: fica só o valor, sem ligação com ninguém. Os totais dos meses nunca mudam.
+- **Exportar dados** (ficha do cliente, só administradores): gera um .zip com todos os dados e fotos do cliente, para entregar a ele quando pedir. O arquivo `dados.html` abre no navegador e pode ser salvo em PDF.
+- Modelo de aviso de privacidade para usar com os clientes: `Docs\PRIVACIDADE.md`.
 
 ## Nuvem (Google Drive)
-Configurada uma vez pelo Adm Global (`NUVEM_GOOGLE_DRIVE.md`). Depois o sistema envia tudo sozinho, cifrado, segundos depois de cada alteração e ao clicar em **Encerrar**. Usuários e senhas também ficam na nuvem: quem é criado num computador entra em todos. Computador novo: instalar e ativar com o Adm Global.
+Configurada uma vez pelo Adm Global (`NUVEM_GOOGLE_DRIVE.md`). Depois o sistema envia tudo sozinho, cifrado, segundos depois de cada alteração e ao clicar em **Encerrar**. Não há nada para clicar.
+- Dois computadores gravando ao mesmo tempo revezam sozinhos (o outro espera alguns segundos).
+- Cópia de segurança diária **conferida**: o sistema abre a cópia e confere o conteúdo.
+- **Avisos no topo (só administradores):** cópia que falhou, cópia com mais de 2 dias, alterações há mais de 1 dia sem ir para a nuvem e conflito.
+- **Sistema › Diagnóstico:** situação da nuvem e das cópias, espaço em disco, últimos erros e o botão **Gerar pacote de suporte** (sem senhas e sem dados de clientes). Usuários e senhas também ficam na nuvem: quem é criado num computador entra em todos. Computador novo: instalar e ativar com o Adm Global.
 
 ## Problemas comuns
 - **"Nuvem: o Google pediu login…"** → no Apps Script, a implantação precisa estar como *Qualquer pessoa*.
