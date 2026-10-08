@@ -11,7 +11,8 @@ Abrir: clique duas vezes em Aplicar_Patch.cmd (o Windows pede permissao de admin
 2 - Atualizar todos os OUTROS computadores (esta maquina nao muda)
     Lanca a versao no canal de atualizacao (GitHub). Os outros computadores recebem
     ao abrir o sistema ou em ate 3 horas. Esta maquina fica como esta e ignora essa versao.
-    O token do GitHub e lido sozinho do Google Drive (Dev_Sistemas\Tokens\GitHub\github_token.txt);
+    O token do GitHub e lido sozinho do Google Drive (Empresas\UStracker\Tokens\GitHub\github_token.txt;
+    caminho antigo Dev_Sistemas\Tokens\GitHub e o marcador .marker_tokens_github tambem valem);
     se nao achar, pede o arquivo. Nunca fica salvo.
     Nunca lanca uma versao igual ou mais antiga que a que ja esta na nuvem.
 

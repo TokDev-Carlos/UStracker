@@ -1,7 +1,7 @@
 # UStracker - Etapa B: coloca cada coisa no lugar certo (copia, confere SHA-256, so entao remove a origem).
 #   Documentos\UStracker_Backups\Release_<v>   -> D:\PROGRAMAS\UStracker_Project\Entregas\<v>
 #   Documentos\UStracker_Backups\Aplicador_Patch -> ja copiado para Ferramentas\Aplicador_Patch (confere e remove a copia antiga)
-#   github_token.txt, token_leitura_acesso.txt  -> Drive: Dev_Sistemas\Tokens\GitHub (pelo H:\Meu Drive)
+#   github_token.txt, token_leitura_acesso.txt  -> Drive: Empresas\UStracker\Tokens\GitHub (pelo H:\Meu Drive)
 #   teste_claude_local.txt                      -> Logs
 # Se qualquer conferencia falhar, a origem NAO e removida. Relatorio em Logs\organizar_<data>.txt
 param([string]$Base = 'D:\PROGRAMAS\UStracker_Project', [string]$Drive = 'H:\Meu Drive')
@@ -41,15 +41,15 @@ if (Test-Path $old) {
     if ((Test-Path $new) -and (Same $old $new)) { Remove-Item -LiteralPath $old -Recurse -Force; Write-Log "OK  $old removido (igual a $new)" }
     else { Write-Log "AVISO $old mantido (diferente de $new ou destino ausente)" }
 }
-# 3) tokens -> Drive (Dev_Sistemas\Tokens\GitHub)
-$tok = Join-Path $Drive 'Dev_Sistemas\Tokens'
+# 3) tokens -> Drive (Empresas\UStracker\Tokens\GitHub)
+$tok = Join-Path $Drive 'Empresas\UStracker\Tokens'   # antes: Dev_Sistemas\Tokens (reorganizacao 2026-10-07)
 if (Test-Path $tok) {
     $dst = Join-Path $tok 'GitHub'; New-Item -ItemType Directory -Force -Path $dst | Out-Null
     foreach ($n in 'github_token.txt', 'token_leitura_acesso.txt') {
         $s = Join-Path $docs $n
         if (-not (Test-Path $s)) { continue }
         Copy-Item -LiteralPath $s -Destination (Join-Path $dst $n) -Force
-        if ((Get-FileHash $s).Hash -eq (Get-FileHash (Join-Path $dst $n)).Hash) { Remove-Item -LiteralPath $s -Force; Write-Log "OK  $n -> Drive\Dev_Sistemas\Tokens\GitHub (conferido, origem removida)" }
+        if ((Get-FileHash $s).Hash -eq (Get-FileHash (Join-Path $dst $n)).Hash) { Remove-Item -LiteralPath $s -Force; Write-Log "OK  $n -> Drive\Empresas\UStracker\Tokens\GitHub (conferido, origem removida)" }
         else { Write-Log "ERRO ${n}: conferencia falhou, origem mantida" }
     }
 } else { Write-Log "AVISO Drive nao encontrado em $tok (Google Drive para computador ligado?). Tokens mantidos em Documentos." }
