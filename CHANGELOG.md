@@ -2,6 +2,13 @@
 
 Formato: versão semântica a partir da 2.0.0 (2.0.1 = correção, 2.1.0 = novidade compatível).
 
+## 2.5.0 — 2026-10-07
+
+- Começo limpo em qualquer versão (2.2 a 2.4.1): backup conferido por SHA-256 em `Documentos\UStracker_Backups\Pre-2.5_<data>` e início só com o Adm Global.
+- Nuvem: época 25 — a primeira ativação 2.5 move os dados antigos para a `_lixeira` uma única vez; versões antigas não gravam na empresa nova.
+- Banco novo consolidado (esquema 16); banco antigo é recusado.
+- Usuários globais: login único na nuvem (HMAC), registro cifrado, alterações só online, login offline até 1 dia, Gerente gerencia usuários, senha provisória.
+
 ## 2.4.1 — 2026-10-07
 
 - Atualizador não termina mais com erro falso depois de instalar; Aplicador de Patch confere a versão instalada.

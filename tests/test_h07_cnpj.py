@@ -6,7 +6,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'src'))
 os.environ['USTRACKER_DEV_PLAINTEXT'] = '1'
 
-from ustracker.db import Database, SCHEMA_VERSION
+from ustracker.db import Database
 from ustracker.clients import validate_document, infer_document_type
 from ustracker.services import create_client, list_client_documents
 
@@ -41,26 +41,6 @@ class Cnpj(unittest.TestCase):
                          ('Transportes Alfa LTDA', 'Alfa', '11222333000181', 1))
         with self.assertRaises((ValueError, sqlite3.IntegrityError)):  # same CNPJ twice
             create_client(self.db, 1, {'legal_name': 'Outra', 'documents': [{'type': 'CNPJ', 'number': CNPJ}], 'email': 'a@b.c'})
-
-    def test_migration_from_v14_accepts_cnpj(self):
-        path = next(Path(self.tmp.name).rglob('*.db'))
-        con = sqlite3.connect(path)
-        con.executescript("""
-            PRAGMA foreign_keys=OFF;
-            ALTER TABLE client_documents RENAME TO cd_new;
-            CREATE TABLE client_documents(
-             id TEXT PRIMARY KEY, client_id TEXT NOT NULL REFERENCES clients(id), type TEXT NOT NULL CHECK(type IN ('CPF','RG','CNH')),
-             number TEXT NOT NULL, normalized_number TEXT NOT NULL, is_primary INTEGER NOT NULL DEFAULT 0,
-             archived INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
-            DROP TABLE cd_new;
-            UPDATE meta SET value='14' WHERE key='schema_version';""")
-        con.commit(); con.close()
-        db = Database(Path(self.tmp.name), 'test', b'0' * 32)
-        with db.transaction() as c2:
-            self.assertEqual(c2.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()[0], str(SCHEMA_VERSION))
-            self.assertIn("'CNPJ'", c2.execute("SELECT sql FROM sqlite_master WHERE name='client_documents'").fetchone()[0])
-        create_client(db, 1, {'legal_name': 'Beta SA', 'documents': [{'type': 'CNPJ', 'number': CNPJ}], 'email': 'b@b.c'})
-
 
 if __name__ == '__main__':
     unittest.main()

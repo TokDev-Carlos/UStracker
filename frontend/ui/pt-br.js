@@ -54,6 +54,11 @@ const MESSAGES = Object.freeze({
   'invalid environment': 'Ambiente inválido.',
   'admin name is required': 'O nome do administrador é obrigatório.',
   'admin name already in use': 'Este nome de administrador já está em uso.',
+  'login already exists': 'Este login já existe (ou já foi usado) na empresa. Escolha outro.',
+  'internet required': 'Precisa de internet: usuários só são criados ou alterados com a nuvem conectada.',
+  'offline too long: connect to the internet to sign in': 'Este computador está sem internet há mais de 1 dia. Conecte à internet para entrar.',
+  'changed on another computer: open the list again': 'Este usuário foi alterado em outro computador. Abra a lista de novo e repita.',
+  'invalid login: use 3 to 32 letters, numbers, dot, dash or underscore': 'Login inválido: use de 3 a 32 letras, números, ponto, hífen ou sublinhado (sem espaços).',
   'bootstrap already completed': 'A configuração inicial já foi concluída.',
   'invalid enrollment ticket': 'Código temporário de cadastro inválido.',
   'expired enrollment ticket': 'O código temporário de cadastro expirou.',
@@ -102,7 +107,6 @@ const MESSAGES = Object.freeze({
   'this installation was not activated by the Adm Global': 'Esta instalação não foi ativada pelo Adm Global (dados de uma versão antiga). Entre com o Administrador local ou reinstale.',
   'the local administrator already exists; reset its password instead': 'O Administrador local já existe. Use “Redefinir senha do Adm Local”.',
   'name already in use': 'Este nome já está em uso.',
-  'type RECOMEÇAR to restart the company': 'Digite RECOMEÇAR para recomeçar a empresa.',
   'secret must have at least 4 characters': 'A senha precisa ter pelo menos 4 caracteres.',
 });
 

@@ -44,6 +44,9 @@ PULL_EVERY = 25          # sem a vez, confere a cada 25 s se outro Servidor grav
 PLACA_EVERY = 6 * 3600   # confere a placa de direção a cada 6 h (e ao entrar)
 TURN_WAIT = 45           # espera máxima pela vez ao salvar
 PROTOCOL = 1
+# 2.5.0: "vida" da empresa na nuvem. A 1ª ativação 2.5 zera a nuvem antiga (reset_company) e grava esta época;
+# a nuvem só aceita gravação da mesma época (versões antigas não sobem dados velhos).
+CLOUD_EPOCH = 25
 AUTH_AAD = b'UStracker/cloud-auth/v1'
 UTC = timezone.utc
 
@@ -118,7 +121,7 @@ def _network_error(exc: Exception) -> 'CloudError':
 
 
 class CloudClient:
-    def __init__(self, url: str, secret: str, *, timeout: float = 120.0, opener=None):
+    def __init__(self, url: str, secret: str, *, timeout: float = 120.0, opener=None, epoch: int | None = None):
         url = str(url or '').strip()
         if not url.startswith('https://') and not url.startswith('http://127.0.0.1') and not url.startswith('http://localhost'):
             raise CloudError('BAD_URL', 'a URL do App da Web deve começar com https://')
@@ -138,9 +141,20 @@ class CloudClient:
         self.secret = secret.strip()
         self.timeout = timeout
         self.opener = opener or urllib.request.build_opener()
+        self.epoch = CLOUD_EPOCH if epoch is None else int(epoch)
 
-    def call(self, action: str, body: dict | None = None, *, retries: int = 3) -> dict:
+    def call(self, action: str, body: dict | None = None, *, retries: int = 3, check_epoch: bool = True) -> dict:
+        out = self._call(action, body, retries=retries)
+        if action == 'ping' and check_epoch:
+            cloud = int(out.get('epoch') or 0)
+            if cloud and cloud != self.epoch:
+                raise CloudError('EPOCH', f'a nuvem está na época {cloud} e este computador na {self.epoch}: atualize e ative de novo')
+        return out
+
+    def _call(self, action: str, body: dict | None = None, *, retries: int = 3) -> dict:
         last: Exception | None = None
+        if self.epoch and (body is None or isinstance(body, dict)):
+            body = {**(body or {}), 'epoch': self.epoch}
         for attempt in range(retries):
             body_text = json.dumps(body or {}, separators=(',', ':'))
             ts = int(time.time() * 1000)

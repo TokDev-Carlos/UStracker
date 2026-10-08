@@ -39,6 +39,7 @@ PERMISSIONS: list[tuple[str, str, str]] = [
     ('reports.view', 'Relatórios', 'Baixar relatórios'),
     ('trash.view', 'Lixeira', 'Ver'),
     ('trash.restore', 'Lixeira', 'Restaurar'),
+    ('users.manage', 'Sistema', 'Criar e editar usuários (menos administradores)'),
     ('update.apply', 'Sistema', 'Atualizar o sistema (aceitar versão nova)'),
     ('system', 'Sistema', 'Administração (usuários, backup, nuvem, servidores)'),
 ]
@@ -60,7 +61,7 @@ ADMIN_TITLE = 'Administrador'
 NAV_PERMISSION = {
     'dashboard': 'dashboard.view', 'clients': 'clients.view', 'mobility': 'mobility.view', 'catalog': 'catalog.view',
     'commercial': 'commercial.view', 'finance': ('finance.view', 'expenses.view', 'fiscal.view'), 'files': 'files.view',
-    'reports': 'reports.view', 'system': ('system', 'trash.view'),
+    'reports': 'reports.view', 'system': ('system', 'trash.view', 'users.manage'),
 }
 
 
@@ -119,6 +120,8 @@ _RULES: list[tuple[str, str, object]] = [
     ('GET', r'/trash$', 'trash.view'),
     ('POST', r'/trash/[^/]+/restore$', 'trash.restore'),
     ('GET', r'/settings$', ANY),
+    ('GET|POST|PATCH', r'/users(/[^/]+)?$', 'users.manage'),
+    ('GET', r'/access$', ANY),
 ]
 _COMPILED = [(set(m.split('|')) if m != '*' else None, re.compile(rx), perm) for m, rx, perm in _RULES]
 

@@ -193,8 +193,13 @@ def cmd_publish(root: Path, patch: Path, token: str, *, github=None) -> dict:
     """Upload the .usup first, then switch update.json (one atomic step for the computers), then drop the old .usup."""
     from ustracker.update_channel import version_key
     manifest, data = read_patch(patch, root)
-    if installed_version(root) != manifest['version']:
-        raise PatchError('aplique primeiro nesta máquina (opção 1) e confira; só então lance para todos')
+    here = installed_version(root)
+    # H-12: option 2 = "all the OTHER computers": this machine is marked (before the announcement) to ignore this version
+    skipped = version_key(manifest['version']) > version_key(here)
+    if skipped:
+        state = root / 'UserData' / 'State'
+        state.mkdir(parents=True, exist_ok=True)
+        (state / 'update_skip.json').write_text(json.dumps({'version': manifest['version']}), encoding='utf-8')
     gh = github or GitHub(token)
     current = gh.get('updates/update.json')
     old = {}
@@ -216,7 +221,8 @@ def cmd_publish(root: Path, patch: Path, token: str, *, github=None) -> dict:
         if prev.get('sha'):
             gh.delete(f"updates/{old['package']}", f"UStracker {manifest['version']}: remove pacote antigo", prev['sha'])
             removed = old['package']
-    return {'ok': True, 'published': manifest['version'], 'previous': old.get('version'), 'removed': removed}
+    return {'ok': True, 'published': manifest['version'], 'previous': old.get('version'), 'removed': removed,
+            'this_machine': here, 'skipped_here': skipped}
 
 
 # --------------------------------------------------------------------------------------------- linha de comando

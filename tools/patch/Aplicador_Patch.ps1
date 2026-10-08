@@ -95,8 +95,8 @@ $btnPatch = New-Object System.Windows.Forms.Button; $btnPatch.Text = 'Escolher..
 $lblInfo = Add-Label 'Escolha o pacote.' 20 145 580 90
 $lblInfo.Font = New-Object System.Drawing.Font('Segoe UI', 10)
 
-$btnLocal = New-Object System.Windows.Forms.Button; $btnLocal.Text = '1 - Atualizar Sistema da Maquina'; $btnLocal.Location = New-Object System.Drawing.Point(20, 250); $btnLocal.Size = New-Object System.Drawing.Size(580, 44); $btnLocal.Enabled = $false; $form.Controls.Add($btnLocal)
-$btnAll = New-Object System.Windows.Forms.Button; $btnAll.Text = '2 - Atualizar Todos os Sistemas (esta maquina + lancamento na nuvem)'; $btnAll.Location = New-Object System.Drawing.Point(20, 302); $btnAll.Size = New-Object System.Drawing.Size(580, 44); $btnAll.Enabled = $false; $form.Controls.Add($btnAll)
+$btnLocal = New-Object System.Windows.Forms.Button; $btnLocal.Text = '1 - Atualizar ESTA maquina'; $btnLocal.Location = New-Object System.Drawing.Point(20, 250); $btnLocal.Size = New-Object System.Drawing.Size(580, 44); $btnLocal.Enabled = $false; $form.Controls.Add($btnLocal)
+$btnAll = New-Object System.Windows.Forms.Button; $btnAll.Text = '2 - Atualizar todos os OUTROS computadores (esta maquina nao muda)'; $btnAll.Location = New-Object System.Drawing.Point(20, 302); $btnAll.Size = New-Object System.Drawing.Size(580, 44); $btnAll.Enabled = $false; $form.Controls.Add($btnAll)
 $lblStatus = Add-Label '' 20 360 580 60
 $lblStatus.ForeColor = [System.Drawing.Color]::FromArgb(30, 64, 175)
 
@@ -112,7 +112,7 @@ function Refresh-Info {
     $lblInfo.Text = "Assinatura conferida.`r`nInstalado nesta maquina: $($r.from)   ->   Pacote: $($r.to)  ($lvl)`r`n$($r.notes)"
     $btnLocal.Enabled = [bool]$r.newer
     $btnAll.Enabled = $true
-    if (-not $r.newer) { $lblStatus.Text = "Esta maquina ja esta na $($r.from). A opcao 2 ainda pode lancar a $($r.to) na nuvem." }
+    if (-not $r.newer) { $lblStatus.Text = "Esta maquina ja esta na $($r.from). A opcao 2 lanca a $($r.to) para os outros computadores." }
 }
 
 function Apply-Here {
@@ -136,23 +136,47 @@ $btnLocal.Add_Click({
     if (Apply-Here) { Refresh-Info; [System.Windows.Forms.MessageBox]::Show('Pronto. Abra o UStracker e confira.', 'Aplicador de Patch', 'OK', 'Information') | Out-Null }
 })
 
+function Find-Token {
+    # Drive para computador: procura github_token.txt nos caminhos conhecidos e, se nao achar,
+    # pelo marcador .marker_tokens_github (a pasta pode mudar de lugar sem quebrar o script).
+    # Atual: <letra>:\Meu Drive\Empresas\UStracker\Tokens\GitHub  (antigo: Dev_Sistemas\Tokens\GitHub)
+    $rel = @('Empresas\UStracker\Tokens\GitHub', 'Dev_Sistemas\Tokens\GitHub')
+    foreach ($d in (Get-PSDrive -PSProvider FileSystem)) {
+        foreach ($n in 'Meu Drive', 'My Drive') {
+            $root = Join-Path $d.Root $n
+            if (-not (Test-Path -LiteralPath $root)) { continue }
+            foreach ($r in $rel) {
+                $p = Join-Path $root "$r\github_token.txt"
+                if (Test-Path -LiteralPath $p) { return $p }
+            }
+            $m = Get-ChildItem -LiteralPath $root -Filter '.marker_tokens_github' -File -Force -Recurse -Depth 5 -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($m) { $p = Join-Path $m.DirectoryName 'github_token.txt'; if (Test-Path -LiteralPath $p) { return $p } }
+        }
+    }
+    return $null
+}
+
 $btnAll.Add_Click({
     if (-not $script:info) { return }
     $v = $script:info.to
-    if ([System.Windows.Forms.MessageBox]::Show("Atualizar TODOS os sistemas para a $v?`r`n`r`n1) esta maquina e atualizada e conferida;`r`n2) a $v e lancada na nuvem: os outros computadores recebem pela atualizacao automatica.", 'Aplicador de Patch', 'YesNo', 'Warning') -ne 'Yes') { return }
-    if ($script:info.newer) { if (-not (Apply-Here)) { return } }
-    if ([System.Windows.Forms.MessageBox]::Show("Esta maquina esta na $v.`r`nAbra o UStracker e confira se esta tudo certo ANTES de lancar.`r`n`r`nLancar a $v para todos agora?", 'Aplicador de Patch', 'YesNo', 'Question') -ne 'Yes') { $lblStatus.Text = 'Lancamento na nuvem adiado. Use a opcao 2 de novo quando quiser.'; return }
-    $d = New-Object System.Windows.Forms.OpenFileDialog; $d.Title = 'Arquivo com o token do GitHub (pasta Tokens do Drive)'; $d.Filter = 'Texto (*.txt)|*.txt|Todos (*.*)|*.*'
-    if ($d.ShowDialog() -ne 'OK') { return }
-    $token = [IO.File]::ReadAllText($d.FileName)
+    if ([System.Windows.Forms.MessageBox]::Show("Lancar a $v para todos os OUTROS computadores?`r`n`r`n- Esta maquina NAO e alterada (fica na $($script:info.from)).`r`n- Os outros recebem pela atualizacao automatica (ao abrir o sistema ou em ate 3 horas).", 'Aplicador de Patch', 'YesNo', 'Warning') -ne 'Yes') { return }
+    $tokFile = Find-Token
+    if (-not $tokFile) {
+        [System.Windows.Forms.MessageBox]::Show("Nao achei o token do GitHub no Google Drive (Empresas\UStracker\Tokens\GitHub\github_token.txt).`r`nNa proxima janela, escolha o ARQUIVO DO TOKEN do GitHub.", 'Aplicador de Patch', 'OK', 'Information') | Out-Null
+        $d = New-Object System.Windows.Forms.OpenFileDialog; $d.Title = 'Escolha o arquivo do TOKEN do GitHub (github_token.txt)'; $d.Filter = 'Texto (*.txt)|*.txt|Todos (*.*)|*.*'
+        if ($d.ShowDialog() -ne 'OK') { $lblStatus.Text = 'Lancamento cancelado (sem token).'; return }
+        $tokFile = $d.FileName
+    }
+    $token = [IO.File]::ReadAllText($tokFile)
     $lblStatus.Text = 'Lancando na nuvem...'; $form.Refresh(); $form.Cursor = 'WaitCursor'
     $r = Invoke-Tool $txtRoot.Text @('publish', '--root', $txtRoot.Text, '--patch', $txtPatch.Text) $token
     $token = $null; [GC]::Collect()
     $form.Cursor = 'Default'
     if ($r.error) { Log "publish ERRO: $($r.error)"; $lblStatus.Text = ''; [System.Windows.Forms.MessageBox]::Show("Nao lancado: $($r.error)", 'Aplicador de Patch', 'OK', 'Error') | Out-Null; return }
-    Log "publish OK $($r.published) (antes: $($r.previous))"
-    $lblStatus.Text = "Lancado: $($r.published). Os outros computadores recebem em ate 3 horas (ou ao abrir o sistema)."
-    [System.Windows.Forms.MessageBox]::Show("Versao $($r.published) lancada na nuvem.", 'Aplicador de Patch', 'OK', 'Information') | Out-Null
+    Log "publish OK $($r.published) (antes: $($r.previous)); esta maquina: $($r.this_machine)"
+    $aqui = if ($r.skipped_here) { "Esta maquina continua na $($r.this_machine) e vai ignorar a $($r.published)." } else { "Esta maquina ja esta na $($r.this_machine)." }
+    $lblStatus.Text = "Lancado: $($r.published). $aqui"
+    [System.Windows.Forms.MessageBox]::Show("Versao $($r.published) lancada para os outros computadores.`r`n$aqui", 'Aplicador de Patch', 'OK', 'Information') | Out-Null
 })
 
 [void]$form.ShowDialog()

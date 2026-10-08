@@ -50,19 +50,6 @@ class R11MigrationTests(unittest.TestCase):
         })
         return subscription, vehicle, fleet
 
-    def test_schema8_migrates_to_schema9_reentrantly_and_preserves_legacy_subscription(self):
-        subscription, _, _ = self._relationships()
-        with self.db.transaction() as con:
-            con.execute("UPDATE meta SET value='8' WHERE key='schema_version'")
-
-        first = Database(self.root, 'test', b'0' * 32)
-        second = Database(self.root, 'test', b'0' * 32)
-
-        self.assertEqual(second.one("SELECT value FROM meta WHERE key='schema_version'")[0], '15')
-        self.assertIsNotNone(second.one("SELECT name FROM sqlite_master WHERE type='table' AND name='subscription_targets'"))
-        self.assertEqual(second.one('SELECT id FROM subscriptions WHERE id=?', (subscription['id'],))[0], subscription['id'])
-        self.assertEqual(first.one('SELECT COUNT(*) FROM subscription_targets')[0], 0)
-
     def test_subscription_target_requires_exactly_one_unique_target_and_cascades(self):
         subscription, vehicle, fleet = self._relationships()
         created_at = '2026-10-02T00:00:00+00:00'
