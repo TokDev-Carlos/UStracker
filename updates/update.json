@@ -1,12 +1,12 @@
 {
   "format": "ustracker-update/1",
   "product": "UStracker",
-  "version": "2.4.1",
+  "version": "2.5.0",
   "level": "normal",
-  "notes": "2.4.1: atualizador nao da mais erro falso apos instalar; acentos corrigidos",
-  "package": "UStracker-2.4.1.usup",
-  "sha256": "a95804cef79656c7877aca43f63fed3c45c3bd86a78dcd71d3f72ac12ddb50ea",
-  "size": 5269434,
-  "published_at": "2026-10-07T01:47:06.162275+00:00",
-  "sig": "bc1b1624aee10eca6ab94ad1c7e0966220bacd001ae8576a022543080fdbfd3f2f7e35b3cee42da7959fe1c34638d8ade68ae736ba9aace6b15dbc9b019bb60f"
+  "notes": "2.5.0: começo limpo (backup antes) + usuários globais",
+  "package": "UStracker-2.5.0.usup",
+  "sha256": "822c9c6e94d6832a134ec78cef2025d1d35ca8620ef859cc2e90cbc73ac87db2",
+  "size": 5276566,
+  "published_at": "2026-10-08T01:38:10.814708+00:00",
+  "sig": "b75bfec8ba1de922b06a9f9f55f21f53715db52c5b40893ab085eb2e689fbe3f1f5393657221d9e0f8314d37d59828b266af0fa7d640af1214787ae6252cf509"
 }
