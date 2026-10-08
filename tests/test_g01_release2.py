@@ -1,5 +1,5 @@
 """G-01..G-03 — Release 2: restaurar da nuvem é só do Administrador; instalador único com a placa embutida."""
-import asyncio, json, os, re, sys, tempfile, unittest, uuid
+import asyncio, json, os, sys, tempfile, unittest, uuid
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]

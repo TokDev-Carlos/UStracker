@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import secrets
@@ -797,7 +796,7 @@ def create_app(root: Path | str) -> FastAPI:
 
     @app.post('/api/v1/fiscal/{fiscal_id}/ensure-expense')
     def fiscal_ensure_expense(fiscal_id: str, request: Request):
-        session = session_required(request, True); db = get_db(session)
+        session = session_required(request, True)
         payload = {'fiscal_id': fiscal_id}
         return mutation(request, session, f'POST /fiscal/{fiscal_id}/ensure-expense', payload, lambda db: ensure_fiscal_expense(db, session.slot, fiscal_id))
 
@@ -809,7 +808,7 @@ def create_app(root: Path | str) -> FastAPI:
 
     @app.post('/api/v1/commercial/coverage', status_code=201)
     def commercial_coverage(request: Request, p: dict = Body(...)):
-        session = session_required(request, True); db = get_db(session)
+        session = session_required(request, True)
         return mutation(request, session, 'POST /commercial/coverage', p, lambda db: create_coverage(db, session.slot, p))
 
     @app.get('/api/v1/catalog')
@@ -1352,7 +1351,6 @@ def create_app(root: Path | str) -> FastAPI:
         from . import adm_global
         from .cloud import CloudClient
         from .placa import fetch_placa, load_bootstrap, read_placa
-        from . import activation
         csrf_required(request)
         st = auth.setup_status()
         if st['activated']:
@@ -1410,7 +1408,7 @@ def create_app(root: Path | str) -> FastAPI:
             has_data = bool(ping.get('head') and ping.get('auth_head'))
         if has_data:
             bank = banks[0]
-            restored = cloud_call(lambda: restore_from_cloud(root, bank['url'], bank['key']))
+            cloud_call(lambda: restore_from_cloud(root, bank['url'], bank['key']))
             auth._init_store()  # the cloud copy may come from an older version
             auth.clear_sessions()
             cloud.state = type(cloud.state)(root)
@@ -1477,7 +1475,7 @@ def create_app(root: Path | str) -> FastAPI:
 
     @app.post('/api/v1/cloud/placa/publish')
     def placa_publish(request: Request, p: dict = Body(...)):
-        from .placa import PlacaError, build_placa, github_publish, parse_form, raw_url, save_bootstrap
+        from .placa import build_placa, github_publish, parse_form, raw_url, save_bootstrap
         session = admin_session(request); csrf_required(request, session)
         if session.environment != 'production':
             raise ValueError('cloud is available only in Production')

@@ -1,7 +1,6 @@
 """R23 — data written by the 1.001 System+Data install keeps working after promotion (Data -> UserData)."""
 import io
 import os
-import shutil
 import sys
 import tempfile
 import unittest

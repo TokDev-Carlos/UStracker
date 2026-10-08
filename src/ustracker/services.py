@@ -2,16 +2,14 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 import uuid
 from datetime import date, datetime, timezone
-from pathlib import Path
 from typing import Any
 
 from .db import Database, fold_text
 from .money import due_date, parse_money_api
 from .vehicle_types import annotate_vehicle, vehicle_breakdown
-from .projections import client_projection, general_expenses, month_forecast, realized_expenses, realized_revenue
+from .projections import client_projection, general_expenses, month_forecast, realized_revenue
 from .clients import companies_from_payload, documents_from_payload, has_contact, infer_document_type, normalize_document_number, validate_document
 
 UTC=timezone.utc
