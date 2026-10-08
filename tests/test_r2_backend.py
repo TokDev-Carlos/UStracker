@@ -32,20 +32,6 @@ class R2BackendTests(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def test_schema3_migrates_annual_legacy_subscription(self):
-        create_subscription(self.db, 1, {
-            'client_id': self.client['id'], 'start_on': '2026-01-01',
-            'billing_interval_months': 12,
-            'items': [{'catalog_id': self.plan_catalog['id'], 'quantity': 1}],
-        })
-        with self.db.transaction() as con:
-            con.execute("UPDATE meta SET value='2' WHERE key='schema_version'")
-        upgraded = Database(Path(self.tmp.name), 'test', b'0' * 32)
-        row = upgraded.one('SELECT billing_cycle FROM subscriptions')
-        self.assertEqual(row[0], 'ANNUAL')
-        self.assertEqual(upgraded.one("SELECT value FROM meta WHERE key='schema_version'")[0], '15')
-        self.assertIsNotNone(upgraded.one("SELECT name FROM sqlite_master WHERE name='direct_sales'"))
-
     def test_package_metadata_is_synchronized_from_canonical_version(self):
         root = Path(__file__).parents[1]
         version = json.loads((root / 'VERSION.json').read_text(encoding='utf-8'))

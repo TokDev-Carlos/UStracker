@@ -65,5 +65,21 @@ class InicioLimpo(unittest.TestCase):
         self.assertFalse((self.root / 'UserData' / 'State' / activation.CLEAN_MARKER).exists())
 
 
+class BancoNovo(unittest.TestCase):
+    def test_old_schema_is_refused_and_new_schema_is_16(self):
+        import sqlite3
+        from ustracker.db import Database, SCHEMA_VERSION
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Database(Path(tmp), 'production', b'0' * 32)
+            self.assertEqual(SCHEMA_VERSION, 16)
+            self.assertEqual(db.one("SELECT value FROM meta WHERE key='schema_version'")[0], '16')
+            self.assertEqual(db.one("SELECT value FROM meta WHERE key='fleet_max_active'")[0], '100')
+            Database(Path(tmp), 'production', b'0' * 32)  # reabrir: idempotente
+            con = sqlite3.connect(db.path); con.execute("UPDATE meta SET value='15' WHERE key='schema_version'"); con.commit(); con.close()
+            with self.assertRaises(RuntimeError) as ctx:
+                Database(Path(tmp), 'production', b'0' * 32)
+            self.assertIn('2.5 clean start', str(ctx.exception))
+
+
 if __name__ == '__main__':
     unittest.main()

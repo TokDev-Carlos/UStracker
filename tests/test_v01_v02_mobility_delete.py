@@ -85,14 +85,5 @@ class V01V02(unittest.TestCase):
             delete_vehicle(self.db, 1, v['id'])
         self.assertIn('assinatura', str(ctx.exception))
 
-    def test_migration_cleans_existing_orphans(self):
-        self.vehicle('DDD4D44')
-        with self.db.transaction() as con:  # simulate pre-1.006 state: client archived, vehicle left behind
-            con.execute('UPDATE clients SET archived=1 WHERE id=?', (self.c['id'],))
-            con.execute("UPDATE meta SET value='13' WHERE key='schema_version'")
-        db2 = Database(Path(self.tmp.name), 'test', b'0' * 32)
-        self.assertEqual(db2.one('SELECT COUNT(*) FROM vehicles WHERE archived=0')[0], 0)
-
-
 if __name__ == '__main__':
     unittest.main()

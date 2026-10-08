@@ -86,25 +86,6 @@ class AJ04LogicalCodeTests(unittest.TestCase):
         nxt = self._vehicle(a['id'], 'AAA1A12')
         self.assertEqual(self._code('vehicles', nxt['id']), 'CLI-0001-V02')
 
-    def test_schema9_backfill_is_deterministic_and_reentrant(self):
-        a, _ = self._client('Alfa')
-        self._client('Beta')
-        v = self._vehicle(a['id'], 'AAA1A11')
-        with self.db.transaction() as con:
-            for t in ('vehicles', 'fleets', 'subscriptions', 'direct_sales', 'payments', 'clients'):
-                con.execute(f'DROP TRIGGER IF EXISTS trg_code_immutable_{t}')
-                con.execute(f'UPDATE {t} SET code=NULL')
-            con.execute('DELETE FROM logical_codes'); con.execute('DELETE FROM code_counters')
-            con.execute("UPDATE meta SET value='9' WHERE key='schema_version'")
-        Database(self.root, 'test', b'0' * 32)
-        again = Database(self.root, 'test', b'0' * 32)
-        self.assertEqual(again.one("SELECT value FROM meta WHERE key='schema_version'")[0], '15')
-        self.assertEqual(self._code('clients', a['id']), 'CLI-0001')
-        self.assertEqual(self._code('vehicles', v['id']), 'CLI-0001-V01')
-        self.assertEqual(again.one('SELECT COUNT(*) FROM logical_codes')[0], 3)
-        nxt = self._vehicle(a['id'], 'AAA1A12')
-        self.assertEqual(self._code('vehicles', nxt['id']), 'CLI-0001-V02')
-
     def test_search_accepts_logical_codes(self):
         a, _ = self._client('Alfa')
         self._client('Beta')
