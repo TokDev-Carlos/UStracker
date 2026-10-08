@@ -70,7 +70,7 @@ class SingleInstaller(unittest.TestCase):
 class VersionTwo(unittest.TestCase):
     def test_version_is_2_4_1(self):
         for name in ('VERSION.json', 'current.json'):
-            self.assertEqual(json.loads((ROOT / name).read_text(encoding='utf-8'))['version'], '2.5.0', name)
+            self.assertEqual(json.loads((ROOT / name).read_text(encoding='utf-8'))['version'], '2.6.0', name)
 
 
 if __name__ == '__main__':
