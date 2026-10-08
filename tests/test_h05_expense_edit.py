@@ -8,7 +8,7 @@ sys.path.insert(0, str(ROOT / 'src'))
 os.environ['USTRACKER_DEV_PLAINTEXT'] = '1'
 
 from ustracker.db import Database
-from ustracker.expenses import create_company_expense, delete_expense, expense_rows, pay_expense, update_expense
+from ustracker.expenses import create_company_expense, delete_expense, expense_rows, update_expense
 from ustracker.projections import realized_expenses
 from ustracker import trash
 

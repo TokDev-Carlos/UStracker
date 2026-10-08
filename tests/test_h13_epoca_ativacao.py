@@ -9,11 +9,9 @@ os.environ['USTRACKER_DEV_PLAINTEXT'] = '1'
 
 from ustracker import adm_global as ag
 from ustracker.cloud import CLOUD_EPOCH, CloudClient, CloudError
-from ustracker.db import Database
 from ustracker.placa import build_placa, new_master, save_bootstrap
 from ustracker.server import create_app
-from ustracker.services import create_client
-from tests.test_h01_activation import NODE, PIN, LOCAL, RepoServer, gas, call
+from tests.test_h01_activation import NODE, PIN, RepoServer, gas, call
 
 
 @unittest.skipUnless(NODE, 'node not available')

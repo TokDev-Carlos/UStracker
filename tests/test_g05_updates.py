@@ -1,6 +1,6 @@
 """G-05 — atualização pela nuvem: canal no GitHub (updates/update.json assinado + pacote .usup),
 checagem a cada 3 h, download verificado, aplicação ao fechar/reabrir ou "Atualizar agora", volta automática."""
-import asyncio, hashlib, json, os, shutil, sys, tempfile, threading, unittest, uuid
+import json, os, shutil, sys, tempfile, threading, unittest
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path

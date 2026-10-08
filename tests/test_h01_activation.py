@@ -3,7 +3,7 @@
 Também cobre a regressão do "Internal Server Error" na primeira entrada (auth.db antigo vindo da nuvem) e o
 tratamento genérico de erros (JSON + UserData/Logs/erros.log).
 """
-import asyncio, json, os, shutil, sqlite3, subprocess, sys, tempfile, threading, unittest, uuid
+import asyncio, json, os, shutil, sqlite3, subprocess, sys, tempfile, threading, unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 

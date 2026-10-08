@@ -1,5 +1,5 @@
 """H-03 — Aplicador de Patch: 1) esta máquina (backup + aplica + volta se falhar) e 2) todos (canal no GitHub)."""
-import base64, hashlib, json, os, shutil, sys, tempfile, unittest, zipfile
+import base64, hashlib, json, os, sys, tempfile, unittest, zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
