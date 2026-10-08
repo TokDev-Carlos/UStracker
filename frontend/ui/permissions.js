@@ -29,6 +29,7 @@ export const ELEMENT_PERMISSION = [
   ['[data-remove-media]', ['files.delete']],
   ['#clientSignatureForm, #attachmentUploadForm, #attachmentLinkForm, #mediaForm', ['files.edit', 'clients.edit']],
   ['[data-trash-restore]', ['trash.restore']],
+  ['[data-cp-export]', ['system']],
   ['[data-overview-drilldown]', ['dashboard.full']],
 ];
 
