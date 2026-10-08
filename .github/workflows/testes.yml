@@ -15,7 +15,7 @@ jobs:
     timeout-minutes: 30
     env:
       USTRACKER_DEV_PLAINTEXT: '1'
-      PYTHONPATH: src:.
+      PYTHONPATH: ${{ github.workspace }}/src:${{ github.workspace }}  # absoluto: alguns testes rodam Python em outra pasta
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
