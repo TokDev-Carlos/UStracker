@@ -78,6 +78,7 @@ def has(perms, need) -> bool:
 
 
 ANY = None  # any logged-in user
+SYSTEM_ONLY_RULE = 'system'  # LGPD: exportar dados do titular
 _EDIT_MEDIA = ('files.edit', 'clients.edit', 'mobility.edit')
 _VIEW_MEDIA = ('files.view', 'clients.view', 'mobility.view', 'commercial.view')
 
@@ -91,6 +92,7 @@ _RULES: list[tuple[str, str, object]] = [
     ('GET', r'/dashboard$', 'dashboard.view'),
     ('GET', r'/dashboard/drilldown$', 'dashboard.full'),
     ('POST', r'/clients/archive$', 'clients.delete'),
+    ('GET', r'/clients/[^/]+/export$', SYSTEM_ONLY_RULE),
     ('GET', r'/clients(/.*)?$', 'clients.view'),
     ('POST|PATCH|PUT', r'/clients(/.*)?$', 'clients.edit'),
     ('GET', r'/(fleets|vehicles|mobility|vehicle-transfer-cases)(/.*)?$', 'mobility.view'),

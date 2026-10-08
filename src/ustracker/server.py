@@ -655,6 +655,17 @@ def create_app(root: Path | str) -> FastAPI:
             return rec
         return mutation(request, session, f'PATCH /clients/{cid}', p, action)
 
+    @app.get('/api/v1/clients/{cid}/export')
+    def client_export(cid: str, request: Request):
+        """2.6 LGPD — todos os dados de um cliente num .zip (JSON + página para imprimir/PDF + fotos). Só administradores."""
+        session = admin_required(request)
+        from . import retention
+        blob, name = retention.export_client(root, get_db(session), session.media_key, cid)
+        with get_db(session).transaction() as con:
+            from .services import audit
+            audit(con, session.slot, 'CLIENT_EXPORT', 'client', cid, None, {'exported': True})
+        return Response(blob, media_type='application/zip', headers={'Content-Disposition': f'attachment; filename="{name}"'})
+
     @app.get('/api/v1/clients/{cid}/profile')
     def clients_profile(cid: str, request: Request):
         return client_profile(get_db(session_required(request, True)), cid)

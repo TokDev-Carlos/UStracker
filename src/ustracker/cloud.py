@@ -476,6 +476,13 @@ class CloudSync:
         from .trash import purge_due
         db = Database(self.root, 'production', session.db_key)
         out = purge_due(self.root, db, session.slot, at=at)
+        from .retention import run as retention_run  # 2.6 LGPD: prazos do cliente excluído (14 dias / 5 anos)
+        kept = retention_run(self.root, db, session.slot, at=at)
+        if kept['files'] or kept['removed'] or kept['reduced'] or kept['anonymized']:
+            names = {('m.' if f.startswith('m:') else 'a.') + f[2:] for f in kept['files']}
+            self.state.set(pending_delete=sorted(set(self.state.get('pending_delete', [])) | names))
+            self.mark_dirty()
+        out['retention'] = {k: kept[k] for k in ('removed', 'reduced', 'anonymized')}
         if out['purged']:
             pending = set(self.state.get('pending_delete', [])) | {f'm.{n}' for n in out['erased_files']}
             self.state.set(pending_delete=sorted(pending), compact_before=(at or datetime.now(UTC)).isoformat())

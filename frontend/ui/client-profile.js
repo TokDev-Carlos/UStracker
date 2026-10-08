@@ -87,7 +87,8 @@ export function renderClientProfile(profile = {}, options = {}) {
       <div class="field"><label>Número do documento*</label><input name="document" value="${esc(document.number || '')}" required></div>
     </div><p class="muted">Trocar o documento substitui o atual; não cria acúmulo.</p>
     <div class="cp-form-actions"><button type="button" class="ui-btn ui-btn-secondary" data-cp-cancel="clientBasicsForm">Cancelar</button><button type="submit" class="ui-btn ui-btn-primary">Salvar</button></div></form>`;
-  const dados = panel('dados', 'Dados Básicos', '<button type="button" class="ui-btn ui-btn-secondary" data-cp-edit="clientBasicsForm">Editar</button>', readView + editForm);
+  const exportBtn = client.id ? `<button type="button" class="ui-btn ui-btn-subtle" data-cp-export="${esc(client.id)}" title="LGPD: todos os dados deste cliente (para entregar a ele)">Exportar dados</button>` : '';
+  const dados = panel('dados', 'Dados Básicos', `${exportBtn}<button type="button" class="ui-btn ui-btn-secondary" data-cp-edit="clientBasicsForm">Editar</button>`, readView + editForm);
 
   // Empresas
   const companyRows = companies.map(company => `<tr><td>${esc(company.trade_name || company.legal_name)}</td><td>${esc(company.legal_name || '')}</td><td>${esc(company.document || '—')}</td><td>${company.is_primary ? '<span class="cp-tag">Principal</span>' : ''}</td><td class="money">${fleets.filter(f => f.client_company_id === company.id).length}</td></tr>`);
@@ -211,6 +212,16 @@ export function bindClientProfileUi(root) {
   root.querySelectorAll('[data-cp-tab]').forEach(tab => { tab.onclick = () => selectTab(tab.dataset.cpTab); });
   root.querySelectorAll('[data-cp-toggle]').forEach(button => { button.onclick = () => { const form = root.querySelector('#' + button.dataset.cpToggle); reveal(button.dataset.cpToggle, !!form?.hidden); }; });
   root.querySelectorAll('[data-cp-edit]').forEach(button => { button.onclick = () => reveal(button.dataset.cpEdit, true); });
+  root.querySelectorAll('[data-cp-export]').forEach(button => { button.onclick = async () => {  // 2.6 LGPD (só administradores)
+    button.disabled = true;
+    try {
+      const r = await fetch(`/api/v1/clients/${encodeURIComponent(button.dataset.cpExport)}/export`);
+      if (!r.ok) throw new Error('Não foi possível exportar.');
+      const a = document.createElement('a'); a.href = URL.createObjectURL(await r.blob());
+      a.download = (r.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/)?.[1] || 'dados_cliente.zip'; a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    } catch (e) { globalThis.alert?.(e.message); } finally { button.disabled = false; }
+  }; });
   root.querySelectorAll('[data-cp-cancel]').forEach(button => { button.onclick = () => { const form = root.querySelector('#' + button.dataset.cpCancel); form?.reset?.(); reveal(button.dataset.cpCancel, false); }; });
   root.querySelectorAll('[data-journey="mobility"]').forEach(button => { button.onclick = () => reveal('clientVehicleForm', true); });
   root.querySelectorAll('[data-journey="purchase"]').forEach(button => { button.onclick = () => reveal('clientPurchaseForm', true); });
