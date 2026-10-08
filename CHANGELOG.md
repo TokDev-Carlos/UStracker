@@ -2,6 +2,15 @@
 
 Formato: versão semântica a partir da 2.0.0 (2.0.1 = correção, 2.1.0 = novidade compatível).
 
+## 2.6.0 — 2026-10-08
+
+- Nuvem: envio só automático; "Enviar agora" respeita a vez de gravar; em conflito o computador solta a vez; vez mais curta (~6 s); "Enviar agora" no 2º computador corrigido.
+- Cópia de segurança diária conferida (abre a cópia, integrity_check, contagens), também com o sistema aberto; avisos para administradores.
+- Sistema › Diagnóstico e pacote de suporte sem dados de clientes.
+- LGPD: prazos do cliente excluído (14 dias / 5 anos; valores ficam para sempre), exportar dados do titular, modelo de aviso de privacidade.
+- Correções: tela Clientes sem corte em 500; senha criada por outra pessoa é provisória.
+- Testes automáticos no GitHub (Ruff, telas, Node, Python) e testes pesados (`tools/dev/testes_pesados.py`).
+
 ## 2.5.0 — 2026-10-07
 
 - Começo limpo em qualquer versão (2.2 a 2.4.1): backup conferido por SHA-256 em `Documentos\UStracker_Backups\Pre-2.5_<data>` e início só com o Adm Global.

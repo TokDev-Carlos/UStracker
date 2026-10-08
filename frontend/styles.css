@@ -40,6 +40,7 @@ button[aria-busy=true],form[aria-busy=true] button{cursor:progress}.actions>butt
 .entity-autocomplete{position:relative;min-width:240px}.entity-autocomplete-input{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px}.entity-autocomplete-input .ui-btn{min-width:38px;padding:7px}.entity-autocomplete-results{position:absolute;z-index:40;top:100%;left:0;right:0;max-height:280px;overflow:auto;margin-top:4px;border:1px solid var(--line);border-radius:8px;background:#fff;box-shadow:0 12px 28px rgba(16,24,40,.16)}.entity-autocomplete-results:empty{display:none}.entity-autocomplete-option{display:grid;width:100%;gap:2px;padding:9px 11px;border-radius:0;border-bottom:1px solid #edf0f4;background:#fff;color:#172033;text-align:left}.entity-autocomplete-option:last-child{border-bottom:0}.entity-autocomplete-option span{color:var(--muted);font-size:.78rem}.entity-autocomplete-option:hover,.entity-autocomplete-option.active{background:#eef4ff;color:#123c8c}.entity-autocomplete-results [data-entity-status]{padding:10px;margin:0}
 
 /* G-03 — banco de Teste (Administrador) */
+.admin-alerts-top{position:sticky;top:0;z-index:99}.admin-alert{padding:6px 12px;font-weight:600;text-align:center}.admin-alert-warn{background:#fef0c7;color:#7a2e0e}.admin-alert-error{background:#fee4e2;color:#912018}
 .test-banner{position:sticky;top:0;z-index:100;padding:6px 12px;background:#b42318;color:#fff;font-weight:700;text-align:center;letter-spacing:.02em}
 
 /* G-04 */

@@ -113,6 +113,13 @@ class UsuariosGlobais(unittest.TestCase):
         with self.assertRaises(PermissionError):
             self.a.create_user(op, {'name': 'x1x', 'password': PW})
 
+    def test_password_set_by_someone_else_is_provisional_everywhere(self):
+        self.a.create_user(self.adm, {'name': 'nina', 'password': PW})
+        self.assertTrue(self.b.login('nina', PW).must_change, 'senha criada pelo administrador: troca no 1º acesso, em qualquer computador')
+        s = self.a.login('nina', PW)
+        self.a.change_password(s, PW, 'minha-9876')
+        self.assertFalse(self.b.login('nina', 'minha-9876').must_change)
+
     def test_package_created_on_a_reaches_b(self):
         pkg = self.a.save_package(self.adm, {'title': 'Vendas', 'permissions': ['clients.view']})
         self.a.create_user(self.adm, {'name': 'vend', 'password': PW, 'package_id': pkg['id']})

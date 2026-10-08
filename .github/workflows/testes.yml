@@ -1,0 +1,38 @@
+# 2.6 — testes automáticos a cada envio para Dev/main e em todo pull request.
+# Falhou aqui = não lança versão (o merge para main exige este check verde).
+name: Testes
+on:
+  push:
+    branches: [Dev, main]
+  pull_request:
+  workflow_dispatch:
+concurrency:
+  group: testes-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  testes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      USTRACKER_DEV_PLAINTEXT: '1'
+      PYTHONPATH: ${{ github.workspace }}/src:${{ github.workspace }}  # absoluto: alguns testes rodam Python em outra pasta
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: 'Dependências (sem sqlcipher3 — os testes usam banco sem cifra)'
+        run: |
+          grep -v '^sqlcipher3' requirements-runtime.txt > /tmp/req.txt
+          python -m pip install -q -r /tmp/req.txt ruff
+      - name: Ruff (erros de código)
+        run: ruff check .
+      - name: Telas (sintaxe)
+        run: for f in frontend/app.js frontend/ui/*.js frontend/pages/*.js; do node --check "$f"; done
+      - name: Testes de tela e Apps Script
+        run: node --test tests/*.test.mjs
+      - name: Testes Python
+        run: python -m unittest discover -s tests -p "test_*.py"

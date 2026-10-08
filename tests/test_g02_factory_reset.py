@@ -4,7 +4,7 @@ Apaga clientes, frotas, financeiro, fotos, ambiente Teste, usuários não admini
 mantém administradores, configurações da empresa (nome, marca, chave da placa) e a ligação com a nuvem.
 A nuvem recebe o estado vazio e perde fotos e pontos antigos. Roda uma vez só.
 """
-import io, json, os, shutil, subprocess, sys, tempfile, unittest, urllib.request
+import io, json, os, shutil, subprocess, sys, tempfile, unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]

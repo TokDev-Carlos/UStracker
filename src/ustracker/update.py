@@ -6,7 +6,6 @@ import os
 import shutil
 import zipfile
 from pathlib import Path, PurePosixPath
-from typing import Iterable
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
 

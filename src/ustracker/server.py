@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import secrets
@@ -134,6 +133,12 @@ def create_app(root: Path | str) -> FastAPI:
 
     cloud = CloudSync(root, auth)
     app.state.cloud = cloud
+
+    def daily_backup(session) -> None:  # 2.6: cópia conferida também com o sistema aberto por dias
+        db = repository.database('production', session.db_key)
+        settings = {r['key']: r['value'] for r in db.query('SELECT key,value FROM settings')}
+        maybe_automatic_backup(root, db, session.vrk, retention=int(settings.get('backup_retention', 14)), db_key=session.db_key)
+    cloud.on_tick = daily_backup
     from .update_channel import UpdateService, can_apply as update_can_apply
     updates = UpdateService(root)
     app.state.updates = updates
@@ -388,7 +393,7 @@ def create_app(root: Path | str) -> FastAPI:
         backup_info = None
         backup_warning = None
         try:
-            created = maybe_automatic_backup(root, db, session.vrk, retention=int(settings.get('backup_retention', 14)))
+            created = maybe_automatic_backup(root, db, session.vrk, retention=int(settings.get('backup_retention', 14)), db_key=session.db_key)
             backup_info = created.name if created else None
         except Exception as exc:
             backup_warning = str(exc)
@@ -622,7 +627,7 @@ def create_app(root: Path | str) -> FastAPI:
 
     @app.get('/api/v1/clients')
     def clients(request: Request):
-        return {'items': list_clients(get_db(session_required(request, True)), limit=500)}
+        return {'items': list_clients(get_db(session_required(request, True)))}  # 2.6: sem corte em 500 (a tela pagina)
 
     @app.get('/api/v1/entities/clients')
     def client_entities(request: Request, q: str = Query(default=''), limit: int = Query(default=20)):
@@ -649,6 +654,17 @@ def create_app(root: Path | str) -> FastAPI:
             if session.environment == 'production': rebuild_public(root, db)
             return rec
         return mutation(request, session, f'PATCH /clients/{cid}', p, action)
+
+    @app.get('/api/v1/clients/{cid}/export')
+    def client_export(cid: str, request: Request):
+        """2.6 LGPD — todos os dados de um cliente num .zip (JSON + página para imprimir/PDF + fotos). Só administradores."""
+        session = admin_required(request)
+        from . import retention
+        blob, name = retention.export_client(root, get_db(session), session.media_key, cid)
+        with get_db(session).transaction() as con:
+            from .services import audit
+            audit(con, session.slot, 'CLIENT_EXPORT', 'client', cid, None, {'exported': True})
+        return Response(blob, media_type='application/zip', headers={'Content-Disposition': f'attachment; filename="{name}"'})
 
     @app.get('/api/v1/clients/{cid}/profile')
     def clients_profile(cid: str, request: Request):
@@ -739,7 +755,7 @@ def create_app(root: Path | str) -> FastAPI:
 
     @app.get('/api/v1/vehicles')
     def vehicles(request: Request):
-        return {'items': list_table(get_db(session_required(request, True)), 'vehicles', limit=500)}
+        return {'items': list_table(get_db(session_required(request, True)), 'vehicles', limit=20000)}
 
     @app.post('/api/v1/vehicles', status_code=201)
     def vehicles_create(request: Request, p: dict = Body(...)):
@@ -791,7 +807,7 @@ def create_app(root: Path | str) -> FastAPI:
 
     @app.post('/api/v1/fiscal/{fiscal_id}/ensure-expense')
     def fiscal_ensure_expense(fiscal_id: str, request: Request):
-        session = session_required(request, True); db = get_db(session)
+        session = session_required(request, True)
         payload = {'fiscal_id': fiscal_id}
         return mutation(request, session, f'POST /fiscal/{fiscal_id}/ensure-expense', payload, lambda db: ensure_fiscal_expense(db, session.slot, fiscal_id))
 
@@ -803,7 +819,7 @@ def create_app(root: Path | str) -> FastAPI:
 
     @app.post('/api/v1/commercial/coverage', status_code=201)
     def commercial_coverage(request: Request, p: dict = Body(...)):
-        session = session_required(request, True); db = get_db(session)
+        session = session_required(request, True)
         return mutation(request, session, 'POST /commercial/coverage', p, lambda db: create_coverage(db, session.slot, p))
 
     @app.get('/api/v1/catalog')
@@ -1231,7 +1247,8 @@ def create_app(root: Path | str) -> FastAPI:
             raise ValueError('cloud is available only in Production')
         if write:
             csrf_required(request, session)
-            require_writer(root, get_db(session))
+            if not cloud.enabled():  # 2.6: com a nuvem ligada vale a vez de gravar (S-03), não a estação única antiga
+                require_writer(root, get_db(session))
         cloud.attach(session)
         return session
 
@@ -1242,7 +1259,7 @@ def create_app(root: Path | str) -> FastAPI:
         try:
             return fn()
         except CloudError as exc:
-            raise HTTPException(409 if exc.code in ('CONFLICT', 'READ_ONLY') else 502,
+            raise HTTPException(409 if exc.code in ('CONFLICT', 'READ_ONLY', 'BUSY') else 502,
                                 detail={'code': f'CLOUD_{exc.code}', 'detail': exc.detail, 'message': exc.detail}) from exc
 
     @app.get('/api/v1/cloud/status')
@@ -1345,7 +1362,6 @@ def create_app(root: Path | str) -> FastAPI:
         from . import adm_global
         from .cloud import CloudClient
         from .placa import fetch_placa, load_bootstrap, read_placa
-        from . import activation
         csrf_required(request)
         st = auth.setup_status()
         if st['activated']:
@@ -1403,7 +1419,7 @@ def create_app(root: Path | str) -> FastAPI:
             has_data = bool(ping.get('head') and ping.get('auth_head'))
         if has_data:
             bank = banks[0]
-            restored = cloud_call(lambda: restore_from_cloud(root, bank['url'], bank['key']))
+            cloud_call(lambda: restore_from_cloud(root, bank['url'], bank['key']))
             auth._init_store()  # the cloud copy may come from an older version
             auth.clear_sessions()
             cloud.state = type(cloud.state)(root)
@@ -1470,7 +1486,7 @@ def create_app(root: Path | str) -> FastAPI:
 
     @app.post('/api/v1/cloud/placa/publish')
     def placa_publish(request: Request, p: dict = Body(...)):
-        from .placa import PlacaError, build_placa, github_publish, parse_form, raw_url, save_bootstrap
+        from .placa import build_placa, github_publish, parse_form, raw_url, save_bootstrap
         session = admin_session(request); csrf_required(request, session)
         if session.environment != 'production':
             raise ValueError('cloud is available only in Production')
@@ -1525,6 +1541,34 @@ def create_app(root: Path | str) -> FastAPI:
     def integrations(request: Request):
         session_required(request, True)
         return {'drive':{'enabled':cloud.enabled(),'implemented':True},'tracking':{'enabled':False,'implemented':False},'fiscal_official':{'enabled':False,'implemented':False}}
+
+    # ------------------------------------------------------------------ 2.6 Diagnóstico (só administradores)
+    def cloud_facts() -> dict:
+        return {**cloud.describe(), 'pending_since': cloud.state.get('dirty_since')}
+
+    @app.get('/api/v1/system/alerts')
+    def system_alerts(request: Request):
+        session = session_required(request)
+        if not session.is_admin:
+            return {'items': []}
+        from . import diagnostics
+        return {'items': diagnostics.alerts(root, cloud_facts())}
+
+    @app.get('/api/v1/system/diagnostics')
+    def system_diagnostics(request: Request):
+        session = admin_required(request)
+        from . import diagnostics
+        users_active = sum(1 for u in auth.list_users() if u['active'])
+        return {**diagnostics.snapshot(root, get_db(session), cloud_facts(), users_active), 'alerts': diagnostics.alerts(root, cloud_facts())}
+
+    @app.get('/api/v1/system/support-package')
+    def system_support_package(request: Request):
+        session = admin_required(request)
+        from . import diagnostics
+        users_active = sum(1 for u in auth.list_users() if u['active'])
+        blob = diagnostics.support_package(root, get_db(session), cloud_facts(), users_active)
+        name = f"UStracker_suporte_{datetime.now().strftime('%Y%m%d_%H%M')}.zip"
+        return Response(blob, media_type='application/zip', headers={'Content-Disposition': f'attachment; filename="{name}"'})
 
     @app.get('/api/v1/system/runtime')
     def runtime_status(request: Request):

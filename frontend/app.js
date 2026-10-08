@@ -30,6 +30,7 @@ import { entityChoices, renderFilesPage } from './pages/files.js';
 import { confirmDialog, openDialog, openPlateOwnerDialog } from './ui/dialog.js';
 import { allowedPages, applyPermissions, can, filterMenu, isAdmin, setAccess, watchPermissions } from './ui/permissions.js';
 import { bindUsersTab, renderUsersTab } from './pages/users.js';
+import { renderAlerts, renderDiagnostics } from './pages/diagnostics.js';
 import { renderCloudPanel, renderPlacaPanel, renderCloudRestoreForm, renderPointsTable, renderRecoveryKit, renderTrashPanel } from './pages/cloud.js';
 
 const app=document.querySelector('#app');
@@ -191,10 +192,13 @@ async function applyUpdateNow(st){if(!await confirmDialog(`Atualizar agora para 
   waitNewVersion(st.current||'',st.version)}
 async function waitNewVersion(previous,target){const until=Date.now()+180000;let wasDown=false;while(Date.now()<until){await new Promise(r=>setTimeout(r,1500));try{const r=await fetch('/api/v1/health',{cache:'no-store'});if(!r.ok){wasDown=true;continue}const h=await r.json();if(h.version&&h.version!==previous){location.reload();return}if(wasDown){toast({type:'error',message:`A atualização não foi aplicada; o sistema continua na versão ${previous}.`});document.querySelector('.update-block')?.remove();return}}catch{wasDown=true}}
   document.querySelector('.update-block')?.remove();toast({type:'error',message:'O sistema demorou para voltar. Feche e abra o UStracker.'})}
+// 2.6 — avisos de backup/nuvem no topo, só para administradores (conferidos a cada 10 min)
+let alertsTimer=null;
+async function adminAlerts(){clearTimeout(alertsTimer);document.querySelector('.admin-alerts-top')?.remove();if(!me||!isAdmin())return;try{const r=await api('/system/alerts');const html=renderAlerts(r.items||[]);if(html){const box=document.createElement('div');box.className='admin-alerts-top';box.innerHTML=html;document.body.prepend(box)}}catch{}alertsTimer=setTimeout(adminAlerts,600000)}
 function testBanner(){document.querySelector('.test-banner')?.remove();if(me?.environment!=='test')return;const bar=document.createElement('div');bar.className='test-banner';bar.setAttribute('role','status');bar.textContent='AMBIENTE DE TESTE — nada aqui vai para a nuvem';document.body.prepend(bar)}
 // 2.5 — senha provisória (criada/redefinida por outra pessoa): a tela pede a troca logo ao entrar.
 function myAccountPage(){content(pageHeader('Minha conta','Sessão atual')+(me?.must_change?msg('Sua senha é provisória. Troque agora por uma senha só sua.','notice'):'')+`<div class="panel"><strong>${esc(me.name)}</strong><p class="muted">Perfil: ${esc(sessionProfileLabel(me))}</p><p class="muted">Ambiente: ${esc(me.environment==='production'?'Real':'Teste')}</p></div><div class="panel"><h3>Trocar minha senha</h3><form id="myPasswordForm"><div class="row"><div class="field"><label>Senha atual</label><input type="password" name="current_password" required autocomplete="current-password"></div><div class="field"><label>Nova senha (mínimo 4)</label><input type="password" name="new_password" minlength="4" required autocomplete="new-password"></div></div><div class="actions"><button class="ui-btn ui-btn-primary">Trocar senha</button></div></form></div>`);const form=document.querySelector('#myPasswordForm');bindActionForm(form,{key:'my-password',action:()=>api('/auth/change-password',{method:'POST',body:JSON.stringify(formData(form))}),refresh:async()=>{toast({type:'success',message:'Senha trocada. Entre de novo com a nova senha.'});await boot()},notify:toast})}
-function renderShell(){setAccess(me);watchPermissions();syncVersion=null;setTimeout(syncTick,3000);const pages=allowedPages(nav.map(([key])=>key));renderAppShell({me,nav:nav.filter(([key])=>pages.includes(key)).map(([key,label])=>key==='system'&&!isAdmin()&&!can('users.manage')?[key,'Lixeira']:[key,label]),onNavigate:show,onSearch:async query=>{const d=await api('/search?q='+encodeURIComponent(query));tableStore.clear();content(pageHeader('Pesquisa','Resultados da busca global')+dt(d.items,'searchTable'))},onHelp:()=>{const help=helpFor(current);openDrawer({title:help.title,subtitle:'Ajuda contextual',content:`<p>${esc(help.body)}</p>${HELP[current]?.fields?`<dl>${Object.entries(HELP[current].fields).map(([key,value])=>`<dt><strong>${esc(key.replaceAll('_',' '))}</strong></dt><dd>${esc(value)}</dd>`).join('')}</dl>`:''}`})},onUser:()=>myAccountPage(),onLogout:async()=>{await session.logout();await boot()},onShutdown:requestSystemShutdown});testBanner();clearTimeout(updateTimer);updateTimer=setTimeout(updateTick,4000);if(me?.must_change)myAccountPage()}
+function renderShell(){setAccess(me);watchPermissions();syncVersion=null;setTimeout(syncTick,3000);const pages=allowedPages(nav.map(([key])=>key));renderAppShell({me,nav:nav.filter(([key])=>pages.includes(key)).map(([key,label])=>key==='system'&&!isAdmin()&&!can('users.manage')?[key,'Lixeira']:[key,label]),onNavigate:show,onSearch:async query=>{const d=await api('/search?q='+encodeURIComponent(query));tableStore.clear();content(pageHeader('Pesquisa','Resultados da busca global')+dt(d.items,'searchTable'))},onHelp:()=>{const help=helpFor(current);openDrawer({title:help.title,subtitle:'Ajuda contextual',content:`<p>${esc(help.body)}</p>${HELP[current]?.fields?`<dl>${Object.entries(HELP[current].fields).map(([key,value])=>`<dt><strong>${esc(key.replaceAll('_',' '))}</strong></dt><dd>${esc(value)}</dd>`).join('')}</dl>`:''}`})},onUser:()=>myAccountPage(),onLogout:async()=>{await session.logout();await boot()},onShutdown:requestSystemShutdown});testBanner();adminAlerts();clearTimeout(updateTimer);updateTimer=setTimeout(updateTick,4000);if(me?.must_change)myAccountPage()}
 function bindClientJourney(drawer,profile,clientId){
   const reopen=focus=>async()=>{closeOverlay();await openClientProfile(clientId,{focus})};
   bindClientProfileUi(drawer);
@@ -509,7 +513,7 @@ function reportsPage(lease=null){const names=['clients','vehicles','charges','pa
 async function downloadReport(name,ext){const r=await fetch(`/api/v1/reports/${name}.${ext}`);if(!r.ok)throw new Error('Falha no relatório');const a=document.createElement('a');a.href=URL.createObjectURL(await r.blob());a.download=`${name}.${ext}`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
 function organizeSystemPage(runtime){
   const root=document.querySelector('#content');if(!root||root.querySelector('.system-tabs'))return;
-  const tabs=document.createElement('div');tabs.className='system-tabs';tabs.innerHTML='<button type="button" class="active" data-system-tab="admin">Administração</button><button type="button" data-system-tab="users">Usuários</button><button type="button" data-system-tab="cloud">Nuvem</button><button type="button" data-system-tab="trash">Lixeira</button><button type="button" data-system-tab="development">Desenvolvimento</button>';
+  const tabs=document.createElement('div');tabs.className='system-tabs';tabs.innerHTML='<button type="button" class="active" data-system-tab="admin">Administração</button><button type="button" data-system-tab="users">Usuários</button><button type="button" data-system-tab="cloud">Nuvem</button><button type="button" data-system-tab="trash">Lixeira</button><button type="button" data-system-tab="diagnostics">Diagnóstico</button><button type="button" data-system-tab="development">Desenvolvimento</button>';
   const admin=document.createElement('section');admin.className='system-panel';admin.dataset.systemPanel='admin';
   const development=document.createElement('section');development.className='system-panel';development.dataset.systemPanel='development';development.hidden=true;
   const advanced=new Set(['Recovery / transferência','Recuperação / transferência','Auditoria','Integrações futuras','Integrações planejadas']);
@@ -518,12 +522,13 @@ function organizeSystemPage(runtime){
   const cloudSection=document.createElement('section');cloudSection.className='system-panel';cloudSection.dataset.systemPanel='cloud';cloudSection.hidden=true;
   const trashSection=document.createElement('section');trashSection.className='system-panel';trashSection.dataset.systemPanel='trash';trashSection.hidden=true;
   const usersSection=document.createElement('section');usersSection.className='system-panel';usersSection.dataset.systemPanel='users';usersSection.hidden=true;
-  const header=root.querySelector('.ui-page-header');header?.after(tabs,admin,usersSection,cloudSection,trashSection,development);
-  const sections={admin,users:usersSection,cloud:cloudSection,trash:trashSection,development};
-  const loaders={users:()=>loadUsersTab(usersSection),cloud:()=>loadCloudTab(cloudSection),trash:()=>loadTrashTab(trashSection)};
+  const diagSection=document.createElement('section');diagSection.className='system-panel';diagSection.dataset.systemPanel='diagnostics';diagSection.hidden=true;
+  const header=root.querySelector('.ui-page-header');header?.after(tabs,admin,usersSection,cloudSection,trashSection,diagSection,development);
+  const sections={admin,users:usersSection,cloud:cloudSection,trash:trashSection,diagnostics:diagSection,development};
+  const loaders={users:()=>loadUsersTab(usersSection),cloud:()=>loadCloudTab(cloudSection),trash:()=>loadTrashTab(trashSection),diagnostics:()=>loadDiagnosticsTab(diagSection)};
   const select=name=>{tabs.querySelectorAll('button').forEach(item=>item.classList.toggle('active',item.dataset.systemTab===name));Object.entries(sections).forEach(([key,el])=>{el.hidden=key!==name});loaders[name]?.()};
   tabs.querySelectorAll('[data-system-tab]').forEach(button=>button.onclick=()=>{history.replaceState(null,'','#system/'+button.dataset.systemTab);select(button.dataset.systemTab)});
-  const wanted=location.hash.match(/^#system\/(users|cloud|trash|development)$/)?.[1];if(wanted)select(wanted);
+  const wanted=location.hash.match(/^#system\/(users|cloud|trash|diagnostics|development)$/)?.[1];if(wanted)select(wanted);
 }
 async function loadPlacaPanel(section,status){
   const data=await apiClient.request('/cloud/placa');const host=document.createElement('div');host.innerHTML=renderPlacaPanel(data,status);section.append(host);
@@ -546,7 +551,6 @@ async function loadCloudTab(section){
   if(form)bindActionForm(form,{key:'cloud-connect',action:async()=>{const p=formData(form);let r=await api('/cloud/connect',{method:'POST',body:JSON.stringify({url:p.url,secret:p.secret})});
     if(r.needs_choice){const choice=await openDialog({title:'A nuvem já tem dados',body:`<p>Esta nuvem já tem dados de outra instalação (versão ${esc(r.head?.generation)}, ${esc(formatDateBR(r.head?.created_at,true))}).</p><p class="muted">Para trazer os dados da nuvem para este computador, use Sistema › Nuvem › Avançado › “Restaurar da nuvem” (Administrador).</p>`,actions:[{label:'Não mudar nada',value:null},{label:'Substituir a nuvem por este computador',kind:'danger',value:'replace'}]});if(choice!=='replace')return;r=await api('/cloud/connect',{method:'POST',body:JSON.stringify({url:p.url,secret:p.secret,mode:'replace'})})}
     return r},refresh:reload,successMessage:'Nuvem conectada e dados enviados.',notify:toast});
-  const sync=section.querySelector('[data-cloud-sync]');if(sync)bindActionButton(sync,{key:'cloud-sync',action:()=>api('/cloud/sync',{method:'POST',body:'{}'}),refresh:reload,successMessage:'Dados enviados para a nuvem.',notify:toast});
   const force=section.querySelector('[data-cloud-force]');if(force)bindActionButton(force,{key:'cloud-force',confirm:'Substituir o conteúdo da nuvem pelos dados deste computador? A versão da outra máquina deixa de ser a atual (fica nos pontos de restauração por 14 dias).',action:()=>api('/cloud/sync',{method:'POST',body:JSON.stringify({force:true,confirm:'SUBSTITUIR NUVEM'})}),refresh:reload,successMessage:'Nuvem atualizada com este computador.',notify:toast});
   const disconnect=section.querySelector('[data-cloud-disconnect]');if(disconnect)bindActionButton(disconnect,{key:'cloud-disconnect',confirm:'Parar de enviar para a nuvem? O que já está lá continua guardado.',action:()=>api('/cloud/disconnect',{method:'POST',body:'{}'}),refresh:reload,successMessage:'Envio para a nuvem desligado.',notify:toast});
   const kit=section.querySelector('[data-cloud-kit]');if(kit)kit.onclick=()=>openDrawer({title:'Kit de recuperação',content:renderRecoveryKit(status)});
@@ -554,6 +558,14 @@ async function loadCloudTab(section){
   if(pointsButton)bindActionButton(pointsButton,{key:'cloud-points',action:async()=>{const box=section.querySelector('[data-cloud-points-box]');const r=await api('/cloud/points');box.innerHTML=renderPointsTable(r.items||[]);
     box.querySelectorAll('[data-cloud-restore-point]').forEach(button=>bindActionButton(button,{key:'cloud-point:'+button.dataset.cloudRestorePoint,confirm:'Voltar todos os dados para este ponto? O estado atual é guardado antes num backup local.',action:()=>api('/cloud/points/'+encodeURIComponent(button.dataset.cloudRestorePoint)+'/restore',{method:'POST',body:JSON.stringify({confirm:'RESTAURAR PONTO'})}),refresh:reload,successMessage:'Dados restaurados para o ponto escolhido.',notify:toast}))},notify:toast});
   if(status.running||status.pending_changes){clearTimeout(section._poll);section._poll=setTimeout(()=>{if(section.isConnected&&!section.hidden)loadCloudTab(section)},15000)}
+}
+// 2.6 — Sistema › Diagnóstico
+async function loadDiagnosticsTab(section){
+  section.innerHTML='<div class="panel"><p class="muted">Carregando…</p></div>';
+  let data;try{data=await apiClient.request('/system/diagnostics')}catch(error){section.innerHTML=`<div class="error">${esc(error.message)}</div>`;return}
+  section.innerHTML=renderDiagnostics(data);
+  const btn=section.querySelector('[data-support-package]');
+  if(btn)bindActionButton(btn,{key:'support-package',notify:toast,successMessage:'Pacote de suporte gerado.',action:async()=>{const r=await fetch('/api/v1/system/support-package');if(!r.ok)throw new Error('Falha ao gerar o pacote');const a=document.createElement('a');a.href=URL.createObjectURL(await r.blob());a.download=(r.headers.get('Content-Disposition')||'').match(/filename="([^"]+)"/)?.[1]||'UStracker_suporte.zip';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}});
 }
 // U-02 — Sistema › Usuários (administradores): usuários e pacotes de acesso.
 async function loadUsersTab(section){

@@ -2,16 +2,14 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 import uuid
 from datetime import date, datetime, timezone
-from pathlib import Path
 from typing import Any
 
 from .db import Database, fold_text
 from .money import due_date, parse_money_api
 from .vehicle_types import annotate_vehicle, vehicle_breakdown
-from .projections import client_projection, general_expenses, month_forecast, realized_expenses, realized_revenue
+from .projections import client_projection, general_expenses, month_forecast, realized_revenue
 from .clients import companies_from_payload, documents_from_payload, has_contact, infer_document_type, normalize_document_number, validate_document
 
 UTC=timezone.utc
@@ -213,7 +211,7 @@ def update_client(db:Database, actor:int, cid:str, p:dict)->dict:
         return after
 
 
-def list_clients(db:Database, *, include_archived:bool=False, limit:int=500)->list[dict]:
+def list_clients(db:Database, *, include_archived:bool=False, limit:int=20000)->list[dict]:
     where='' if include_archived else 'WHERE c.archived=0'
     rows=db.query(f'''SELECT c.*,
         COALESCE((SELECT cc.legal_name FROM client_companies cc WHERE cc.client_id=c.id AND cc.archived=0

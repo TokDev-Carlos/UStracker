@@ -1,6 +1,5 @@
 """G-04 — Adm Global (Token Mestre no Git + pergunta falsa com pistas), Adm Local único e Chave de Recuperação."""
 import asyncio, json, os, sqlite3, sys, tempfile, threading, unittest, uuid
-from datetime import timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 

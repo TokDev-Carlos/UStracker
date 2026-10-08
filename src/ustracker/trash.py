@@ -19,7 +19,6 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .db import Database
-from .paths import resolve_stored_path
 from .services import audit, now, uid
 
 RETENTION_DAYS = 14
