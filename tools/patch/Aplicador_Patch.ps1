@@ -137,11 +137,20 @@ $btnLocal.Add_Click({
 })
 
 function Find-Token {
-    # Drive para computador: <letra>:\Meu Drive\Dev_Sistemas\Tokens\GitHub\github_token.txt
+    # Drive para computador: procura github_token.txt nos caminhos conhecidos e, se nao achar,
+    # pelo marcador .marker_tokens_github (a pasta pode mudar de lugar sem quebrar o script).
+    # Atual: <letra>:\Meu Drive\Empresas\UStracker\Tokens\GitHub  (antigo: Dev_Sistemas\Tokens\GitHub)
+    $rel = @('Empresas\UStracker\Tokens\GitHub', 'Dev_Sistemas\Tokens\GitHub')
     foreach ($d in (Get-PSDrive -PSProvider FileSystem)) {
         foreach ($n in 'Meu Drive', 'My Drive') {
-            $p = Join-Path $d.Root "$n\Dev_Sistemas\Tokens\GitHub\github_token.txt"
-            if (Test-Path -LiteralPath $p) { return $p }
+            $root = Join-Path $d.Root $n
+            if (-not (Test-Path -LiteralPath $root)) { continue }
+            foreach ($r in $rel) {
+                $p = Join-Path $root "$r\github_token.txt"
+                if (Test-Path -LiteralPath $p) { return $p }
+            }
+            $m = Get-ChildItem -LiteralPath $root -Filter '.marker_tokens_github' -File -Force -Recurse -Depth 5 -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($m) { $p = Join-Path $m.DirectoryName 'github_token.txt'; if (Test-Path -LiteralPath $p) { return $p } }
         }
     }
     return $null
@@ -153,7 +162,7 @@ $btnAll.Add_Click({
     if ([System.Windows.Forms.MessageBox]::Show("Lancar a $v para todos os OUTROS computadores?`r`n`r`n- Esta maquina NAO e alterada (fica na $($script:info.from)).`r`n- Os outros recebem pela atualizacao automatica (ao abrir o sistema ou em ate 3 horas).", 'Aplicador de Patch', 'YesNo', 'Warning') -ne 'Yes') { return }
     $tokFile = Find-Token
     if (-not $tokFile) {
-        [System.Windows.Forms.MessageBox]::Show("Nao achei o token do GitHub no Google Drive (Dev_Sistemas\Tokens\GitHub\github_token.txt).`r`nNa proxima janela, escolha o ARQUIVO DO TOKEN do GitHub.", 'Aplicador de Patch', 'OK', 'Information') | Out-Null
+        [System.Windows.Forms.MessageBox]::Show("Nao achei o token do GitHub no Google Drive (Empresas\UStracker\Tokens\GitHub\github_token.txt).`r`nNa proxima janela, escolha o ARQUIVO DO TOKEN do GitHub.", 'Aplicador de Patch', 'OK', 'Information') | Out-Null
         $d = New-Object System.Windows.Forms.OpenFileDialog; $d.Title = 'Escolha o arquivo do TOKEN do GitHub (github_token.txt)'; $d.Filter = 'Texto (*.txt)|*.txt|Todos (*.*)|*.*'
         if ($d.ShowDialog() -ne 'OK') { $lblStatus.Text = 'Lancamento cancelado (sem token).'; return }
         $tokFile = $d.FileName
