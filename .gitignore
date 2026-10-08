@@ -19,13 +19,16 @@ UserData/
 .idea/
 .vscode/
 
-# Engineering isolated workspaces and runtime evidence
+# Ferramentas
 .worktrees/
 .superpowers/
-candidate/*
-!candidate/README.md
-increment/*
-!increment/README.md
-engineering/logs/
-engineering/checkpoints/
-engineering/reports/runtime/
+.mypy_cache/
+.ruff_cache/
+
+# Contexto gerado pelo Centro de Comando e arquivos pessoais do Claude
+/context/
+CLAUDE.local.md
+.claude/settings.local.json
+
+# Segredos
+*token*.txt
