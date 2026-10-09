@@ -24,9 +24,12 @@ test('AJ-13: despesa simples tem Repetição e categorias fixas, sem Competênci
   for (const category of EXPENSE_CATEGORIES) assert.ok(form.includes(`<option>${category}</option>`), category);
   assert.doesNotMatch(form, /Competência/);
   const page = renderFinancePage({ expenses: [{ id: 'e1', category: 'Equipamentos', description: 'Rastreador', repeat: 'ONCE', repeat_label: 'Única', status: 'OPEN', expected_amount_cents: 100, paid_cents: 0 }] }, 'expenses');
-  assert.match(page, /data-expense-pay="e1"/);
-  assert.match(page, /data-expense-sell="e1"/);
-  assert.match(page, /data-expense-delete="e1"/);
+  // 2.8.0: Ações = Abrir | Editar | Excluir; Pagar e Vender ficam dentro de Abrir
+  const all = renderFinancePage({ expenses: [{ id: 'e1', category: 'Equipamentos', description: 'Rastreador', repeat: 'ONCE', repeat_label: 'Única', status: 'OPEN', expected_amount_cents: 100, paid_cents: 0, due_on: '2026-10-01', competence: '2026-10' }] }, 'expenses', { period: 'all' });
+  assert.match(all, /data-expense-open="e1"/);
+  assert.match(all, /data-expense-edit="e1"/);
+  assert.match(all, /data-expense-delete="e1"/);
+  assert.ok(page.includes('data-expense-filters'));
   assert.match(renderFinancePage({}), /data-open-payment/);
 });
 

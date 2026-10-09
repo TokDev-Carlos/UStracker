@@ -2,7 +2,11 @@
 <defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1b5fe0"/><stop offset="1" stop-color="#0b2a73"/></linearGradient>
 <linearGradient id="s" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#d6e4ff"/></linearGradient></defs>
 <rect x="2" y="2" width="60" height="60" rx="14" fill="url(#g)"/><rect x="2.75" y="2.75" width="58.5" height="58.5" rx="13.25" fill="none" stroke="#5b9bff" stroke-opacity=".55" stroke-width="1.5"/>
-<g fill="none" stroke="url(#s)" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round">
-<circle cx="18" cy="42" r="7"/><circle cx="46" cy="42" r="7"/>
-<path d="M18 42l8-12h10l6 12"/><path d="M36 30l3-8h6"/><path d="M26 30l-3-5h-6"/><path d="M30 42h12"/></g>
-<g fill="url(#s)"><path d="M27 28h11l-2 5H29z"/></g></svg>
+<g fill="none" stroke="url(#s)" stroke-linecap="round" stroke-linejoin="round">
+<circle cx="16.5" cy="42" r="7" stroke-width="4"/><circle cx="47.5" cy="42" r="7" stroke-width="4"/>
+<path d="M16.5 42l9-6" stroke-width="3.4"/><path d="M47.5 42l-6.5-15.5" stroke-width="3.4"/><path d="M37.5 21.5h6" stroke-width="3"/><path d="M40.6 26.5l-1.4-5" stroke-width="2.6"/></g>
+<g fill="url(#s)">
+<path d="M10.5 31.5c1.6-2.4 4.4-3.3 8-3.3h7.2c1.6-3.6 4.6-5.7 9-5.7 2.6 0 4.6.6 6 1.6l1.5 4.2-5.6 6.4-3 6.5h-9.4l-3.3-5.8c-4.2 0-7.3-.9-10.4-3.9z"/>
+<path d="M24.6 38.6h9.6l-1.6 4.4h-6.4z"/><path d="M12 40.2h8.6v2.4H12a1.2 1.2 0 0 1 0-2.4z"/>
+<circle cx="45.4" cy="28.8" r="2.4"/></g>
+<g fill="#0b2a73"><circle cx="16.5" cy="42" r="1.8"/><circle cx="47.5" cy="42" r="1.8"/></g></svg>

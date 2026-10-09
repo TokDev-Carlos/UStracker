@@ -2,6 +2,13 @@
 
 Formato: versão semântica a partir da 2.0.0 (2.0.1 = correção, 2.1.0 = novidade compatível).
 
+## 2.8.0 — 2026-10-09
+
+- Cobrança: régua de lembretes (3 dias antes, no dia, 3 e 7 dias depois) com envio em 1 clique por WhatsApp (app ou Web) ou e-mail, registro do envio, inadimplência (valor, dias, % de clientes).
+- PIX estático da empresa (BR Code + QR, `pix.py`; QR via segno 1.6.6 BSD em `_vendor`), recibo e 2ª via em PDF (`pdfdoc.py`, sem dependência nova).
+- Despesas: Ações Abrir | Editar | Excluir; meses da recorrente com pagamento retroativo em lote e adiantado (até 12 meses); filtro de período/repetição; destaque de vencimento (≤3 dias e atrasada); excluir recorrente "só esta" (não volta) ou "esta e as próximas".
+- Ícone de Moto redesenhado.
+
 ## 2.7.0 — 2026-10-09
 
 - Frota: cada veículo é uma assinatura (a frota só agrupa). Assinaturas antigas de frota são divididas sozinhas, com o histórico repartido por veículo e os totais de cada mês intactos (ids derivados, iguais em todo computador).
