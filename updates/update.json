@@ -1,12 +1,12 @@
 {
   "format": "ustracker-update/1",
   "product": "UStracker",
-  "version": "2.5.0",
+  "version": "2.6.0",
   "level": "normal",
-  "notes": "2.5.0: começo limpo (backup antes) + usuários globais",
-  "package": "UStracker-2.5.0.usup",
-  "sha256": "822c9c6e94d6832a134ec78cef2025d1d35ca8620ef859cc2e90cbc73ac87db2",
-  "size": 5276566,
-  "published_at": "2026-10-08T01:38:10.814708+00:00",
-  "sig": "b75bfec8ba1de922b06a9f9f55f21f53715db52c5b40893ab085eb2e689fbe3f1f5393657221d9e0f8314d37d59828b266af0fa7d640af1214787ae6252cf509"
+  "notes": "2.6.0: confiança — nuvem automática, backup conferido, Diagnóstico, LGPD",
+  "package": "UStracker-2.6.0.usup",
+  "sha256": "3ec243562edd2f9457a81bd6634482ba17283504c808db1dab803a3cd61b4974",
+  "size": 5289751,
+  "published_at": "2026-10-08T23:46:15.734381+00:00",
+  "sig": "282e81833e0b795bec85aa4f052c4a26189a1684bd5772363241c232f2eaacf2e95bf2b5c5a7e75a92b01b487e54194d9de397476d8c3bf780b19feb3d820606"
 }
