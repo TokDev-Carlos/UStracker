@@ -85,6 +85,7 @@ def reminder_message(db: Database, client_id: str, as_of: date | None = None) ->
             raise KeyError('client not found')
         comp = company(con)
         st = _client_state(con, c, today)
+        is_company = con.execute("SELECT 1 FROM client_documents WHERE client_id=? AND type='CNPJ' AND archived=0", (client_id,)).fetchone() is not None
     if not st:
         raise ValueError('client has nothing to pay')
     stage = st['stage'] or ('LATE3' if st['days'] > 0 else 'BEFORE')
@@ -96,7 +97,7 @@ def reminder_message(db: Database, client_id: str, as_of: date | None = None) ->
             code = pix.br_code(comp['pix_key'], comp['pix_name'], comp['pix_city'], amount_cents=amount, txid=f'{c["code"] or "UST"}{st["due_on"][:7]}')
         except ValueError:
             code = None
-    first = (c['legal_name'] or '').split(' ')[0]
+    first = (c['legal_name'] or '') if is_company else (c['legal_name'] or '').split(' ')[0]   # empresa: nome inteiro
     who = comp['name']
     if stage == 'BEFORE':
         body = f'sua mensalidade de {brl(amount)} vence em {dmy(st["due_on"])}.'

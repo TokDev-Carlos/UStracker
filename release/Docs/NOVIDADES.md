@@ -1,3 +1,20 @@
+# UStracker 2.8.0
+
+- **Cobrança (Financeiro › Cobrança):**
+  - **Lembrar hoje:** régua de 3 dias antes, no dia, 3 e 7 dias depois do vencimento. O botão abre o WhatsApp (app ou WhatsApp Web) ou o e-mail com a mensagem e o PIX prontos; você só aperta enviar e confirma "Enviado".
+  - **Inadimplência:** clientes em atraso, desde quando, quantos meses e o valor, com o percentual de inadimplentes.
+- **PIX da empresa:** QR Code e "copia e cola" com o valor certo. A chave fica em Sistema › Configurações. Não precisa de banco intermediário: você confere o recebimento e dá baixa.
+- **Recibo em PDF:** botão "Recibo PDF" em cada recebimento.
+- **2ª via em PDF:** com as mensalidades em aberto (ou a próxima) e o PIX do total.
+- **Despesas:**
+  - Ações: **Abrir | Editar | Excluir**. Em Abrir ficam Pagar, Vender ao cliente, Parar repetição e o histórico de pagamentos.
+  - Recorrentes (mensal e anual): em Abrir aparecem os meses (passados, o atual e os próximos 12). Marque e pague de uma vez: atrasados com a data do vencimento ou outra, e meses adiantados.
+  - Filtro de período (abre em "Mês atual + atrasadas") e de repetição.
+  - Destaque: "Vence em N dias" (até 3 dias) em laranja e "Atrasada" em vermelho.
+  - Excluir uma recorrente pergunta: "só esta" ou "esta e as próximas" (a repetição para). Tudo vai para a Lixeira.
+- **Ícone de Moto** redesenhado (motocicleta).
+- Boleto fica para depois (precisa de contrato com banco).
+
 # UStracker 2.7.0
 
 - **Frota: cada veículo é uma assinatura.** A frota só agrupa os veículos.
