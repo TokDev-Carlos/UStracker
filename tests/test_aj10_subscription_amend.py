@@ -35,11 +35,14 @@ class AJ10AmendTests(unittest.TestCase):
         after = amend_subscription(self.db, 1, self.sub['id'], {'expected_revision': self.sub['revision'], 'due_day': 5,
                                    'items': [{'catalog_id': self.plus['id'], 'quantity': 2}],
                                    'target_vehicle_ids': [self.v1['id'], self.v2['id']]})
-        self.assertEqual(after['effective_total_cents'], 16000)
+        # 2.7.0: dois veículos → duas assinaturas de R$ 80 (a original fica com o veículo que já tinha)
+        self.assertEqual(after['effective_total_cents'], 8000)
         self.assertEqual(after['due_day'], 5)
-        self.assertEqual(len(after['targets']), 2)
+        self.assertEqual([t['vehicle_id'] for t in after['targets']], [self.v1['id']])
+        self.assertEqual(len(after['group_ids']), 2)
         self.assertEqual(self.db.one('SELECT amount_cents FROM charges WHERE id=?', (old_charge['id'],))[0], 5000)
-        self.assertEqual(generate_charge(self.db, 1, self.sub['id'], '2026-10')['amount_cents'], 16000)
+        self.assertEqual(generate_charge(self.db, 1, self.sub['id'], '2026-10')['amount_cents'], 8000)
+        self.assertEqual(generate_charge(self.db, 1, after['group_ids'][1], '2026-10')['amount_cents'], 8000)
 
     def test_revision_conflict_is_atomic(self):
         with self.assertRaises(ValueError):

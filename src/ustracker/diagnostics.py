@@ -79,10 +79,10 @@ def alerts(root: Path, cloud: dict | None, environment: str = 'production') -> l
     """Avisos para o topo da tela (só administradores)."""
     out = []
     st = backup_status(root, environment)
-    if st and not st.get('verified'):
+    if st and st.get('verified') is False:   # 2.7.0: arquivo antigo (antes da 2.6, sem 'verified') não é falha
         out.append({'code': 'backup_failed', 'level': 'error',
                     'message': f"A cópia de segurança automática falhou: {st.get('error') or 'erro'}. O sistema tenta de novo em 1 hora."})
-    last_ok = st.get('last_verified_at')
+    last_ok = st.get('last_verified_at') or (st.get('at') if 'verified' not in st else None)
     try:
         stale = not last_ok or _now() - datetime.fromisoformat(last_ok) > BACKUP_STALE
     except ValueError:

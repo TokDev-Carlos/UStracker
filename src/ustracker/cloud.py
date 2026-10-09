@@ -483,6 +483,9 @@ class CloudSync:
             self.state.set(pending_delete=sorted(set(self.state.get('pending_delete', [])) | names))
             self.mark_dirty()
         out['retention'] = {k: kept[k] for k in ('removed', 'reduced', 'anonymized')}
+        from .fleet_split import split_all  # 2.7.0: assinatura de frota feita numa versão antiga → uma por veículo
+        if split_all(db, session.slot)['split']:
+            self.mark_dirty()
         if out['purged']:
             pending = set(self.state.get('pending_delete', [])) | {f'm.{n}' for n in out['erased_files']}
             self.state.set(pending_delete=sorted(pending), compact_before=(at or datetime.now(UTC)).isoformat())

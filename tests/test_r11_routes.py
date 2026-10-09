@@ -101,7 +101,7 @@ class R11SubscriptionRouteTests(unittest.TestCase):
 
         self.assertEqual((client_status, commercial_status), (201, 201))
         self.assertEqual(client_created['targets'][0]['target_type'], 'VEHICLE')
-        self.assertEqual(commercial_created['targets'][0]['target_type'], 'FLEET')
+        self.assertEqual(commercial_created['targets'][0]['target_type'], 'VEHICLE')  # 2.7.0: frota vira assinatura por veículo
         status, listing = asgi_request(self.app, 'GET', '/api/v1/subscriptions', self.session)
         self.assertEqual(status, 200)
         self.assertEqual(len(listing['items']), 2)

@@ -235,7 +235,7 @@ def _active_subscription_summaries(
               EXISTS(SELECT 1 FROM subscription_targets st WHERE st.subscription_id=s.id AND st.vehicle_id=?)
               OR (? IS NOT NULL AND EXISTS(SELECT 1 FROM subscription_targets st WHERE st.subscription_id=s.id AND st.fleet_id=?))
               OR EXISTS(SELECT 1 FROM subscription_items si WHERE si.subscription_id=s.id AND si.vehicle_id=?)
-            ) ORDER BY s.start_on DESC,s.created_at DESC''',
+            ) ORDER BY s.start_on DESC,s.created_at DESC,s.code DESC,s.id DESC''',
             (vehicle_id, vehicle_fleet_id, vehicle_fleet_id, vehicle_id))
     else:
         vehicle_fleet_id = fleet_id
@@ -252,7 +252,7 @@ def _active_subscription_summaries(
                         WHERE st.subscription_id=s.id AND v.fleet_id=? AND v.archived=0)
               OR EXISTS(SELECT 1 FROM subscription_items si JOIN vehicles v ON v.id=si.vehicle_id
                         WHERE si.subscription_id=s.id AND v.fleet_id=? AND v.archived=0)
-            ) ORDER BY s.start_on DESC,s.created_at DESC''', (fleet_id, fleet_id, fleet_id))
+            ) ORDER BY s.start_on DESC,s.created_at DESC,s.code DESC,s.id DESC''', (fleet_id, fleet_id, fleet_id))
     summaries=[]
     for row in rows:
         rec=dict(row)
@@ -322,7 +322,7 @@ def _subscription_summaries_bulk(db: Database) -> tuple[dict[str, list[dict]], d
         return {'id': sid, 'client_id': rec['client_id'], 'client_name': rec['client_name'], 'company_name': company or rec['company_name'],
                 'plan_names': ', '.join(names), 'effective_total_cents': sum(int(i['quantity']) * int(i['unit_price_cents']) for i in its),
                 'start_on': rec['start_on'], 'lifecycle_status': rec['lifecycle_status'], 'target_scope': scope, 'code': rec.get('code')}
-    order = lambda ids: sorted(ids, key=lambda sid: (subs[sid]['start_on'] or '', subs[sid]['created_at'] or ''), reverse=True)
+    order = lambda ids: sorted(ids, key=lambda sid: (subs[sid]['start_on'] or '', subs[sid]['created_at'] or '', subs[sid].get('code') or '', sid), reverse=True)
     by_vehicle: dict[str, list[dict]] = {}
     fleet_vehicle_subs: dict[str, set] = {}
     for v in vehicles:

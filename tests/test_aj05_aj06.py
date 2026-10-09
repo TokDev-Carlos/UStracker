@@ -97,7 +97,7 @@ class AJ06SubscriptionDetailTests(unittest.TestCase):
         item = detail['items'][0]
         self.assertEqual((item['code'], item['monthly_cents'], item['plans'][0]['quantity']), ('CLI-0001-A01', 20000, 2))
         vdetail = mobility_subscription_detail(self.db, vehicle_id=self.vehicle['id'])
-        self.assertEqual((vdetail['active_count'], vdetail['items'][0]['target_scope']), (1, 'DIRECT_AND_FLEET'))
+        self.assertEqual((vdetail['active_count'], vdetail['items'][0]['target_scope']), (1, 'DIRECT'))  # 2.7.0: frota com 1 veículo → assinatura do veículo
         self.assertEqual(vdetail['target']['category_label'], 'Carro')
 
 

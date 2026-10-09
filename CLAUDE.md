@@ -48,8 +48,9 @@ Só com o check **Testes** (GitHub Actions) verde no commit da `Dev`. Testes pes
 ## Testes rápidos
 `Ferramentas\Testes_Rapidos.ps1` ou `$env:PYTHONPATH="src;."; $env:USTRACKER_DEV_PLAINTEXT="1"; .venv\Scripts\python -m unittest discover -s tests -p "test_*.py"` e `node --test tests/*.test.mjs`.
 
-## Estado atual (2026-10-08)
+## Estado atual (2026-10-09)
+- Lançada: 2.7.0 — frota = 1 assinatura por veículo, pagar frota toda, avisos de backup corrigidos.
 - Lançada: 2.6.0 (main, tag, Release) — confiança: nuvem automática e vez de gravar corrigida, backup diário conferido, Diagnóstico, LGPD (prazos 14 dias/5 anos, exportar dados), CI no GitHub.
 - 2.5.0 e 2.6.0 ainda não validadas no PC do Carlos (`Entregas\2.5.0\VALIDAR.md` e `Entregas\2.6.0\VALIDAR.md`). Canal `updates/` anuncia 2.4.1 (lançar pelo Aplicador opção 2).
-- Próximo: 2.7 Cobrança (plano no projeto claude.ai: `PANORAMA_2.5_E_PLANO_PROFISSIONAL.md`).
-- Pendente do usuário: frota — cobrança acompanha veículo que entra/sai depois do contrato?
+- Próximo: 2.8 Cobrança (recibo, lembretes, PIX; plano no projeto claude.ai: `PANORAMA_2.5_E_PLANO_PROFISSIONAL.md`).
+- Frota (decisão 2026-10-09): cada veículo é uma assinatura; a frota só agrupa e pode ser paga de uma vez; veículo novo na frota não ganha assinatura sozinho.
