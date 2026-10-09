@@ -75,7 +75,7 @@ def _remove_everything(con, cid: str, vehicles: list[str], fleets: list[str]) ->
         con.execute('DELETE FROM vehicles WHERE id=?', (vid,))
     for fid in fleets:
         con.execute('DELETE FROM fleets WHERE id=?', (fid,))
-    for t in ('client_documents', 'client_companies'):
+    for t in ('client_documents', 'client_companies', 'collection_reminders'):
         con.execute(f'DELETE FROM {t} WHERE client_id=?', (cid,))
     con.execute('UPDATE logical_codes SET client_id=NULL WHERE client_id=?', (cid,))
     con.execute('DELETE FROM clients WHERE id=?', (cid,))
@@ -92,6 +92,7 @@ def _anonymize(con, cid: str, vehicles: list[str], fleets: list[str]) -> None:
     con.execute('''UPDATE clients SET legal_name=?,trade_name=NULL,public_name=NULL,document=NULL,email=NULL,phone=NULL,
                    address=NULL,notes=NULL,updated_at=? WHERE id=?''', (f'Cliente removido #{tag}', now(), cid))
     con.execute('DELETE FROM client_documents WHERE client_id=?', (cid,))
+    con.execute('DELETE FROM collection_reminders WHERE client_id=?', (cid,))
     con.execute("UPDATE client_companies SET legal_name='Empresa removida',trade_name=NULL,document=NULL,normalized_document=NULL WHERE client_id=?", (cid,))
     for i, vid in enumerate(vehicles):
         con.execute('''UPDATE vehicles SET plate=?,brand=NULL,model=NULL,year=NULL,renavam=NULL,tracker_ref=NULL,tracker_serial_imei=NULL,

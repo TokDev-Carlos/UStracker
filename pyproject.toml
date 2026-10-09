@@ -28,7 +28,7 @@ version = {attr = "ustracker.__version__"}
 [tool.ruff]
 target-version = "py313"
 line-length = 160
-extend-exclude = ["context", "Dist", "dist", "build"]
+extend-exclude = ["context", "Dist", "dist", "build", "src/ustracker/_vendor"]
 
 [tool.ruff.lint]
 select = ["E9", "F"]

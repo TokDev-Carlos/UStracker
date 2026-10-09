@@ -941,6 +941,38 @@ def create_app(root: Path | str) -> FastAPI:
     def billing_client(client_id: str, request: Request):
         return client_payment_options(get_db(session_required(request, True)), client_id)
 
+    # 2.8.0 — recibo e 2ª via em PDF (PIX da empresa)
+    @app.get('/api/v1/payments/{pid}/receipt.pdf')
+    def payment_receipt(pid: str, request: Request):
+        from .documents import receipt_pdf
+        blob, name = receipt_pdf(get_db(session_required(request, True)), pid)
+        return Response(blob, media_type='application/pdf', headers={'Content-Disposition': f'attachment; filename="{name}"'})
+
+    @app.get('/api/v1/billing/clients/{client_id}/bill.pdf')
+    def billing_bill_pdf(client_id: str, request: Request, subscriptions: str = Query(default='')):
+        from .documents import bill_pdf
+        ids = [s for s in subscriptions.split(',') if s] or None
+        blob, name, _ = bill_pdf(get_db(session_required(request, True)), client_id, ids)
+        return Response(blob, media_type='application/pdf', headers={'Content-Disposition': f'attachment; filename="{name}"'})
+
+    # 2.8.0 — Cobrança: régua de lembretes e inadimplência
+    @app.get('/api/v1/collections')
+    def collections_get(request: Request):
+        from . import collections_ as col
+        db = get_db(session_required(request, True))
+        return {'queue': col.reminder_queue(db), **col.overdue(db)}
+
+    @app.get('/api/v1/collections/{client_id}/message')
+    def collections_message(client_id: str, request: Request):
+        from . import collections_ as col
+        return col.reminder_message(get_db(session_required(request, True)), client_id)
+
+    @app.post('/api/v1/collections/{client_id}/reminded', status_code=201)
+    def collections_reminded(client_id: str, request: Request, p: dict = Body(...)):
+        from . import collections_ as col
+        session = session_required(request, True)
+        return mutation(request, session, f'POST /collections/{client_id}/reminded', p, lambda db: col.mark_reminded(db, session.slot, client_id, p))
+
     @app.get('/api/v1/billing/subscriptions/{sid}')
     def billing_subscription(sid: str, request: Request):
         return subscription_payment_status(get_db(session_required(request, True)), sid)
@@ -1008,9 +1040,20 @@ def create_app(root: Path | str) -> FastAPI:
         return mutation(request, session, f'PATCH /expenses/{eid}', p, lambda db: update_expense(db, session.slot, eid, p))
 
     @app.delete('/api/v1/expenses/{eid}')
-    def expenses_delete(eid: str, request: Request):
+    def expenses_delete(eid: str, request: Request, scope: str = Query(default='ONE')):
         session = session_required(request, True)
-        return mutation(request, session, f'DELETE /expenses/{eid}', {'id': eid}, lambda db: delete_expense(db, session.slot, eid))
+        return mutation(request, session, f'DELETE /expenses/{eid}', {'id': eid, 'scope': scope}, lambda db: delete_expense(db, session.slot, eid, scope))
+
+    @app.get('/api/v1/expenses/{eid}/series')
+    def expenses_series(eid: str, request: Request):
+        from .expenses import expense_series
+        return expense_series(get_db(session_required(request, True)), eid)
+
+    @app.post('/api/v1/expenses/{eid}/pay-months')
+    def expenses_pay_months(eid: str, request: Request, p: dict = Body(...)):
+        from .expenses import pay_expense_months
+        session = session_required(request, True)
+        return mutation(request, session, f'POST /expenses/{eid}/pay-months', p, lambda db: pay_expense_months(db, session.slot, eid, p))
 
     @app.get('/api/v1/expenses/{eid}/disbursements')
     def expense_disbursements(eid: str, request: Request):
@@ -1071,12 +1114,16 @@ def create_app(root: Path | str) -> FastAPI:
         allowed = {
             'company_legal_name','company_display_name','contact_phone','contact_email','address_display',
             'default_grace_days','theme_primary','theme_accent','backup_retention',
+            'company_document','pix_key','pix_name','pix_city',   # 2.8.0: recibo, 2ª via e PIX
         }
         def action(db):
             with db.transaction() as con:
                 for k, v in p.items():
                     if k not in allowed: raise ValueError(f'setting not allowed: {k}')
                     if k == 'backup_retention' and not (1 <= int(v) <= 100): raise ValueError('backup_retention must be 1..100')
+                    if k == 'pix_key' and str(v).strip():
+                        from .pix import normalize_key
+                        normalize_key(v)
                     con.execute("INSERT OR REPLACE INTO settings(key,value,updated_at) VALUES(?,?,datetime('now'))", (k, str(v)))
             if session.environment == 'production': rebuild_public(root, db)
             return {'ok': True}
