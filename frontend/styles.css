@@ -67,3 +67,6 @@ tr.exp-future td{color:#5f6b7a}
 .expense-pays{margin:4px 0 12px;padding-left:18px}
 .months-quick{display:flex;gap:8px;margin:6px 0}
 .delete-choice .actions{flex-wrap:wrap}
+/* 2.8.0 — Cobrança */
+.reminder-text{width:100%;font:inherit;font-size:.9rem;padding:10px;border:1px solid var(--line);border-radius:8px;background:#f8fafc;resize:vertical}
+.reminder .actions a.ui-btn{text-decoration:none}

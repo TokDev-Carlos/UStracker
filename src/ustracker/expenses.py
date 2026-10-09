@@ -299,7 +299,7 @@ def pay_expense_months(db: Database, actor: int, expense_id: str, p: dict, as_of
         paid, out = 0, []
         for comp in comps:
             if comp not in allowed:
-                raise ValueError(f'month {comp} is outside the allowed range')
+                raise ValueError('month outside the allowed range')
             row = con.execute('SELECT * FROM expenses WHERE recurrence_id=? AND competence=?', (tpl['id'], comp)).fetchone()
             if row is None:
                 row = _occurrence(con, actor, tpl, comp)

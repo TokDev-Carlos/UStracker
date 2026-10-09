@@ -212,6 +212,10 @@ CREATE INDEX IF NOT EXISTS ix_service_coverage_subscription ON service_coverage_
 CREATE INDEX IF NOT EXISTS ix_service_coverage_payment ON service_coverage_periods(origin_payment_id);
 CREATE UNIQUE INDEX IF NOT EXISTS ux_expense_recurrence_comp ON expenses(recurrence_id,competence) WHERE recurrence_id IS NOT NULL;
 -- 2.8.0: mês de despesa recorrente excluído ("só esta") não é gerado de novo
+-- 2.8.0: lembretes de cobrança enviados (régua)
+CREATE TABLE IF NOT EXISTS collection_reminders(id TEXT PRIMARY KEY, client_id TEXT NOT NULL REFERENCES clients(id), stage TEXT NOT NULL, due_on TEXT NOT NULL,
+ channel TEXT NOT NULL, sent_at TEXT NOT NULL, actor INTEGER);
+CREATE INDEX IF NOT EXISTS ix_collection_reminders_client ON collection_reminders(client_id,stage,due_on);
 CREATE TABLE IF NOT EXISTS expense_skips(recurrence_id TEXT NOT NULL, competence TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY(recurrence_id,competence));
 CREATE UNIQUE INDEX IF NOT EXISTS ux_attachments_local_hash ON attachments(sha256) WHERE origin='LOCAL' AND sha256 IS NOT NULL;
 CREATE INDEX IF NOT EXISTS ix_attachments_entity ON attachments(entity_type,entity_id,created_at);

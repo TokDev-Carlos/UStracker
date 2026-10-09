@@ -107,6 +107,7 @@ _RULES: list[tuple[str, str, object]] = [
     ('GET', r'/finance$', ('finance.view', 'expenses.view', 'fiscal.view')),
     ('GET', r'/payments(/.*)?$', 'finance.view'),
     ('GET', r'/billing(/.*)?$', ('finance.view', 'commercial.view')),
+    ('GET|POST', r'/collections(/.*)?$', 'finance.view'),   # 2.8.0: régua de cobrança (lembrete é registro, não muda valores)
     ('POST', r'/charges/[^/]+/adjustments$', 'finance.reverse'),  # changes what the client owes
     ('GET', r'/(subscriptions|commercial|direct-sales|credits|charges)(/.*)?$', 'commercial.view'),
     ('POST|PATCH|PUT', r'/(subscriptions|commercial|direct-sales|credits|charges)(/.*)?$', 'commercial.edit'),
