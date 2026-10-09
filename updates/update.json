@@ -1,12 +1,12 @@
 {
   "format": "ustracker-update/1",
   "product": "UStracker",
-  "version": "2.7.0",
+  "version": "2.8.0",
   "level": "normal",
-  "notes": "2.7.0: frota = uma assinatura por veículo; pagar frota toda num recibo; avisos de backup corrigidos",
-  "package": "UStracker-2.7.0.usup",
-  "sha256": "3455b7e46c0da73ca94781d81fca6804b6c8c579942568ecabd4744f11133920",
-  "size": 5295889,
-  "published_at": "2026-10-09T12:48:26.179861+00:00",
-  "sig": "4a882d5cb63be866551a87f52321322beae7b31ff01b8cb3093e1e9eee5f046733dde79c507cc5253a169bd799d5fcd1bfd7913bf30989f6b02456bb9d96b60b"
+  "notes": "2.8.0: Cobrança (régua de lembretes, inadimplência, PIX, recibo e 2ª via em PDF), Despesas (Abrir/Editar/Excluir, meses da recorrente, período, vencendo) e ícone Moto",
+  "package": "UStracker-2.8.0.usup",
+  "sha256": "e913e3463f90f9ed7508e7808b7a6d35a740a89f30c744e068a71139eea00ba7",
+  "size": 5377325,
+  "published_at": "2026-10-09T14:19:23.909550+00:00",
+  "sig": "18cae0872fa1a0f9f224d9732093d40b5d8d6b58a6424eefe289358a58909cac707a2542cd647447aede7c82e827be81b5e9c41278c39dbc33ebe5132055b00d"
 }
