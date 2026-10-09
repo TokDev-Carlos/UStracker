@@ -24,6 +24,7 @@ import { bindCatalogForm, catalogPayload, renderCatalogEditForm, renderCatalogPa
 import { renderCommercialPage, renderSubscriptionAmendForm, subscriptionMenuItems } from './pages/commercial.js';
 import { openActionMenu } from './ui/action-menu.js';
 import { renderFinancePage, renderSellExpenseForm, renderExpenseEditForm, EXPENSE_CATEGORIES } from './pages/finance.js';
+import { filterExpenses, renderExpenseRows, renderExpenseOpen, renderDeleteChoice, monthsPayload } from './ui/expense-view.js';
 import { localToday, openPaymentDialog } from './ui/payment-dialog.js';
 import { renderOverviewDrilldown, renderOverviewPage } from './pages/dashboard.js';
 import { entityChoices, renderFilesPage } from './pages/files.js';
@@ -39,6 +40,7 @@ const apiClient=createApi({csrfState:{get:()=>csrf,set:value=>{csrf=value}}});
 const session=createSession({api:apiClient,onUserChange:user=>{me=user}});
 // AJ-03: every successful mutation re-reads the page behind any open drawer, so projections never need F5.
 let pageReload=null,projectionTimer=null;
+let expenseFilter={period:"current",repeat:"",from:"",to:""}; // 2.8.0: filtro da lista de Despesas (fica ao recarregar)
 function scheduleProjectionRefresh(path,method){
   if(!method||['GET','HEAD','OPTIONS'].includes(String(method).toUpperCase())||/^\/(auth|system\/shutdown)/.test(path))return;
   const seq=navigationSequence;clearTimeout(projectionTimer);
@@ -457,7 +459,7 @@ async function financePage(lease=null){
   current='finance';document.querySelectorAll('[data-page]').forEach(b=>b.classList.toggle('active',b.dataset.page==='finance'));
   const reload=()=>show('finance');
   const draw=()=>{
-    if(!content(renderFinancePage(data,active),lease))return;
+    if(!content(renderFinancePage(data,active,expenseFilter),lease))return;
     document.querySelectorAll('[data-finance-tab]').forEach(button=>button.onclick=()=>{active=button.dataset.financeTab;history.replaceState(null,'','#finance/'+active);draw()});
     const openPay=document.querySelector('[data-open-payment]');if(openPay)openPay.onclick=()=>openPaymentDialog({api,search:searchClientEntities,notify:toast,onSuccess:reload});
     document.querySelectorAll('[data-reverse-payment]').forEach(button=>bindActionButton(button,{key:'payment-reverse:'+button.dataset.reversePayment,confirm:'Estornar este recebimento? As mensalidades cobertas voltam a ficar em aberto.',action:()=>api('/payments/'+encodeURIComponent(button.dataset.reversePayment)+'/reverse',{method:'POST',body:'{}'}),refresh:reload,successMessage:'Recebimento estornado.',notify:toast}));
@@ -469,21 +471,45 @@ async function financePage(lease=null){
     const expense=document.querySelector('#financeExpenseForm');
     if(expense){bindMoneyInputs(expense);bindActionForm(expense,{key:'expense-create',action:async()=>{const p=formData(expense);p.paid=p.paid==='true';if(!p.supplier)delete p.supplier;await api('/expenses',{method:'POST',body:JSON.stringify(p)})},refresh:()=>{active='expenses';return reload()},successMessage:'Despesa registrada.',notify:toast});}
     const byId=id=>(data.expenses||[]).find(row=>row.id===id);
-    document.querySelectorAll('[data-expense-pay]').forEach(button=>bindActionButton(button,{key:'expense-pay:'+button.dataset.expensePay,action:()=>api('/expenses/'+encodeURIComponent(button.dataset.expensePay)+'/pay',{method:'POST',body:'{}'}),refresh:reload,successMessage:'Despesa paga hoje.',notify:toast}));
-    document.querySelectorAll('[data-expense-stop]').forEach(button=>bindActionButton(button,{key:'expense-stop:'+button.dataset.expenseStop,confirm:'Parar a repetição desta despesa? As já lançadas continuam.',action:()=>api('/expenses/'+encodeURIComponent(button.dataset.expenseStop)+'/stop-repeat',{method:'POST',body:'{}'}),refresh:reload,successMessage:'Repetição encerrada.',notify:toast}));
-    document.querySelectorAll('[data-expense-edit]').forEach(button=>button.onclick=()=>{
-      const row=byId(button.dataset.expenseEdit);if(!row)return;
-      const drawer=openDrawer({title:'Editar despesa',subtitle:row.description||'',content:renderExpenseEditForm(row,data.expense_categories||EXPENSE_CATEGORIES)});
-      const form=drawer.querySelector('#expenseEditForm');bindMoneyInputs(form);
-      bindActionForm(form,{key:'expense-edit:'+row.id,action:async()=>{const p=formData(form);await api('/expenses/'+encodeURIComponent(row.id),{method:'PATCH',body:JSON.stringify(p)});closeOverlay()},refresh:()=>{active='expenses';return reload()},successMessage:'Despesa atualizada.',notify:toast});
-    });
-    document.querySelectorAll('[data-expense-delete]').forEach(button=>bindActionButton(button,{key:'expense-delete:'+button.dataset.expenseDelete,confirm:button.dataset.expensePaid?'Excluir esta despesa JÁ PAGA? O pagamento sai junto do custo. Ela fica 14 dias na Lixeira (Sistema › Lixeira) e pode ser restaurada com o pagamento.':'Excluir esta despesa? Ela fica 14 dias na Lixeira (Sistema › Lixeira) e pode ser restaurada.',action:()=>api('/expenses/'+encodeURIComponent(button.dataset.expenseDelete),{method:'DELETE'}),refresh:reload,successMessage:'Despesa excluída.',notify:toast}));
-    document.querySelectorAll('[data-expense-sell]').forEach(button=>button.onclick=()=>{
-      const row=byId(button.dataset.expenseSell);if(!row)return;
-      const drawer=openDrawer({title:'Vender ao cliente',subtitle:'Transforma este custo em uma Compra Direta.',content:renderSellExpenseForm(row)});
-      const form=drawer.querySelector('#sellExpenseForm');bindMoneyInputs(form);bindEntityAutocomplete(form,{search:searchClientEntities});
-      bindActionForm(form,{key:'expense-sell:'+row.id,action:async()=>{const p=formData(form);await api('/expenses/'+encodeURIComponent(row.id)+'/convert-sale',{method:'POST',body:JSON.stringify({client_id:p.client_id,price:p.price})});closeOverlay()},refresh:reload,successMessage:'Compra direta criada.',notify:toast});
-    });
+    const today=localToday();
+    const goExpenses=()=>{active='expenses';return reload()};
+    // 2.8.0 — Abrir: pagar, vender, parar repetição e os meses da recorrente (retroativo/adiantado em lote)
+    const openExpense=async id=>{
+      const row=byId(id);if(!row)return;
+      let series=null,payments=[];
+      try{[series,payments]=await Promise.all([row.repeat&&row.repeat!=='ONCE'?api('/expenses/'+encodeURIComponent(id)+'/series'):null,api('/expenses/'+encodeURIComponent(id)+'/disbursements').then(r=>r.items||[])])}catch(error){toast({type:'error',message:error.message})}
+      const drawer=openDrawer({title:row.description||'Despesa',subtitle:[row.category_label||row.category,row.repeat_label].filter(Boolean).join(' · '),content:renderExpenseOpen(row,{series,payments,today})});
+      const payBtn=drawer.querySelector('[data-open-pay]');if(payBtn)bindActionButton(payBtn,{key:'expense-pay:'+id,action:async()=>{await api('/expenses/'+encodeURIComponent(id)+'/pay',{method:'POST',body:'{}'});closeOverlay()},refresh:goExpenses,successMessage:'Despesa paga hoje.',notify:toast});
+      const stopBtn=drawer.querySelector('[data-open-stop]');if(stopBtn)bindActionButton(stopBtn,{key:'expense-stop:'+id,confirm:'Parar a repetição desta despesa? As já lançadas continuam.',action:async()=>{await api('/expenses/'+encodeURIComponent(stopBtn.dataset.openStop)+'/stop-repeat',{method:'POST',body:'{}'});closeOverlay()},refresh:goExpenses,successMessage:'Repetição encerrada.',notify:toast});
+      const sellBtn=drawer.querySelector('[data-open-sell]');if(sellBtn)sellBtn.onclick=()=>{closeOverlay();const d2=openDrawer({title:'Vender ao cliente',subtitle:'Transforma este custo em uma Compra Direta.',content:renderSellExpenseForm(row)});const form=d2.querySelector('#sellExpenseForm');bindMoneyInputs(form);bindEntityAutocomplete(form,{search:searchClientEntities});bindActionForm(form,{key:'expense-sell:'+row.id,action:async()=>{const p=formData(form);await api('/expenses/'+encodeURIComponent(row.id)+'/convert-sale',{method:'POST',body:JSON.stringify({client_id:p.client_id,price:p.price})});closeOverlay()},refresh:goExpenses,successMessage:'Compra direta criada.',notify:toast})};
+      const months=drawer.querySelector('#expenseMonthsForm');
+      if(months){
+        const total=()=>{const picked=[...months.querySelectorAll('[name=competence]:checked')].map(i=>i.value);const sum=(series.months||[]).filter(m=>picked.includes(m.competence)).reduce((a,m)=>a+Number(m.amount_cents||0)-Number(m.paid_cents||0),0);months.querySelector('[data-months-total]').textContent=picked.length?`${picked.length} ${picked.length===1?'mês marcado':'meses marcados'} · ${formatBRL(sum)}`:'Nenhum mês marcado.'};
+        months.addEventListener('change',total);
+        months.querySelectorAll('[data-mark]').forEach(b=>b.onclick=()=>{months.querySelectorAll('[name=competence]:not(:disabled)').forEach(i=>{const m=(series.months||[]).find(x=>x.competence===i.value);i.checked=b.dataset.mark==='late'&&m&&m.due_on<today});total()});
+        bindActionForm(months,{key:'expense-months:'+id,action:async()=>{const p=monthsPayload(months);if(!p.competences.length)throw new Error('Marque pelo menos um mês.');const r=await api('/expenses/'+encodeURIComponent(id)+'/pay-months',{method:'POST',body:JSON.stringify(p)});closeOverlay();return r},refresh:goExpenses,successMessage:'Meses pagos.',notify:toast});
+      }
+    };
+    const bindExpenseRows=()=>{
+      document.querySelectorAll('[data-expense-open]').forEach(button=>button.onclick=()=>openExpense(button.dataset.expenseOpen));
+      document.querySelectorAll('[data-expense-edit]').forEach(button=>button.onclick=()=>{
+        const row=byId(button.dataset.expenseEdit);if(!row)return;
+        const drawer=openDrawer({title:'Editar despesa',subtitle:row.description||'',content:renderExpenseEditForm(row,data.expense_categories||EXPENSE_CATEGORIES)});
+        const form=drawer.querySelector('#expenseEditForm');bindMoneyInputs(form);
+        bindActionForm(form,{key:'expense-edit:'+row.id,action:async()=>{const p=formData(form);await api('/expenses/'+encodeURIComponent(row.id),{method:'PATCH',body:JSON.stringify(p)});closeOverlay()},refresh:goExpenses,successMessage:'Despesa atualizada.',notify:toast});
+      });
+      document.querySelectorAll('[data-expense-delete]').forEach(button=>{
+        const row=byId(button.dataset.expenseDelete);if(!row)return;
+        const del=scope=>api('/expenses/'+encodeURIComponent(row.id)+'?scope='+scope,{method:'DELETE'});
+        if(row.repeat&&row.repeat!=='ONCE'&&row.recurrence_id){
+          button.onclick=()=>{const drawer=openDrawer({title:'Excluir despesa recorrente',subtitle:row.description||'',content:renderDeleteChoice(row)});drawer.querySelectorAll('[data-delete-scope]').forEach(b=>bindActionButton(b,{key:'expense-delete:'+row.id+b.dataset.deleteScope,action:async()=>{const r=await del(b.dataset.deleteScope);closeOverlay();return r},refresh:goExpenses,successMessage:b.dataset.deleteScope==='ONE'?'Despesa excluída (só esta).':'Despesa e próximas excluídas; repetição encerrada.',notify:toast}))};
+        }else bindActionButton(button,{key:'expense-delete:'+row.id,confirm:Number(row.paid_cents)>0?'Excluir esta despesa JÁ PAGA? O pagamento sai junto do custo. Ela fica 14 dias na Lixeira (Sistema › Lixeira) e pode ser restaurada com o pagamento.':'Excluir esta despesa? Ela fica 14 dias na Lixeira (Sistema › Lixeira) e pode ser restaurada.',action:()=>del('ONE'),refresh:goExpenses,successMessage:'Despesa excluída.',notify:toast});
+      });
+      applyPermissions?.(document);
+    };
+    bindExpenseRows();
+    const filters=document.querySelector('[data-expense-filters]');
+    if(filters)filters.addEventListener('change',()=>{expenseFilter={period:filters.querySelector('[name=period]').value,repeat:filters.querySelector('[name=repeat]').value,from:filters.querySelector('[name=from]').value,to:filters.querySelector('[name=to]').value};filters.querySelectorAll('[data-expense-custom]').forEach(el=>el.hidden=expenseFilter.period!=='custom');document.querySelector('[data-expense-tbody]').innerHTML=renderExpenseRows(filterExpenses(data.expenses||[],expenseFilter,today),today);bindExpenseRows()});
     const fiscal=document.querySelector('#financeFiscalForm');bindActionForm(fiscal,{key:'fiscal-create',action:async()=>{const p=formData(fiscal);if(!p.amount)delete p.amount;if(!p.due_on)delete p.due_on;if(!p.external_ref)delete p.external_ref;await api('/fiscal',{method:'POST',body:JSON.stringify(p)})},refresh:reload,successMessage:'Obrigação fiscal registrada.',notify:toast});
   };draw();
 }

@@ -71,6 +71,9 @@ def restore(db: Database, actor: int, trash_id: str) -> dict:
         extra: dict = {}
         if kind == 'expense':
             _insert(con, 'expenses', payload['row'])
+            row = payload['row']  # 2.8.0: o mês volta e deixa de ser "pulado" pela repetição
+            if row.get('recurrence_id'):
+                con.execute('DELETE FROM expense_skips WHERE recurrence_id=? AND competence=?', (row['recurrence_id'], row['competence']))
             for row in payload.get('disbursements', []):
                 _insert(con, 'disbursements', row)
         elif kind == 'catalog':

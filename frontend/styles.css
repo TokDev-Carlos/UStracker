@@ -48,3 +48,22 @@ button[aria-busy=true],form[aria-busy=true] button{cursor:progress}.actions>butt
 
 /* G-05 */
 .update-banner{position:fixed;left:0;right:0;bottom:0;z-index:90;display:flex;gap:12px;align-items:center;justify-content:center;padding:8px 12px;background:#123c8c;color:#fff}.update-banner .ui-btn{min-height:30px}.update-block{position:fixed;inset:0;z-index:200;display:grid;place-items:center;background:rgba(16,24,40,.72)}.update-block .auth{background:#fff;max-width:520px}
+
+/* 2.8.0 — Despesas: filtro de período e destaque de vencimento */
+.expense-filters{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-bottom:12px}
+.expense-filters .field{min-width:160px;margin:0}
+tr.exp-late td{background:#fdecec}
+tr.exp-late td:first-child{box-shadow:inset 4px 0 0 #d93025}
+tr.exp-soon td{background:#fff4e0}
+tr.exp-soon td:first-child{box-shadow:inset 4px 0 0 #f29900}
+tr.exp-future td{color:#5f6b7a}
+.due-flag{display:inline-block;margin-left:6px;padding:1px 8px;border-radius:999px;font-size:.78em;font-weight:700;white-space:nowrap}
+.due-late{background:#d93025;color:#fff}
+.due-soon{background:#f29900;color:#fff;animation:due-pulse 1.6s ease-in-out infinite}
+@keyframes due-pulse{50%{box-shadow:0 0 0 4px rgba(242,153,0,.25)}}
+@media (prefers-reduced-motion:reduce){.due-soon{animation:none}}
+.expense-info{display:grid;grid-template-columns:max-content 1fr;gap:4px 16px;margin:0 0 12px}
+.expense-info dt{color:#5f6b7a}
+.expense-pays{margin:4px 0 12px;padding-left:18px}
+.months-quick{display:flex;gap:8px;margin:6px 0}
+.delete-choice .actions{flex-wrap:wrap}

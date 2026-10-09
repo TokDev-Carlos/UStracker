@@ -22,7 +22,7 @@ export const ELEMENT_PERMISSION = [
   ['[data-finance-tab="payments"]', ['finance.view']],
   ['[data-finance-tab="expenses"]', ['expenses.view']],
   ['[data-finance-tab="fiscal"]', ['fiscal.view']],
-  ['[data-expense-pay], [data-expense-sell], [data-expense-stop], #financeExpenseForm, details:has(> #financeExpenseForm)', ['expenses.edit']],
+  ['[data-expense-pay], [data-expense-sell], [data-expense-stop], [data-expense-edit], [data-open-pay], [data-open-sell], [data-open-stop], #expenseMonthsForm, #financeExpenseForm, details:has(> #financeExpenseForm)', ['expenses.edit']],
   ['[data-expense-delete]', ['expenses.delete']],
   ['#financeFiscalForm', ['fiscal.edit']],
   ['#financePaymentForm, details:has(> #financePaymentForm), #coverageForm', ['finance.pay']],

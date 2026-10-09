@@ -1008,9 +1008,20 @@ def create_app(root: Path | str) -> FastAPI:
         return mutation(request, session, f'PATCH /expenses/{eid}', p, lambda db: update_expense(db, session.slot, eid, p))
 
     @app.delete('/api/v1/expenses/{eid}')
-    def expenses_delete(eid: str, request: Request):
+    def expenses_delete(eid: str, request: Request, scope: str = Query(default='ONE')):
         session = session_required(request, True)
-        return mutation(request, session, f'DELETE /expenses/{eid}', {'id': eid}, lambda db: delete_expense(db, session.slot, eid))
+        return mutation(request, session, f'DELETE /expenses/{eid}', {'id': eid, 'scope': scope}, lambda db: delete_expense(db, session.slot, eid, scope))
+
+    @app.get('/api/v1/expenses/{eid}/series')
+    def expenses_series(eid: str, request: Request):
+        from .expenses import expense_series
+        return expense_series(get_db(session_required(request, True)), eid)
+
+    @app.post('/api/v1/expenses/{eid}/pay-months')
+    def expenses_pay_months(eid: str, request: Request, p: dict = Body(...)):
+        from .expenses import pay_expense_months
+        session = session_required(request, True)
+        return mutation(request, session, f'POST /expenses/{eid}/pay-months', p, lambda db: pay_expense_months(db, session.slot, eid, p))
 
     @app.get('/api/v1/expenses/{eid}/disbursements')
     def expense_disbursements(eid: str, request: Request):

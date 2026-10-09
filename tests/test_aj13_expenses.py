@@ -54,8 +54,9 @@ class AJ13ExpenseTests(unittest.TestCase):
             pay_expense(self.db, 1, tpl['id'], as_of=TODAY)
         stop_recurring_expense(self.db, 1, tpl['id'])
         self.assertEqual(run_recurring_expenses(self.db, 1, date(2027, 3, 1))['created'], 0)
-        with self.assertRaises(ValueError):
-            delete_expense(self.db, 1, tpl['id'])
+        # 2.8.0: o 1º mês de uma recorrente pode ser excluído ("só esta"); os outros meses ficam
+        self.assertTrue(delete_expense(self.db, 1, tpl['id'])['deleted'])
+        self.assertEqual(sorted(r['competence'] for r in expense_rows(self.db) if r['description'] == 'Plataforma GPS'), ['2026-09', '2026-10'])
         once = self.make(repeat='ONCE', description='Chip')
         self.assertTrue(delete_expense(self.db, 1, once['id'])['deleted'])
 

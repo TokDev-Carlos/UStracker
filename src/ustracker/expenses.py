@@ -103,25 +103,30 @@ def _due_occurrences(con, today: date, only: str | None = None):
         comp = _shift(tpl['competence'], step)
         guard = 0
         while comp <= current and guard < 240:
-            if not con.execute('SELECT 1 FROM expenses WHERE recurrence_id=? AND competence=?', (tpl['id'], comp)).fetchone():
+            if not con.execute('SELECT 1 FROM expenses WHERE recurrence_id=? AND competence=?', (tpl['id'], comp)).fetchone() \
+                    and not con.execute('SELECT 1 FROM expense_skips WHERE recurrence_id=? AND competence=?', (tpl['id'], comp)).fetchone():
                 yield tpl, comp
             comp = _shift(comp, step); guard += 1
+
+
+def _occurrence(con, actor: int, tpl, comp: str) -> dict:
+    try:
+        day = int(str(tpl['due_on'] or '01')[-2:])
+    except ValueError:
+        day = 1
+    ts = now()
+    rec = {'id': uid(), 'category': tpl['category'], 'description': tpl['description'], 'competence': comp,
+           'due_on': due_date(comp, day).isoformat(), 'expected_amount_cents': tpl['expected_amount_cents'], 'supplier': tpl['supplier'],
+           'client_id': tpl['client_id'], 'vehicle_id': tpl['vehicle_id'], 'subscription_id': tpl['subscription_id'],
+           'catalog_id': tpl['catalog_id'], 'recurrence_id': tpl['id'], 'status': 'OPEN', 'revision': 1, 'created_at': ts,
+           'updated_at': ts, 'repeat': tpl['repeat'], 'repeat_active': 0}
+    return _insert(con, actor, rec, 'EXPENSE_RECUR_GENERATE')
 
 
 def _generate(con, actor: int, today: date, only: str | None = None) -> list[dict]:
     created = []
     for tpl, comp in list(_due_occurrences(con, today, only)):
-        try:
-            day = int(str(tpl['due_on'] or '01')[-2:])
-        except ValueError:
-            day = 1
-        ts = now()
-        rec = {'id': uid(), 'category': tpl['category'], 'description': tpl['description'], 'competence': comp,
-               'due_on': due_date(comp, day).isoformat(), 'expected_amount_cents': tpl['expected_amount_cents'], 'supplier': tpl['supplier'],
-               'client_id': tpl['client_id'], 'vehicle_id': tpl['vehicle_id'], 'subscription_id': tpl['subscription_id'],
-               'catalog_id': tpl['catalog_id'], 'recurrence_id': tpl['id'], 'status': 'OPEN', 'revision': 1, 'created_at': ts,
-               'updated_at': ts, 'repeat': tpl['repeat'], 'repeat_active': 0}
-        created.append(_insert(con, actor, rec, 'EXPENSE_RECUR_GENERATE'))
+        created.append(_occurrence(con, actor, tpl, comp))
     return created
 
 
@@ -162,25 +167,148 @@ def stop_recurring_expense(db: Database, actor: int, expense_id: str) -> dict:
         return rec
 
 
-def delete_expense(db: Database, actor: int, expense_id: str) -> dict:
+FUTURE_MONTHS = 12   # 2.8.0: pagar adiantado até 12 meses
+
+
+def _trash_row(con, actor: int, exp) -> None:
+    from .trash import put as trash_put
+    # 2.4.0: a paid expense can be deleted too; its payments go to the Lixeira with it (and come back on restore)
+    payments = [dict(r) for r in con.execute('SELECT * FROM disbursements WHERE expense_id=?', (exp['id'],)).fetchall()]
+    trash_put(con, actor, 'expense', exp['id'], f"{exp['category']} · {exp['description']} · {exp['competence']}", {'row': dict(exp), 'disbursements': payments})
+    con.execute('DELETE FROM disbursements WHERE expense_id=?', (exp['id'],))
+    con.execute('DELETE FROM expenses WHERE id=?', (exp['id'],))
+    audit(con, actor, 'EXPENSE_DELETE', 'expense', exp['id'], dict(exp), None)
+
+
+def _check_deletable(con, exp) -> None:
+    if con.execute('SELECT 1 FROM fiscal_obligations WHERE expense_id=?', (exp['id'],)).fetchone():
+        raise ValueError('expense linked to fiscal obligation cannot be deleted')
+    if exp['converted_sale_id']:
+        raise ValueError('expense converted to sale cannot be deleted')
+
+
+def delete_expense(db: Database, actor: int, expense_id: str, scope: str = 'ONE') -> dict:
+    """Exclui (vai para a Lixeira). Recorrente: ``scope='ONE'`` só este mês (não é gerado de novo; a repetição continua);
+    ``scope='FORWARD'`` este mês e os seguintes, e a repetição para. Os meses anteriores ficam."""
+    scope = str(scope or 'ONE').upper()
+    if scope not in ('ONE', 'FORWARD'):
+        raise ValueError('invalid delete scope')
     with db.transaction() as con:
         exp = con.execute('SELECT * FROM expenses WHERE id=?', (expense_id,)).fetchone()
         if not exp:
             raise KeyError('expense not found')
-        if con.execute('SELECT 1 FROM fiscal_obligations WHERE expense_id=?', (expense_id,)).fetchone():
-            raise ValueError('expense linked to fiscal obligation cannot be deleted')
-        if exp['converted_sale_id']:
-            raise ValueError('expense converted to sale cannot be deleted')
-        if exp['recurrence_id'] == exp['id'] and con.execute('SELECT 1 FROM expenses WHERE recurrence_id=? AND id<>?', (expense_id, expense_id)).fetchone():
-            raise ValueError('recurring expense has occurrences; stop the repetition instead')
-        from .trash import put as trash_put
-        # 2.4.0: a paid expense can be deleted too; its payments go to the Lixeira with it (and come back on restore)
-        payments = [dict(r) for r in con.execute('SELECT * FROM disbursements WHERE expense_id=?', (expense_id,)).fetchall()]
-        trash_put(con, actor, 'expense', expense_id, f"{exp['category']} · {exp['description']}", {'row': dict(exp), 'disbursements': payments})
-        con.execute('DELETE FROM disbursements WHERE expense_id=?', (expense_id,))
-        con.execute('DELETE FROM expenses WHERE id=?', (expense_id,))
-        audit(con, actor, 'EXPENSE_DELETE', 'expense', expense_id, dict(exp), None)
-        return {'id': expense_id, 'deleted': True}
+        _check_deletable(con, exp)
+        tpl_id = exp['recurrence_id']
+        if not tpl_id:
+            _trash_row(con, actor, exp)
+            return {'id': expense_id, 'deleted': True, 'count': 1}
+        ts = now()
+        if scope == 'FORWARD':
+            con.execute('UPDATE expenses SET repeat_active=0,revision=revision+1,updated_at=? WHERE id=?', (ts, tpl_id))
+            rows = con.execute('SELECT * FROM expenses WHERE recurrence_id=? AND competence>=? ORDER BY competence DESC', (tpl_id, exp['competence'])).fetchall()
+            for row in rows:
+                _check_deletable(con, row)
+            later = [r for r in rows if r['id'] != tpl_id] + [r for r in rows if r['id'] == tpl_id]
+            for row in later:
+                _trash_row(con, actor, row)
+            return {'id': expense_id, 'deleted': True, 'count': len(rows), 'repeat_stopped': True}
+        # ONE
+        if exp['id'] == tpl_id:
+            nxt = con.execute('SELECT * FROM expenses WHERE recurrence_id=? AND id<>? ORDER BY competence LIMIT 1', (tpl_id, tpl_id)).fetchone()
+            if nxt:
+                # o 1º mês sai; o próximo passa a ser o modelo da repetição (que continua)
+                con.execute('UPDATE expenses SET recurrence_id=? WHERE recurrence_id=?', (nxt['id'], tpl_id))
+                con.execute('UPDATE expenses SET repeat_active=?,due_on=due_on,revision=revision+1,updated_at=? WHERE id=?', (exp['repeat_active'], ts, nxt['id']))
+                con.execute('UPDATE expense_skips SET recurrence_id=? WHERE recurrence_id=?', (nxt['id'], tpl_id))
+                con.execute('UPDATE expenses SET recurrence_id=NULL,repeat_active=0 WHERE id=?', (tpl_id,))
+                exp = con.execute('SELECT * FROM expenses WHERE id=?', (tpl_id,)).fetchone()
+        else:
+            con.execute('INSERT OR IGNORE INTO expense_skips(recurrence_id,competence,created_at) VALUES(?,?,?)', (tpl_id, exp['competence'], ts))
+        _trash_row(con, actor, exp)
+        return {'id': expense_id, 'deleted': True, 'count': 1}
+
+
+def _template(con, expense_id: str):
+    exp = con.execute('SELECT * FROM expenses WHERE id=?', (expense_id,)).fetchone()
+    if not exp:
+        raise KeyError('expense not found')
+    if not exp['recurrence_id']:
+        return exp, None
+    return exp, con.execute('SELECT * FROM expenses WHERE id=?', (exp['recurrence_id'],)).fetchone()
+
+
+def _series_months(con, tpl, today: date) -> list[str]:
+    step = 1 if tpl['repeat'] == 'MONTHLY' else 12
+    last_existing = con.execute('SELECT MAX(competence) FROM expenses WHERE recurrence_id=?', (tpl['id'],)).fetchone()[0] or tpl['competence']
+    limit = _shift(today.strftime('%Y-%m'), FUTURE_MONTHS) if int(tpl['repeat_active'] or 0) else last_existing
+    limit = max(limit, last_existing)
+    skips = {r[0] for r in con.execute('SELECT competence FROM expense_skips WHERE recurrence_id=?', (tpl['id'],)).fetchall()}
+    out, comp, guard = [], tpl['competence'], 0
+    while comp <= limit and guard < 400:
+        if comp not in skips:
+            out.append(comp)
+        comp = _shift(comp, step); guard += 1
+    return out
+
+
+def expense_series(db: Database, expense_id: str, as_of: date | None = None) -> dict:
+    """2.8.0 — Abrir: todos os meses da recorrente (passados, o atual e até 12 adiante) com a situação de cada um."""
+    today = as_of or date.today()
+    with db.transaction() as con:
+        exp, tpl = _template(con, expense_id)
+        if tpl is None:
+            return {'template_id': None, 'repeat': exp['repeat'] or 'ONCE', 'months': []}
+        try:
+            day = int(str(tpl['due_on'] or '01')[-2:])
+        except ValueError:
+            day = 1
+        rows = {r['competence']: r for r in con.execute('SELECT * FROM expenses WHERE recurrence_id=?', (tpl['id'],)).fetchall()}
+        current = today.strftime('%Y-%m')
+        months = []
+        for comp in _series_months(con, tpl, today):
+            row = rows.get(comp)
+            if row:
+                paid = _paid(con, row['id'])
+                last = con.execute('SELECT MAX(paid_on) FROM disbursements WHERE expense_id=? AND reversed_at IS NULL', (row['id'],)).fetchone()[0]
+                months.append({'competence': comp, 'expense_id': row['id'], 'due_on': row['due_on'], 'amount_cents': int(row['expected_amount_cents']),
+                               'paid_cents': paid, 'paid_on': last, 'status': row['status'], 'when': 'past' if comp < current else 'current' if comp == current else 'future'})
+            else:
+                months.append({'competence': comp, 'expense_id': None, 'due_on': due_date(comp, day).isoformat(), 'amount_cents': int(tpl['expected_amount_cents']),
+                               'paid_cents': 0, 'paid_on': None, 'status': 'FUTURE' if comp > current else 'OPEN', 'when': 'past' if comp < current else 'current' if comp == current else 'future'})
+        return {'template_id': tpl['id'], 'repeat': tpl['repeat'], 'repeat_active': int(tpl['repeat_active'] or 0), 'description': tpl['description'],
+                'months': months}
+
+
+def pay_expense_months(db: Database, actor: int, expense_id: str, p: dict, as_of: date | None = None) -> dict:
+    """2.8.0 — paga vários meses de uma recorrente numa transação: atrasados (retroativo), o atual e até 12 adiante.
+    ``paid_on='DUE'`` usa o vencimento de cada mês (nunca depois de hoje)."""
+    today = as_of or date.today()
+    comps = sorted({str(c)[:7] for c in (p.get('competences') or []) if c})
+    if not comps:
+        raise ValueError('competences required')
+    mode = str(p.get('paid_on') or today.isoformat())
+    if mode != 'DUE':
+        mode = mode[:10]
+        if date.fromisoformat(mode) > today:
+            raise ValueError('payment date cannot be in the future')
+    with db.transaction() as con:
+        _, tpl = _template(con, expense_id)
+        if tpl is None:
+            raise ValueError('expense is not recurring')
+        allowed = set(_series_months(con, tpl, today))
+        paid, out = 0, []
+        for comp in comps:
+            if comp not in allowed:
+                raise ValueError(f'month {comp} is outside the allowed range')
+            row = con.execute('SELECT * FROM expenses WHERE recurrence_id=? AND competence=?', (tpl['id'], comp)).fetchone()
+            if row is None:
+                row = _occurrence(con, actor, tpl, comp)
+            if _paid(con, row['id']) >= int(row['expected_amount_cents']):
+                continue
+            day = min(date.fromisoformat(row['due_on']), today).isoformat() if mode == 'DUE' else mode
+            out.append(_disburse(con, actor, row, day))
+            paid += 1
+        return {'template_id': tpl['id'], 'paid': paid, 'items': out}
 
 
 def update_expense(db: Database, actor: int, expense_id: str, p: dict) -> dict:
