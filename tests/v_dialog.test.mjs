@@ -19,5 +19,5 @@ test('V-07: alvos da assinatura em cartões com miniatura do veículo', () => {
   const html = renderSubscriptionWorkflow({ context: 'CLIENT_PROFILE', clientId: 'c1', clients: [{ id: 'c1', legal_name: 'A' }], catalog: [],
     vehicles: [{ id: 'v1', client_id: 'c1', plate: 'AAA1A11', brand: 'VW', model: 'Gol', type: 'Carro' }], fleets: [], vehicleMedia: { v1: [{ id: 'm1' }] } });
   assert.match(html, /class="sw-target"[\s\S]*media\/m1\/thumb[\s\S]*AAA1A11/);
-  assert.match(html, /plano mensal do cliente/);
+  assert.match(html, /plano mensal de cada veículo/);
 });

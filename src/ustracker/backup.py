@@ -166,6 +166,18 @@ def prune_backups(root: Path | str, environment: str, keep: int = DEFAULT_RETENT
     return removed
 
 
+def _log_failure(root: Path, exc: Exception) -> None:
+    """2.7.0: a falha da cópia automática vai para o erros.log (o Diagnóstico mostra; o pacote de suporte leva limpo)."""
+    import traceback
+    try:
+        log = Path(root) / 'UserData' / 'Logs' / 'erros.log'
+        log.parent.mkdir(parents=True, exist_ok=True)
+        with log.open('a', encoding='utf-8') as fh:
+            fh.write(f"--- {datetime.now(UTC).isoformat()} TASK auto-backup\n{''.join(traceback.format_exception(type(exc), exc, exc.__traceback__))}\n")
+    except OSError:
+        pass
+
+
 def maybe_automatic_backup(
     root: Path | str,
     db: Database,
@@ -192,6 +204,7 @@ def maybe_automatic_backup(
         status.update(verified=True, last_verified_at=current, error=None)
         prune_backups(root, db.environment, retention)
     except Exception as exc:
-        status.update(verified=False, error=str(exc)[:300])
+        status.update(verified=False, error=(str(exc) or type(exc).__name__)[:300])
+        _log_failure(root, exc)
     dg.write_backup_status(root, db.environment, status)
     return backup

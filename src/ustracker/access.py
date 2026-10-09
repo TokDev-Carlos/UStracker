@@ -101,7 +101,7 @@ _RULES: list[tuple[str, str, object]] = [
     ('GET', r'/catalog(/.*)?$', ('catalog.view', 'commercial.view')),
     ('DELETE', r'/catalog/[^/]+$', 'catalog.delete'),
     ('POST|PATCH|PUT', r'/catalog(/.*)?$', 'catalog.edit'),
-    ('POST', r'/(billing/payments|payments)$', 'finance.pay'),
+    ('POST', r'/(billing/payments|billing/fleet-payments|payments)$', 'finance.pay'),
     ('POST', r'/payments/[^/]+/reverse$', 'finance.reverse'),
     ('POST', r'/disbursements/[^/]+/reverse$', 'expenses.delete'),
     ('GET', r'/finance$', ('finance.view', 'expenses.view', 'fiscal.view')),

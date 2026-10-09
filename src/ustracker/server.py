@@ -22,7 +22,7 @@ from .attachments import list_attachments, load_attachment, store_attachment, st
 from .codes import resolve_entity_ref
 from .backup import create_backup, maybe_automatic_backup, prune_backups, restore_backup, verify_backup
 from .branding import asset_dir, store_brand_asset
-from .billing import client_payment_options, register_subscription_payment, subscription_payment_status
+from .billing import client_payment_options, register_fleet_payment, register_subscription_payment, subscription_payment_status
 from .catalog import list_catalog, remove_catalog_item
 from .cloud import CLOUD_EPOCH, CloudError, CloudSync, apply_pending_restore, restore_from_cloud
 from .trash import list_trash, restore as restore_trash
@@ -370,6 +370,12 @@ def create_app(root: Path | str) -> FastAPI:
             cloud_restore = apply_pending_restore(root, db, session, cloud)
             if cloud_restore:
                 db = get_db(session)
+        try:  # 2.7.0: assinaturas antigas de frota viram uma por veículo (histórico dividido, totais iguais)
+            from .fleet_split import split_all
+            if split_all(db, session.slot)['split'] and session.environment == 'production':
+                cloud.mark_dirty()
+        except Exception:
+            pass
         station = ensure_station(root, db) if session.environment == 'production' else None
         if session.environment == 'production':
             cloud.attach(session)
@@ -943,6 +949,11 @@ def create_app(root: Path | str) -> FastAPI:
     def billing_payment(request: Request, p: dict = Body(...)):
         session = session_required(request, True)
         return mutation(request, session, 'POST /billing/payments', p, lambda db: register_subscription_payment(db, session.slot, p))
+
+    @app.post('/api/v1/billing/fleet-payments', status_code=201)
+    def billing_fleet_payment(request: Request, p: dict = Body(...)):
+        session = session_required(request, True)
+        return mutation(request, session, 'POST /billing/fleet-payments', p, lambda db: register_fleet_payment(db, session.slot, p))
 
     @app.post('/api/v1/payments/{pid}/reverse')
     def payments_reverse(pid: str, request: Request, p: dict = Body(default={})):

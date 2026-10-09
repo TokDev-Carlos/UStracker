@@ -46,8 +46,21 @@ function subscriptionLine(sub) {
   return `${paid}${late} · Mensal ${formatBRL(Number(sub.monthly_cents || 0))}`;
 }
 
+/** 2.7.0 — escolha "fleet:<id>" paga a frota toda (um recibo); senão, uma assinatura. */
+export function paymentBody(choice, fields = {}) {
+  const value = String(choice || '');
+  return value.startsWith('fleet:')
+    ? { path: '/billing/fleet-payments', body: { fleet_id: value.slice(6), ...fields } }
+    : { path: '/billing/payments', body: { subscription_id: value, ...fields } };
+}
+function fleetChoices(options) {
+  return (options?.fleets || []).filter(f => Number(f.vehicle_count || 0) > 1).map(f => ({
+    subscription_id: 'fleet:' + f.fleet_id, code: f.name, isFleet: true, plans: [], monthly_cents: f.monthly_cents, next_due: f.next_due,
+    paid_through: f.paid_through, overdue_months: f.overdue_months, label: `${f.name} — pagar todos (${f.vehicle_count} veículos)`, plates: f.plates || [],
+  }));
+}
 export function renderPaymentDialog({ client = null, options = null, subscriptionId = '' } = {}) {
-  const subs = options?.subscriptions || [];
+  const subs = [...fleetChoices(options), ...(options?.subscriptions || [])];
   const chosen = subs.find(s => s.subscription_id === subscriptionId) || subs[0] || null;
   const today = options?.today || localToday();
   const clientField = client
@@ -55,7 +68,7 @@ export function renderPaymentDialog({ client = null, options = null, subscriptio
     : `<div class="row">${renderEntityAutocomplete({ name: 'client_id', label: 'Cliente', required: true })}</div>`;
   const subsField = !options ? '<p class="muted" data-pay-hint>Escolha o cliente para ver as assinaturas.</p>'
     : !subs.length ? '<p class="notice" data-pay-hint>Este cliente não tem assinatura ativa.</p>'
-      : `<div class="pay-subs" role="radiogroup" aria-label="Assinatura">${subs.map(s => `<label class="pay-sub${s === chosen ? ' is-selected' : ''}"><input type="radio" name="subscription_id" value="${esc(s.subscription_id)}"${s === chosen ? ' checked' : ''}><span><b>${esc(s.code || 'Assinatura')}</b> ${esc((s.plans || []).join(', '))}<small>${subscriptionLine(s)}</small>${coverageLine(s.coverage)}</span></label>`).join('')}</div>`;
+      : `<div class="pay-subs" role="radiogroup" aria-label="Assinatura">${subs.map(s => `<label class="pay-sub${s === chosen ? ' is-selected' : ''}"><input type="radio" name="subscription_id" value="${esc(s.subscription_id)}"${s === chosen ? ' checked' : ''}><span>${s.isFleet ? `<b>${esc(s.label)}</b><small>${subscriptionLine(s)}</small><span class="pay-cover">${esc(s.plates.join(', '))}</span>` : `<b>${esc(s.code || 'Assinatura')}</b> ${esc((s.plans || []).join(', '))}<small>${subscriptionLine(s)}</small>${coverageLine(s.coverage)}`}</span></label>`).join('')}</div>`;
   const enabled = Boolean(chosen);
   return `<form id="paymentDialogForm" class="pay-form">${clientField}${subsField}
   <fieldset class="pay-main"${enabled ? '' : ' disabled'}>
@@ -83,7 +96,7 @@ export function openPaymentDialog({ api, search, client = null, subscriptionId =
     let amountTouched = false;
     amount?.addEventListener('input', () => { amountTouched = true; });
     const update = () => {
-      const sub = (options?.subscriptions || []).find(s => s.subscription_id === form.querySelector('[name=subscription_id]:checked')?.value);
+      const sub = [...fleetChoices(options), ...(options?.subscriptions || [])].find(s => s.subscription_id === form.querySelector('[name=subscription_id]:checked')?.value);
       form.querySelectorAll('.pay-sub').forEach(label => label.classList.toggle('is-selected', label.querySelector('input').checked));
       if (!sub) return;
       let discount = 0;
@@ -103,10 +116,10 @@ export function openPaymentDialog({ api, search, client = null, subscriptionId =
     bindActionForm(form, {
       key: 'payment-dialog',
       action: async () => {
-        const body = { subscription_id: form.querySelector('[name=subscription_id]:checked')?.value, months: Number(form.months.value || 1),
-          paid_on: form.paid_on.value, method: form.method.value, amount: form.amount.value };
+        const { path, body } = paymentBody(form.querySelector('[name=subscription_id]:checked')?.value, { months: Number(form.months.value || 1),
+          paid_on: form.paid_on.value, method: form.method.value, amount: form.amount.value });
         if (form.discount.value.trim() && form.discount.value.trim() !== 'R$ 0,00') body.discount = form.discount.value;
-        const rec = await api('/billing/payments', { method: 'POST', body: JSON.stringify(body) });
+        const rec = await api(path, { method: 'POST', body: JSON.stringify(body) });
         closeOverlay();
         notify({ type: 'success', message: `Pagamento registrado. Pago até ${competenceLabel(rec.paid_through)}.` + (rec.credit_cents ? ` Crédito de ${formatBRL(rec.credit_cents)} gerado.` : '') });
         return rec;
@@ -119,7 +132,7 @@ export function openPaymentDialog({ api, search, client = null, subscriptionId =
     try { options = await api('/billing/clients/' + encodeURIComponent(currentClient.id)); }
     catch (error) { notify({ type: 'error', message: error.message }); options = { subscriptions: [] }; }
     root.removeAttribute('aria-busy');
-    if (!subscriptionId && options.subscriptions?.length) subscriptionId = options.subscriptions[0].subscription_id;
+    if (!subscriptionId && options.subscriptions?.length) subscriptionId = fleetChoices(options)[0]?.subscription_id || options.subscriptions[0].subscription_id;
     draw();
   };
   draw();
