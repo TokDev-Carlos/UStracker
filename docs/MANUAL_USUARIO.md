@@ -1,4 +1,4 @@
-# Manual do Usuário — UStracker 2.6.0
+# Manual do Usuário — UStracker 2.7.0
 
 ## Instalar
 1. Execute **UStracker_install_x64.exe** (o Windows pede permissão de administrador) e siga as telas. Ele já leva tudo: programa, WebView2 e o endereço da nuvem da empresa.
@@ -48,8 +48,8 @@ Painel de Controle › Programas (ou Menu Iniciar › UStracker › Desinstalar)
 1. **Clientes → Novo cliente.** Nome, documento (CPF, CNPJ, RG ou CNH) e um contato. Com CNPJ, o cliente já é a própria empresa.
 2. **Na ficha do cliente → Veículos e Frotas → + Veículo** (ou + Frota, se o cliente tem empresa).
    Se a placa já existir, o sistema mostra de quem é antes de salvar.
-3. **Assinar plano:** escolha o plano mensal e marque os veículos e/ou frotas. A quantidade vira o total de veículos sozinha e aparece a prévia ("12 veículos × R$ 50,00 = R$ 600,00/mês"); se um veículo já estiver em outra assinatura, aparece um aviso.
-4. **Registrar pagamento:** na ficha ou em Financeiro. Cada assinatura mostra frotas, placas e valor por veículo. Escolha quantos meses; atrasados são pagos primeiro.
+3. **Assinar plano:** escolha o plano mensal e marque os veículos e/ou frotas. A quantidade vira o total de veículos sozinha e aparece a prévia ("12 veículos × R$ 50,00 = R$ 600,00/mês"); se um veículo já estiver em outra assinatura, aparece um aviso. Cada veículo vira uma assinatura própria; a frota só agrupa.
+4. **Registrar pagamento:** na ficha ou em Financeiro. Cada assinatura mostra frotas, placas e valor por veículo. Escolha quantos meses; atrasados são pagos primeiro. Para uma frota, use "Frota — pagar todos": um recibo só para todos os veículos.
 5. **Despesas:** Financeiro → Despesas. Mensal, anual ou única; "Pagar" em um clique.
 
 ## Onde fica cada coisa

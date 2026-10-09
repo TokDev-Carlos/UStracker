@@ -428,6 +428,11 @@ def create_subscription(db:Database, actor:int, p:dict)->dict:
                         (uid(),sid,None,fleet_id,ts))
         hydrated=_hydrate_subscription(con,con.execute('SELECT * FROM subscriptions WHERE id=?',(sid,)).fetchone())
         audit(con,actor,'SUBSCRIPTION_CREATE','subscription',sid,None,hydrated)
+        # 2.7.0 (H-20): frota só agrupa — uma assinatura por veículo
+        from .fleet_split import split_subscription
+        extra=split_subscription(con,sid,actor,ts)
+        hydrated=_hydrate_subscription(con,con.execute('SELECT * FROM subscriptions WHERE id=?',(sid,)).fetchone())
+        hydrated['group_ids']=[sid,*extra]
         return hydrated
 
 def create_direct_sale(db:Database, actor:int, p:dict)->dict:

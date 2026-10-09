@@ -67,4 +67,10 @@ def amend_subscription(db: Database, actor: int, subscription_id: str, p: dict) 
         con.execute('UPDATE subscriptions SET due_day=?,revision=revision+1,updated_at=? WHERE id=?', (due_day, ts, subscription_id))
         after = _hydrate_subscription(con, con.execute('SELECT * FROM subscriptions WHERE id=?', (subscription_id,)).fetchone())
         audit(con, actor, 'SUBSCRIPTION_AMEND', 'subscription', subscription_id, before, after)
+        from .fleet_split import split_subscription  # 2.7.0: uma assinatura por veículo
+        keep = next((t['vehicle_id'] for t in before.get('targets', []) if t.get('vehicle_id')), None)
+        extra = split_subscription(con, subscription_id, actor, ts, history=False, keep_vehicle_id=keep)
+        if extra:
+            after = _hydrate_subscription(con, con.execute('SELECT * FROM subscriptions WHERE id=?', (subscription_id,)).fetchone())
+            after['group_ids'] = [subscription_id, *extra]
         return after

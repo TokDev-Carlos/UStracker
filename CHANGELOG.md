@@ -2,6 +2,12 @@
 
 Formato: versão semântica a partir da 2.0.0 (2.0.1 = correção, 2.1.0 = novidade compatível).
 
+## 2.7.0 — 2026-10-09
+
+- Frota: cada veículo é uma assinatura (a frota só agrupa). Assinaturas antigas de frota são divididas sozinhas, com o histórico repartido por veículo e os totais de cada mês intactos (ids derivados, iguais em todo computador).
+- Pagar a frota toda de uma vez: um recibo para todos os veículos (`POST /billing/fleet-payments`).
+- Avisos de backup: faixa não se repete; arquivo de estado antigo não gera "falhou"; falha real mostra o motivo e vai para o erros.log.
+
 ## 2.6.0 — 2026-10-08
 
 - Nuvem: envio só automático; "Enviar agora" respeita a vez de gravar; em conflito o computador solta a vez; vez mais curta (~6 s); "Enviar agora" no 2º computador corrigido.

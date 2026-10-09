@@ -81,7 +81,7 @@ class R11SubscriptionDomainTests(unittest.TestCase):
         self.assertEqual(created['items'][0]['plan_name'], 'Plano Mensal R11')
         self.assertEqual(
             {(target['target_type'], target['target_name']) for target in created['targets']},
-            {('VEHICLE', 'RAB1A11'), ('FLEET', 'Frota A')},
+            {('VEHICLE', 'RAB1A11')},  # 2.7.0: o veículo da frota já marcado → 1 assinatura
         )
         self.assertEqual(
             self.db.one("SELECT COUNT(*) FROM audit_events WHERE action='SUBSCRIPTION_CREATE' AND entity_id=?", (created['id'],))[0],
@@ -102,7 +102,7 @@ class R11SubscriptionDomainTests(unittest.TestCase):
         self.assertEqual([row['id'] for row in listed], [created['id']])
         self.assertEqual(list_subscriptions(self.db, client_id=self.other_client['id']), [])
         self.assertEqual(profile['subscriptions'][0]['effective_total_cents'], 30000)
-        self.assertEqual(len(profile['subscriptions'][0]['targets']), 2)
+        self.assertEqual(len(profile['subscriptions'][0]['targets']), 1)
         self.assertEqual(profile['subscriptions'][0]['company_name'], 'Empresa Principal Nova')
         fleet_subscription = mobility['fleets'][0]['subscriptions'][0]
         self.assertEqual(
@@ -112,7 +112,7 @@ class R11SubscriptionDomainTests(unittest.TestCase):
         )
         self.assertEqual(fleet_read['subscriptions'][0]['id'], created['id'])
         vehicle_subscription = fleet_read['vehicles'][0]['subscriptions'][0]
-        self.assertEqual((vehicle_subscription['id'], vehicle_subscription['target_scope']), (created['id'], 'DIRECT_AND_FLEET'))
+        self.assertEqual((vehicle_subscription['id'], vehicle_subscription['target_scope']), (created['id'], 'DIRECT'))
 
     def test_legacy_vehicle_item_becomes_a_target_without_multiplying_value(self):
         created = create_subscription(self.db, 1, self._payload(

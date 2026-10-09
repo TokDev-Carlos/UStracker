@@ -36,7 +36,8 @@ export function subscriptionPreview(model = {}, { catalogId = '', vehicleIds = [
   const totalCents = unitCents * qty;
   const duplicates = covered.filter(v => (v.subscription_codes || []).length).map(v => ({ plate: v.plate || 'Sem placa', codes: v.subscription_codes }))
     .sort((a, b) => a.plate.localeCompare(b.plate, 'pt-BR'));
-  const text = plan ? `${qty} veículo${qty === 1 ? '' : 's'} × ${formatBRL(unitCents)} = ${formatBRL(totalCents)}/mês` : 'Escolha o plano para ver o valor.';
+  const each = vehicles > 1 ? ` · ${vehicles} assinaturas (uma por veículo)` : '';
+  const text = plan ? `${qty} veículo${qty === 1 ? '' : 's'} × ${formatBRL(unitCents)} = ${formatBRL(totalCents)}/mês${each}` : 'Escolha o plano para ver o valor.';
   const warning = duplicates.length
     ? `Atenção: já cobertos por outra assinatura ativa (cobraria 2×): ${duplicates.map(d => `${d.plate} (${d.codes.join(', ')})`).join('; ')}.`
     : '';
@@ -80,9 +81,9 @@ export function renderSubscriptionWorkflow(model = {}) {
   const today = new Date(); const pad = n => String(n).padStart(2, '0');
   const startOn = escapeHtml(model.startOn || `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`); // local date, not UTC
   return `<form id="subscriptionWorkflowForm" data-subscription-context="${escapeHtml(context)}">
-    <p class="muted sw-help">Assinatura é o plano mensal do cliente: todo mês gera uma cobrança no dia do vencimento, para os veículos ou frotas marcados. Quando a cobrança é paga, vira receita.</p>
+    <p class="muted sw-help">Assinatura é o plano mensal de cada veículo: todo mês gera uma cobrança no dia do vencimento. Marcando uma frota, cada veículo dela ganha a sua assinatura (a frota só agrupa e pode ser paga de uma vez). Quando a cobrança é paga, vira receita.</p>
     <div class="row">${clientField}<div class="field"><label>Plano mensal*</label><select name="catalog_id" required><option value="">Selecione o plano</option>${plans.map(item => `<option value="${escapeHtml(item.id)}" data-price="${Number(item.price_cents || 0)}">${escapeHtml(item.name || item.description || item.id)}</option>`).join('')}</select></div></div>
-    <div class="row"><div class="field"><label>Início*</label><input type="date" name="start_on" value="${startOn}" required></div><div class="field"><label>Dia do vencimento*</label><input type="number" name="due_day" min="1" max="31" value="10" required></div><div class="field"><label>Quantidade*</label><input type="number" name="quantity" min="1" value="1" required><small class="muted">Automática: total de veículos marcados (frotas incluídas). Pode alterar.</small></div></div>
+    <div class="row"><div class="field"><label>Início*</label><input type="date" name="start_on" value="${startOn}" required></div><div class="field"><label>Dia do vencimento*</label><input type="number" name="due_day" min="1" max="31" value="10" required></div><div class="field"><label>Quantidade*</label><input type="number" name="quantity" min="1" value="1" required><small class="muted">Automática: total de veículos marcados (frotas incluídas). Cada veículo vira uma assinatura.</small></div></div>
     <div data-subscription-targets>${targetChoices(model, selectedClientId)}</div>
     <div class="sw-preview" data-subscription-preview aria-live="polite"><strong data-preview-text>Escolha o plano para ver o valor.</strong><div class="sw-warning" data-preview-warning hidden></div></div>
     <div data-subscription-error class="error" hidden></div>

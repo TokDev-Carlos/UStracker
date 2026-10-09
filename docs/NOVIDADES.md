@@ -1,3 +1,15 @@
+# UStracker 2.7.0
+
+- **Frota: cada veículo é uma assinatura.** A frota só agrupa os veículos.
+  - Uma frota com 4 veículos tem 4 assinaturas (mesmo plano e vencimento), e o painel mostra as 4.
+  - Assinaturas de frota feitas antes da 2.7 são divididas sozinhas na primeira abertura. O histórico de mensalidades e pagamentos é repartido por veículo, e os totais de cada mês não mudam.
+  - Veículo que entra na frota depois não ganha assinatura sozinho: crie a dele.
+- **Pagar a frota toda de uma vez:** em Registrar pagamento, a opção "Frota — pagar todos" gera um recibo só, cobrindo os meses de todos os veículos.
+- **Correção dos avisos de cópia de segurança:**
+  - a faixa de aviso não se repete mais na tela;
+  - o aviso falso de "cópia falhou" (vindo de versões antigas) sumiu;
+  - uma falha de verdade mostra o motivo e fica registrada em Sistema › Diagnóstico.
+
 # UStracker 2.6.0
 
 - **Nuvem automática de verdade:** sem botão "Enviar agora"; o sistema salva sozinho.

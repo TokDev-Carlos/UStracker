@@ -143,7 +143,19 @@ def client_payment_options(db: Database, client_id: str, as_of: date | None = No
             rec['plans'] = [r[0] for r in con.execute('SELECT description FROM subscription_items WHERE subscription_id=? ORDER BY description', (sub['id'],)).fetchall()]
             rec['coverage'] = subscription_coverage(con, sub['id'])
             items.append(rec)
-    return {'client': dict(client), 'subscriptions': items, 'methods': list(PAYMENT_METHODS), 'today': today.isoformat()}
+        fleets = []
+        for f in con.execute("SELECT id,name,code FROM fleets WHERE client_id=? AND archived=0 ORDER BY name", (client_id,)).fetchall():
+            subs = _fleet_subscriptions(con, f['id'])
+            if not subs:
+                continue
+            st = [_status(con, s, today) for s in subs]
+            plates = [r[0] for r in con.execute('''SELECT DISTINCT v.plate FROM vehicles v JOIN subscription_targets t ON t.vehicle_id=v.id
+                     JOIN subscriptions s ON s.id=t.subscription_id WHERE v.fleet_id=? AND v.archived=0 AND s.lifecycle_status='ACTIVE' ORDER BY v.plate''', (f['id'],)).fetchall()]
+            fleets.append({'fleet_id': f['id'], 'name': f['name'], 'code': f['code'], 'subscription_ids': [s['id'] for s in subs],
+                           'vehicle_count': len(subs), 'plates': plates, 'monthly_cents': sum(x['monthly_cents'] for x in st),
+                           'next_due': min(x['next_due'] for x in st), 'paid_through': min((x['paid_through'] or '') for x in st) or None,
+                           'overdue_months': max(x['overdue_months'] for x in st)})
+    return {'client': dict(client), 'subscriptions': items, 'fleets': fleets, 'methods': list(PAYMENT_METHODS), 'today': today.isoformat()}
 
 
 def plan_payment(con, sub, months: int, from_competence: str | None, as_of: date) -> dict:
@@ -161,15 +173,11 @@ def plan_payment(con, sub, months: int, from_competence: str | None, as_of: date
     return {'status': status, 'competences': rows, 'total_cents': sum(r['due_cents'] for r in rows)}
 
 
-def register_subscription_payment(db: Database, actor: int, p: dict, as_of: date | None = None) -> dict:
-    today = as_of or date.today()
-    sid = str(p.get('subscription_id') or '').strip()
+def _payment_input(p: dict, today: date) -> dict:
     try:
         months = int(p.get('months') or 1)
     except (TypeError, ValueError) as exc:
         raise ValueError('months must be a number') from exc
-    if not sid:
-        raise ValueError('subscription_id required')
     if months < 1 or months > MAX_MONTHS:
         raise ValueError(f'months must be between 1 and {MAX_MONTHS}')
     paid_on = str(p.get('paid_on') or today.isoformat())[:10]
@@ -185,69 +193,121 @@ def register_subscription_payment(db: Database, actor: int, p: dict, as_of: date
     from_competence = p.get('from_competence') or None
     if from_competence:
         due_date(str(from_competence)[:7], 1)  # validates YYYY-MM
+    return {'months': months, 'paid_on': paid_on, 'discount': discount, 'from_competence': from_competence}
+
+
+def _apply_payment(con, actor: int, client_id: str, subs: list, inp: dict, p: dict, today: date) -> dict:
+    """Uma transação: emite as mensalidades que faltam, aplica o desconto, grava UM pagamento e o distribui
+    (competência mais antiga primeiro; entre assinaturas, pela ordem do código). Sobra vira crédito."""
+    months, paid_on, discount = inp['months'], inp['paid_on'], inp['discount']
+    rows = []  # (sub, row) — row: competence, charge_id, due_cents
+    for sub in subs:
+        plan = plan_payment(con, sub, months, inp['from_competence'], today)
+        rows.extend((sub, row) for row in plan['competences'])
+    rows.sort(key=lambda sr: (sr[1]['competence'], sr[0]['code'] or '', sr[0]['id']))
+    total = sum(r['due_cents'] for _, r in rows)
+    if discount > total:
+        raise ValueError('discount exceeds amount due')
+    amount = total - discount if p.get('amount') in (None, '') else parse_money_api(p['amount'])
+    if amount <= 0:
+        raise ValueError('payment amount must be positive')
+    ts = now()
+    # 1) issue missing charges
+    for sub, row in rows:
+        if row['charge_id']:
+            continue
+        if sub['lifecycle_status'] != 'ACTIVE':
+            raise ValueError('subscription is not active')
+        cid = uid()
+        rec = {'id': cid, 'subscription_id': sub['id'], 'client_id': sub['client_id'], 'competence': row['competence'],
+               'due_on': due_date(row['competence'], int(sub['due_day'])).isoformat(), 'amount_cents': row['due_cents'],
+               'adjustment_cents': 0, 'status': 'OPEN', 'revision': 1, 'created_at': ts, 'updated_at': ts}
+        con.execute('''INSERT INTO charges(id,subscription_id,client_id,competence,due_on,amount_cents,adjustment_cents,status,revision,created_at,updated_at)
+                       VALUES(:id,:subscription_id,:client_id,:competence,:due_on,:amount_cents,:adjustment_cents,:status,:revision,:created_at,:updated_at)''', rec)
+        audit(con, actor, 'CHARGE_GENERATE', 'charge', cid, None, rec)
+        row['charge_id'] = cid
+    pid = uid()
+    # 2) discount, latest competence first
+    remaining_discount = discount
+    for _, row in reversed(rows):
+        if remaining_discount <= 0:
+            break
+        part = min(remaining_discount, row['due_cents'])
+        if part <= 0:
+            continue
+        con.execute('INSERT INTO charge_adjustments(id,charge_id,kind,amount_cents,reason,effective_on,created_at) VALUES(?,?,?,?,?,?,?)',
+                    (uid(), row['charge_id'], 'DISCOUNT', -part, f'Desconto no pagamento {pid}', paid_on, ts))
+        con.execute('UPDATE charges SET adjustment_cents=adjustment_cents-?,revision=revision+1,updated_at=? WHERE id=?', (part, ts, row['charge_id']))
+        row['due_cents'] -= part
+        remaining_discount -= part
+    # 3) payment + allocations oldest first
+    con.execute('INSERT INTO payments(id,client_id,paid_on,amount_cents,method,notes,created_at) VALUES(?,?,?,?,?,?,?)',
+                (pid, client_id, paid_on, amount, p.get('method') or None, p.get('notes') or None, ts))
+    left = amount
+    covered = []
+    for sub, row in rows:
+        alloc = min(left, row['due_cents'])
+        if alloc > 0:
+            con.execute('INSERT INTO payment_allocations(id,payment_id,charge_id,amount_cents,active,created_at) VALUES(?,?,?,?,1,?)',
+                        (uid(), pid, row['charge_id'], alloc, ts))
+            left -= alloc
+        status = _refresh_charge_status(con, row['charge_id'])
+        covered.append({'subscription_id': sub['id'], 'competence': row['competence'], 'charge_id': row['charge_id'],
+                        'allocated_cents': max(alloc, 0), 'status': status})
+    credit_id = None
+    if left > 0:
+        credit_id = uid()
+        con.execute('INSERT INTO credits(id,client_id,origin_payment_id,amount_cents,balance_cents,status,created_at) VALUES(?,?,?,?,?,?,?)',
+                    (credit_id, client_id, pid, left, left, 'OPEN', ts))
+    code = con.execute('SELECT code FROM payments WHERE id=?', (pid,)).fetchone()[0]
+    after = [_status(con, sub, today) for sub in subs]
+    return {'id': pid, 'code': code, 'client_id': client_id, 'paid_on': paid_on, 'amount_cents': amount,
+            'discount_cents': discount, 'months': months, 'competences': covered, 'credit_id': credit_id,
+            'credit_cents': left if credit_id else 0,
+            'subscriptions': [{'subscription_id': a['subscription_id'], 'code': a['code'], 'paid_through': a['paid_through'], 'next_due': a['next_due']} for a in after],
+            'paid_through': min((a['paid_through'] or '') for a in after) or None, 'next_due': min(a['next_due'] for a in after)}
+
+
+def register_subscription_payment(db: Database, actor: int, p: dict, as_of: date | None = None) -> dict:
+    today = as_of or date.today()
+    sid = str(p.get('subscription_id') or '').strip()
+    if not sid:
+        raise ValueError('subscription_id required')
+    inp = _payment_input(p, today)
     with db.transaction() as con:
         sub = con.execute('SELECT * FROM subscriptions WHERE id=?', (sid,)).fetchone()
         if not sub:
             raise KeyError('subscription not found')
-        plan = plan_payment(con, sub, months, from_competence, today)
-        if discount > plan['total_cents']:
-            raise ValueError('discount exceeds amount due')
-        amount = plan['total_cents'] - discount if p.get('amount') in (None, '') else parse_money_api(p['amount'])
-        if amount <= 0:
-            raise ValueError('payment amount must be positive')
-        ts = now()
-        # 1) issue missing charges
-        for row in plan['competences']:
-            if row['charge_id']:
-                continue
-            if sub['lifecycle_status'] != 'ACTIVE':
-                raise ValueError('subscription is not active')
-            cid = uid()
-            rec = {'id': cid, 'subscription_id': sid, 'client_id': sub['client_id'], 'competence': row['competence'],
-                   'due_on': due_date(row['competence'], int(sub['due_day'])).isoformat(), 'amount_cents': row['due_cents'],
-                   'adjustment_cents': 0, 'status': 'OPEN', 'revision': 1, 'created_at': ts, 'updated_at': ts}
-            con.execute('''INSERT INTO charges(id,subscription_id,client_id,competence,due_on,amount_cents,adjustment_cents,status,revision,created_at,updated_at)
-                           VALUES(:id,:subscription_id,:client_id,:competence,:due_on,:amount_cents,:adjustment_cents,:status,:revision,:created_at,:updated_at)''', rec)
-            audit(con, actor, 'CHARGE_GENERATE', 'charge', cid, None, rec)
-            row['charge_id'] = cid
-        pid = uid()
-        # 2) discount, latest competence first
-        remaining_discount = discount
-        for row in reversed(plan['competences']):
-            if remaining_discount <= 0:
-                break
-            part = min(remaining_discount, row['due_cents'])
-            if part <= 0:
-                continue
-            con.execute('INSERT INTO charge_adjustments(id,charge_id,kind,amount_cents,reason,effective_on,created_at) VALUES(?,?,?,?,?,?,?)',
-                        (uid(), row['charge_id'], 'DISCOUNT', -part, f'Desconto no pagamento {pid}', paid_on, ts))
-            con.execute('UPDATE charges SET adjustment_cents=adjustment_cents-?,revision=revision+1,updated_at=? WHERE id=?', (part, ts, row['charge_id']))
-            row['due_cents'] -= part
-            remaining_discount -= part
-        # 3) payment + allocations oldest first
-        con.execute('INSERT INTO payments(id,client_id,paid_on,amount_cents,method,notes,created_at) VALUES(?,?,?,?,?,?,?)',
-                    (pid, sub['client_id'], paid_on, amount, p.get('method') or None, p.get('notes') or None, ts))
-        left = amount
-        covered = []
-        for row in plan['competences']:
-            alloc = min(left, row['due_cents'])
-            if alloc > 0:
-                con.execute('INSERT INTO payment_allocations(id,payment_id,charge_id,amount_cents,active,created_at) VALUES(?,?,?,?,1,?)',
-                            (uid(), pid, row['charge_id'], alloc, ts))
-                left -= alloc
-            status = _refresh_charge_status(con, row['charge_id'])
-            covered.append({'competence': row['competence'], 'charge_id': row['charge_id'], 'allocated_cents': max(alloc, 0), 'status': status})
-        credit_id = None
-        if left > 0:
-            credit_id = uid()
-            con.execute('INSERT INTO credits(id,client_id,origin_payment_id,amount_cents,balance_cents,status,created_at) VALUES(?,?,?,?,?,?,?)',
-                        (credit_id, sub['client_id'], pid, left, left, 'OPEN', ts))
-        after = _status(con, sub, today)
-        code = con.execute('SELECT code FROM payments WHERE id=?', (pid,)).fetchone()[0]
-        rec = {'id': pid, 'code': code, 'client_id': sub['client_id'], 'subscription_id': sid, 'paid_on': paid_on, 'amount_cents': amount,
-               'discount_cents': discount, 'months': months, 'competences': covered, 'credit_id': credit_id,
-               'credit_cents': left if credit_id else 0, 'paid_through': after['paid_through'], 'next_due': after['next_due']}
-        audit(con, actor, 'SUBSCRIPTION_PAYMENT', 'payment', pid, None, rec)
+        rec = _apply_payment(con, actor, sub['client_id'], [sub], inp, p, today)
+        rec['subscription_id'] = sid
+        audit(con, actor, 'SUBSCRIPTION_PAYMENT', 'payment', rec['id'], None, rec)
+        return rec
+
+
+def _fleet_subscriptions(con, fleet_id: str) -> list:
+    """2.7.0 — assinaturas ativas dos veículos da frota (uma por veículo)."""
+    return con.execute('''SELECT DISTINCT s.* FROM subscriptions s
+        JOIN subscription_targets st ON st.subscription_id=s.id JOIN vehicles v ON v.id=st.vehicle_id
+        WHERE v.fleet_id=? AND v.archived=0 AND s.lifecycle_status='ACTIVE' ORDER BY s.code,s.id''', (fleet_id,)).fetchall()
+
+
+def register_fleet_payment(db: Database, actor: int, p: dict, as_of: date | None = None) -> dict:
+    """2.7.0 — pagar a frota toda de uma vez: UM recibo cobrindo os meses de todos os veículos."""
+    today = as_of or date.today()
+    fid = str(p.get('fleet_id') or '').strip()
+    if not fid:
+        raise ValueError('fleet_id required')
+    inp = _payment_input(p, today)
+    with db.transaction() as con:
+        fleet = con.execute('SELECT id,client_id,name FROM fleets WHERE id=?', (fid,)).fetchone()
+        if not fleet:
+            raise KeyError('fleet not found')
+        subs = _fleet_subscriptions(con, fid)
+        if not subs:
+            raise ValueError('fleet has no active subscription')
+        rec = _apply_payment(con, actor, fleet['client_id'], subs, inp, p, today)
+        rec['fleet_id'] = fid
+        audit(con, actor, 'FLEET_PAYMENT', 'payment', rec['id'], None, rec)
         return rec
 
 
